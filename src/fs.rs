@@ -2,15 +2,18 @@ use crate::{
     error::Error,
     runtime::{
         dir::Dir,
-        fd::{Fd, FdEntry, FdTable},
+        fd::{FdEntry, FdTable},
         file::File,
-        types::{DstIoVec, FdStat, OpenFlags, SrcIoVec, Whence},
     },
     storage::{
         types::{FileSize, FileType, Metadata, Node},
         Storage,
     },
 };
+
+pub use crate::runtime::fd::Fd;
+
+pub use crate::runtime::types::{SrcIoVec, SrcBuf, DstIoVec, DstBuf, FdStat, OpenFlags, Whence};
 
 pub struct FileSystem {
     root_fd: Fd,
