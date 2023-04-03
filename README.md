@@ -1,2 +1,4 @@
 # stable-fs
-File system implementation for the Internet Computer
+
+A Simple File system implementing WASI endpoints and using the stable structures of the Internet Computer
+
