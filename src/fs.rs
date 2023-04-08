@@ -13,7 +13,7 @@ use crate::{
 
 pub use crate::runtime::fd::Fd;
 
-pub use crate::runtime::types::{SrcIoVec, SrcBuf, DstIoVec, DstBuf, FdStat, OpenFlags, Whence};
+pub use crate::runtime::types::{SrcIoVec, SrcBuf, DstIoVec, DstBuf, FdStat, FdFlags, OpenFlags, Whence};
 
 pub struct FileSystem {
     root_fd: Fd,
@@ -176,7 +176,9 @@ impl FileSystem {
         stat: FdStat,
         flags: OpenFlags,
     ) -> Result<Fd, Error> {
+
         let dir = self.get_dir(parent)?;
+        
         match dir.find_node(path, self.storage.as_ref()) {
             Ok(node) => self.open(node, stat, flags),
             Err(Error::NotFound) => {

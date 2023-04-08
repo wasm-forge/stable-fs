@@ -73,7 +73,7 @@ impl Into<u8> for FileType {
 pub struct Times {
     pub accessed: u64,
     pub modified: u64,
-    pub changed: u64,
+    pub created: u64,
 }
 
 // The name of a file or a directory. Most operating systems limit the max file
