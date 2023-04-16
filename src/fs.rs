@@ -137,6 +137,35 @@ impl FileSystem {
         self.storage.get_metadata(node)
     }
 
+    pub fn set_metadata(&mut self, fd: Fd, metadata: Metadata) -> Result<(), Error> {
+        let node = self.get_node(fd)?;
+        self.storage.put_metadata(node, metadata);
+
+        Ok(())
+    }
+
+    pub fn set_accessed_time(&mut self, fd: Fd, time: u64) -> Result<(), Error> {
+        let node = self.get_node(fd)?;
+        let mut metadata = self.storage.get_metadata(node)?;
+
+        metadata.times.accessed = time;
+
+        self.storage.put_metadata(node, metadata);
+
+        Ok(())
+    }
+
+    pub fn set_modified_time(&mut self, fd: Fd, time: u64) -> Result<(), Error> {
+        let node = self.get_node(fd)?;
+        let mut metadata = self.storage.get_metadata(node)?;
+
+        metadata.times.modified = time;
+
+        self.storage.put_metadata(node, metadata);
+
+        Ok(())
+    }
+
     pub fn get_stat(&self, fd: Fd) -> Result<(FileType, FdStat), Error> {
         match self.fd_table.get(fd) {
             None => Err(Error::NotFound),
