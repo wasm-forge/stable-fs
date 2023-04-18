@@ -35,6 +35,8 @@ pub struct Metadata {
     pub link_count: u64,
     pub size: FileSize,
     pub times: Times,
+    pub first_dir_entry: Option<DirEntryIndex>,
+    pub last_dir_entry: Option<DirEntryIndex>,
 }
 
 // The type of a node.
@@ -109,4 +111,6 @@ pub type DirEntryIndex = u32;
 pub struct DirEntry {
     pub name: FileName,
     pub node: Node,
+    pub next_entry: Option<DirEntryIndex>,
+    pub prev_entry: Option<DirEntryIndex>,
 }

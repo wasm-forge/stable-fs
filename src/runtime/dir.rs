@@ -51,6 +51,8 @@ impl Dir {
                 link_count: 1,
                 size: 0,
                 times: Times::default(),
+                first_dir_entry: None,
+                last_dir_entry: None,
             },
         );
         self.add_entry(node, path, storage)?;
@@ -79,6 +81,8 @@ impl Dir {
                 link_count: 1,
                 size: 0,
                 times: Times::default(),
+                first_dir_entry: None,
+                last_dir_entry: None,
             },
         );
 
@@ -105,11 +109,70 @@ impl Dir {
     }
 
     fn add_entry(&self, node: Node, path: &str, storage: &mut dyn Storage) -> Result<(), Error> {
+
         let mut metadata = storage.get_metadata(self.node)?;
         let name = FileName::new(path)?;
-        storage.put_direntry(self.node, metadata.size as u32, DirEntry { node, name });
+
+        // we might as well start numbering with 1
+        let new_entry_index: DirEntryIndex = metadata.last_dir_entry.unwrap_or(0) + 1;
+
+        storage.put_direntry(self.node, new_entry_index, DirEntry { node, name, next_entry: None, prev_entry: metadata.last_dir_entry });
+
+        // update previous last entry
+        if let Some(prev_dir_entry_index) = metadata.last_dir_entry {
+
+            let mut prev_dir_entry = storage.get_direntry(node, prev_dir_entry_index)?;
+            prev_dir_entry.next_entry = Some(new_entry_index);
+            storage.put_direntry(node, prev_dir_entry_index, prev_dir_entry)
+        }
+
+        // update metadata
+        metadata.last_dir_entry = Some(new_entry_index);
+
+        if metadata.first_dir_entry.is_none() {
+            metadata.first_dir_entry = Some(new_entry_index);
+        }
         metadata.size += 1;
+
         storage.put_metadata(self.node, metadata);
+
+        Ok(())
+    }
+
+    fn rm_entry(&self, node: Node, index: DirEntryIndex, storage: &mut dyn Storage) -> Result<(), Error> {
+
+        let mut metadata = storage.get_metadata(self.node)?;
+        let removed_dir_entry = storage.get_direntry(node, index)?;
+
+        // update previous entry
+        if let Some(prev_dir_entry_index) = removed_dir_entry.prev_entry {
+            let mut prev_dir_entry = storage.get_direntry(node, prev_dir_entry_index)?;
+            prev_dir_entry.next_entry = removed_dir_entry.next_entry;
+            storage.put_direntry(node, prev_dir_entry_index, prev_dir_entry)
+        }
+       
+        // update next entry
+        if let Some(next_dir_entry_index) = removed_dir_entry.next_entry {
+            let mut next_dir_entry = storage.get_direntry(node, next_dir_entry_index)?;
+            next_dir_entry.prev_entry = removed_dir_entry.prev_entry;
+            storage.put_direntry(node, next_dir_entry_index, next_dir_entry)
+        }
+
+        // update metadata
+        if Some(index) == metadata.last_dir_entry {
+            metadata.last_dir_entry = removed_dir_entry.prev_entry;
+        }
+
+        if Some(index) == metadata.first_dir_entry {
+            metadata.first_dir_entry = removed_dir_entry.next_entry;
+        }
+
+        metadata.size -= 1;
+
+        storage.put_metadata(self.node, metadata);
+
+        storage.rm_direntry(node, index);
+
         Ok(())
     }
 }
