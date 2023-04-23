@@ -1,3 +1,4 @@
+
 use crate::{
     error::Error,
     runtime::{
@@ -6,7 +7,7 @@ use crate::{
         file::File,
     },
     storage::{
-        types::{FileSize, FileType, Metadata, Node},
+        types::{FileSize, FileType, Metadata, Node, DirEntryIndex, DirEntry},
         Storage,
     },
 };
@@ -72,6 +73,10 @@ impl FileSystem {
         }
     }
 
+    pub fn get_direntry(&self, fd: Fd, index: DirEntryIndex) -> Result<DirEntry, Error> {
+        self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
+    }
+
     fn put_dir(&mut self, fd: Fd, dir: Dir) {
         self.fd_table.update(fd, FdEntry::Dir(dir))
     }
@@ -134,6 +139,10 @@ impl FileSystem {
 
     pub fn metadata(&self, fd: Fd) -> Result<Metadata, Error> {
         let node = self.get_node(fd)?;
+        self.storage.get_metadata(node)
+    }
+
+    pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
         self.storage.get_metadata(node)
     }
 
@@ -251,7 +260,9 @@ impl FileSystem {
 
     pub fn create_file(&mut self, parent: Fd, path: &str, stat: FdStat) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
+        
         let child = dir.create_file(path, stat, self.storage.as_mut())?;
+
         let child_fd = self.fd_table.open(FdEntry::File(child));
         self.put_dir(parent, dir);
         Ok(child_fd)
@@ -303,5 +314,35 @@ mod tests {
         let mut buf = [0; 13];
         fs.read(fd, &mut buf).unwrap();
         assert_eq!(&buf, "Hello, world!".as_bytes());
+
+    }
+
+
+    #[test]
+    fn test_create_file_create_a_few_files() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
+        fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
+
+        let meta = fs.metadata(fs.root_fd()).unwrap();
+        
+        let entry_index = meta.first_dir_entry.unwrap();
+
+        let entry1 = fs.get_direntry(fs.root_fd(), entry_index).unwrap();
+        let entry2 = fs.get_direntry(fs.root_fd(), entry_index+1).unwrap();
+        let entry3 = fs.get_direntry(fs.root_fd(), entry_index+2).unwrap();
+
+        assert_eq!(entry1.prev_entry, None);
+        assert_eq!(entry1.next_entry, Some(entry_index+1));
+
+        assert_eq!(entry2.prev_entry, Some(entry_index));
+        assert_eq!(entry2.next_entry, Some(entry_index+2));
+        
+        assert_eq!(entry3.prev_entry, Some(entry_index+1));
+        assert_eq!(entry3.next_entry, None);
     }
 }

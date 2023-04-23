@@ -93,14 +93,19 @@ impl Dir {
 
     pub fn find_node(&self, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
         let path = path.as_bytes();
-        let len = self.len(storage)?;
-        for i in 0..len {
-            if let Ok(dir_entry) = storage.get_direntry(self.node, i as DirEntryIndex) {
+
+        let mut next = storage.get_metadata(self.node)?.first_dir_entry;
+
+        while let Some(index) = next {
+
+            if let Ok(dir_entry) = storage.get_direntry(self.node, index) {
                 if &dir_entry.name.bytes[0..path.len()] == path {
                     return Ok(dir_entry.node);
                 }
+                next = dir_entry.next_entry;
             }
         }
+
         Err(Error::NotFound)
     }
 
@@ -108,22 +113,26 @@ impl Dir {
         storage.get_metadata(self.node).map(|m| m.size)
     }
 
-    fn add_entry(&self, node: Node, path: &str, storage: &mut dyn Storage) -> Result<(), Error> {
+    pub fn get_entry(&self, index: DirEntryIndex, storage: &dyn Storage) -> Result<DirEntry, Error> {
+        storage.get_direntry(self.node, index)
+    }
+
+    fn add_entry(&self, new_node: Node, path: &str, storage: &mut dyn Storage) -> Result<(), Error> {
 
         let mut metadata = storage.get_metadata(self.node)?;
         let name = FileName::new(path)?;
 
-        // we might as well start numbering with 1
+        // start numbering with 1
         let new_entry_index: DirEntryIndex = metadata.last_dir_entry.unwrap_or(0) + 1;
 
-        storage.put_direntry(self.node, new_entry_index, DirEntry { node, name, next_entry: None, prev_entry: metadata.last_dir_entry });
+        storage.put_direntry(self.node, new_entry_index, DirEntry { node: new_node, name, next_entry: None, prev_entry: metadata.last_dir_entry });
 
         // update previous last entry
         if let Some(prev_dir_entry_index) = metadata.last_dir_entry {
+            let mut prev_dir_entry = storage.get_direntry(self.node, prev_dir_entry_index)?;
 
-            let mut prev_dir_entry = storage.get_direntry(node, prev_dir_entry_index)?;
             prev_dir_entry.next_entry = Some(new_entry_index);
-            storage.put_direntry(node, prev_dir_entry_index, prev_dir_entry)
+            storage.put_direntry(self.node, prev_dir_entry_index, prev_dir_entry)
         }
 
         // update metadata
@@ -150,7 +159,7 @@ impl Dir {
             prev_dir_entry.next_entry = removed_dir_entry.next_entry;
             storage.put_direntry(node, prev_dir_entry_index, prev_dir_entry)
         }
-       
+        
         // update next entry
         if let Some(next_dir_entry_index) = removed_dir_entry.next_entry {
             let mut next_dir_entry = storage.get_direntry(node, next_dir_entry_index)?;
@@ -171,6 +180,7 @@ impl Dir {
 
         storage.put_metadata(self.node, metadata);
 
+        // remove the entry
         storage.rm_direntry(node, index);
 
         Ok(())
