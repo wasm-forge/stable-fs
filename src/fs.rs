@@ -45,6 +45,10 @@ impl FileSystem {
         "/"
     }
 
+    fn renumber(&self, fd: Fd, fd_to: Fd) -> Result<(), Error> {
+        todo!();
+    }
+    
     fn get_node(&self, fd: Fd) -> Result<Node, Error> {
         match self.fd_table.get(fd) {
             Some(FdEntry::File(file)) => Ok(file.node),
@@ -107,12 +111,36 @@ impl FileSystem {
         Ok(read_size)
     }
 
+    pub fn read_vec_with_offset(&mut self, fd: Fd, dst: DstIoVec, offset: FileSize) -> Result<FileSize, Error> {
+        let mut file = self.get_file(fd)?;
+        let mut read_size = 0;
+        for buf in dst {
+            let buf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
+            let size = file.read_with_offset(offset, buf, self.storage.as_mut())?;
+            read_size += size;
+        }
+        self.put_file(fd, file);
+        Ok(read_size)
+    }
+
     pub fn write_vec(&mut self, fd: Fd, src: SrcIoVec) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
         let mut written_size = 0;
         for buf in src {
             let buf = unsafe { std::slice::from_raw_parts(buf.buf, buf.len) };
             let size = file.write_with_cursor(buf, self.storage.as_mut())?;
+            written_size += size;
+        }
+        self.put_file(fd, file);
+        Ok(written_size)
+    }
+
+    pub fn write_vec_with_offset(&mut self, fd: Fd, src: SrcIoVec, offset: FileSize) -> Result<FileSize, Error> {
+        let mut file = self.get_file(fd)?;
+        let mut written_size = 0;
+        for buf in src {
+            let buf = unsafe { std::slice::from_raw_parts(buf.buf, buf.len) };
+            let size = file.write_with_offset(offset, buf, self.storage.as_mut())?;
             written_size += size;
         }
         self.put_file(fd, file);
