@@ -296,6 +296,12 @@ impl FileSystem {
         Ok(child_fd)
     }
 
+    pub fn remove_file(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
+        let dir = self.get_dir(parent)?;
+        
+        dir.rm_entry(path, self.storage.as_mut())
+    }
+
     pub fn create_dir(&mut self, parent: Fd, path: &str, stat: FdStat) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
         let child = dir.create_dir(path, stat, self.storage.as_mut())?;
@@ -322,6 +328,26 @@ mod tests {
         test_utils::test_fs,
     };
 
+
+    #[test]
+    fn test_create_file() {
+        let mut fs = test_fs();
+        
+        let file = fs.create_file(fs.root_fd(), "test.txt", Default::default()).unwrap();
+
+        assert!(file > fs.root_fd());
+    }
+    
+    #[test]
+    fn remove_file() {
+        let mut fs = test_fs();
+
+        let file = fs.create_file(fs.root_fd(), "test.txt", Default::default()).unwrap();
+        let result = fs.remove_file(fs.root_fd(), "test.txt");
+        
+        assert!(result.is_ok());
+    }
+
     #[test]
     fn create_dir() {
         let mut fs = test_fs();
@@ -329,12 +355,14 @@ mod tests {
         let dir = fs
             .create_dir(fs.root_fd(), "test", FdStat::default())
             .unwrap();
+
         let fd = fs.create_file(dir, "file.txt", FdStat::default()).unwrap();
         fs.write(fd, "Hello, world!".as_bytes()).unwrap();
 
         let dir = fs
             .open_or_create(fs.root_fd(), "test", FdStat::default(), OpenFlags::empty())
             .unwrap();
+
         let fd = fs
             .open_or_create(dir, "file.txt", FdStat::default(), OpenFlags::empty())
             .unwrap();
@@ -345,9 +373,8 @@ mod tests {
 
     }
 
-
     #[test]
-    fn test_create_file_create_a_few_files() {
+    fn test_create_file_creates_a_few_files() {
         let mut fs = test_fs();
 
         let dir = fs.root_fd();
