@@ -3,6 +3,7 @@ use crate::{
     storage::types::{DirEntry, DirEntryIndex, FileChunkIndex, FileSize, Metadata, Node},
 };
 
+pub mod stable;
 pub mod transient;
 pub mod types;
 

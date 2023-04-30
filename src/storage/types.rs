@@ -1,4 +1,6 @@
 use crate::error::Error;
+use ic_stable_structures::BoundedStorable;
+use serde::{Deserialize, Serialize};
 
 pub const FILE_CHUNK_SIZE: usize = 4096;
 pub const MAX_FILE_NAME: usize = 255;
@@ -27,8 +29,25 @@ impl Default for FileChunk {
     }
 }
 
+impl ic_stable_structures::Storable for FileChunk {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        std::borrow::Cow::Borrowed(&self.bytes)
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        Self {
+            bytes: bytes.as_ref().try_into().unwrap(),
+        }
+    }
+}
+
+impl ic_stable_structures::BoundedStorable for FileChunk {
+    const MAX_SIZE: u32 = FILE_CHUNK_SIZE as u32;
+    const IS_FIXED_SIZE: bool = true;
+}
+
 // Contains metadata of a node.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Metadata {
     pub node: Node,
     pub file_type: FileType,
@@ -39,10 +58,31 @@ pub struct Metadata {
     pub last_dir_entry: Option<DirEntryIndex>,
 }
 
+impl ic_stable_structures::Storable for Metadata {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(&self, &mut buf).unwrap();
+        assert!(Self::MAX_SIZE >= buf.len() as u32);
+        std::borrow::Cow::Owned(buf)
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        ciborium::de::from_reader(bytes.as_ref()).unwrap()
+    }
+}
+
+impl ic_stable_structures::BoundedStorable for Metadata {
+    // This value was obtained by printing `Storable::to_bytes().len()`,
+    // which is 120 and rounding it up to 128.
+    const MAX_SIZE: u32 = 128;
+    const IS_FIXED_SIZE: bool = true;
+}
+
 // The type of a node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileType {
     Directory,
+    #[default]
     RegularFile,
     SymbolicLink,
 }
@@ -71,7 +111,7 @@ impl Into<u8> for FileType {
 }
 
 // The time stats of a node.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Times {
     pub accessed: u64,
     pub modified: u64,
@@ -84,6 +124,44 @@ pub struct Times {
 pub struct FileName {
     pub length: u8,
     pub bytes: [u8; MAX_FILE_NAME],
+}
+
+impl Default for FileName {
+    fn default() -> Self {
+        Self {
+            length: 0,
+            bytes: [0; MAX_FILE_NAME],
+        }
+    }
+}
+
+impl Serialize for FileName {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serde_bytes::Bytes::new(&self.bytes).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for FileName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes: Vec<u8> = serde_bytes::deserialize(deserializer).unwrap();
+        let length = bytes.len();
+        let bytes_array: [u8; MAX_FILE_NAME] = bytes.try_into().or_else(|_| {
+            Err(serde::de::Error::invalid_length(
+                length,
+                &"expected MAX_FILE_NAME bytes",
+            ))
+        })?;
+        Ok(FileName {
+            length: length as u8,
+            bytes: bytes_array,
+        })
+    }
 }
 
 impl FileName {
@@ -107,10 +185,30 @@ pub type DirEntryIndex = u32;
 
 // A directory contains a list of directory entries.
 // Each entry describes a name of a file or a directory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DirEntry {
     pub name: FileName,
     pub node: Node,
     pub next_entry: Option<DirEntryIndex>,
     pub prev_entry: Option<DirEntryIndex>,
+}
+
+impl ic_stable_structures::Storable for DirEntry {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(&self, &mut buf).unwrap();
+        assert!(Self::MAX_SIZE >= buf.len() as u32);
+        std::borrow::Cow::Owned(buf)
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        ciborium::de::from_reader(bytes.as_ref()).unwrap()
+    }
+}
+
+impl ic_stable_structures::BoundedStorable for DirEntry {
+    // This value was obtained by printing `DirEntry::to_bytes().len()`,
+    // which is 298 and rounding it up to 304.
+    const MAX_SIZE: u32 = 304;
+    const IS_FIXED_SIZE: bool = true;
 }
