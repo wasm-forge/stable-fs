@@ -3,7 +3,10 @@ name = "stable-fs"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dev-dependencies]
+cargo-tarpaulin = "0.25.2"
 
 [dependencies]
 bitflags = "1.0.3"

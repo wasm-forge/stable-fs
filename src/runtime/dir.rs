@@ -202,3 +202,46 @@ impl Dir {
 
     
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        runtime::types::{FdStat},
+        test_utils::test_fs,
+    };
+
+    
+    #[test]
+    fn remove_file() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+        
+        fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
+        fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
+        
+        fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
+        
+        let meta = fs.metadata(fs.root_fd()).unwrap();
+        
+        let entry1_index = meta.first_dir_entry.unwrap();
+
+        let entry1 = fs.get_direntry(fs.root_fd(), entry1_index).unwrap();
+
+        let entry2_index = entry1.next_entry.unwrap();
+
+        let entry2 = fs.get_direntry(fs.root_fd(), entry2_index).unwrap();
+
+
+        assert_eq!(entry1.prev_entry, None);
+        assert_eq!(entry1.next_entry, Some(entry2_index));
+
+        assert_eq!(entry2.prev_entry, Some(entry1_index));
+        assert_eq!(entry2.next_entry, None);
+        
+    }
+
+}

@@ -1,0 +1,4 @@
+verbose = 1
+ignore-tests=true
+[coverage]
+codecov = true

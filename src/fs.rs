@@ -337,16 +337,6 @@ mod tests {
 
         assert!(file > fs.root_fd());
     }
-    
-    #[test]
-    fn remove_file() {
-        let mut fs = test_fs();
-
-        let file = fs.create_file(fs.root_fd(), "test.txt", Default::default()).unwrap();
-        let result = fs.remove_file(fs.root_fd(), "test.txt");
-        
-        assert!(result.is_ok());
-    }
 
     #[test]
     fn create_dir() {
