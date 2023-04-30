@@ -5,8 +5,5 @@ edition = "2021"
 
 
 
-[dev-dependencies]
-cargo-tarpaulin = "0.25.2"
-
 [dependencies]
 bitflags = "1.0.3"
