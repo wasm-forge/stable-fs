@@ -120,10 +120,6 @@ impl Dir {
         Err(Error::NotFound)
     }    
 
-    fn len(&self, storage: &dyn Storage) -> Result<u64, Error> {
-        storage.get_metadata(self.node).map(|m| m.size)
-    }
-
     pub fn get_entry(&self, index: DirEntryIndex, storage: &dyn Storage) -> Result<DirEntry, Error> {
         storage.get_direntry(self.node, index)
     }
@@ -212,9 +208,8 @@ mod tests {
         test_utils::test_fs,
     };
 
-    
     #[test]
-    fn remove_file() {
+    fn remove_middle_file() {
         let mut fs = test_fs();
 
         let dir = fs.root_fd();
@@ -222,19 +217,20 @@ mod tests {
         fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
         fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
         fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
-        
+
+        let meta = fs.metadata(dir).unwrap();
+        assert_eq!(meta.size, 3);
+
         fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
         
-        let meta = fs.metadata(fs.root_fd()).unwrap();
+        let meta = fs.metadata(dir).unwrap();
+        assert_eq!(meta.size, 2);
         
         let entry1_index = meta.first_dir_entry.unwrap();
-
-        let entry1 = fs.get_direntry(fs.root_fd(), entry1_index).unwrap();
+        let entry1 = fs.get_direntry(dir, entry1_index).unwrap();
 
         let entry2_index = entry1.next_entry.unwrap();
-
-        let entry2 = fs.get_direntry(fs.root_fd(), entry2_index).unwrap();
-
+        let entry2 = fs.get_direntry(dir, entry2_index).unwrap();
 
         assert_eq!(entry1.prev_entry, None);
         assert_eq!(entry1.next_entry, Some(entry2_index));
@@ -243,5 +239,24 @@ mod tests {
         assert_eq!(entry2.next_entry, None);
         
     }
+
+    #[test]
+    fn remove_last_file() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+        
+        fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        
+        fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
+        
+        let meta = fs.metadata(fs.root_fd()).unwrap();
+        assert_eq!(meta.size, 0);
+
+        assert_eq!(meta.first_dir_entry, None);
+        assert_eq!(meta.last_dir_entry, None);
+        
+    }
+
 
 }

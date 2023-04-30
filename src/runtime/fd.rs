@@ -51,6 +51,30 @@ impl FdTable {
         fd
     }
 
+    pub fn renumber(&mut self, src: Fd, dst: Fd) -> Result<(), Error> {
+        
+        let old_entry = self.table.remove(&src).ok_or(Error::NotFound)?;
+        self.free_fds.push(src);
+
+        // make fd one of the free ids if it was never used
+        while self.next_fd <= dst {
+            self.free_fds.push(self.next_fd);
+            self.next_fd += 1;
+        }
+
+        // make sure destination fd is closed
+        let _ = self.close(dst);
+
+        let idx = self.free_fds.iter().position(|&v| v == dst).unwrap();
+
+        let removed = self.free_fds.remove(idx);
+        assert!(removed == dst);
+
+        self.table.insert(dst, old_entry);
+
+        Ok(())
+    }
+
     pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
         self.table.remove(&fd).ok_or(Error::NotFound)?;
         self.free_fds.push(fd);
