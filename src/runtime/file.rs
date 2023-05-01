@@ -42,7 +42,7 @@ impl File {
         let size = storage.get_metadata(self.node)?.size;
         let position = match whence {
             Whence::SET => {
-                if delta < 0 || delta as FileSize > size {
+                if delta < 0 {
                     return Err(Error::InvalidOffset);
                 }
                 delta as FileSize
@@ -57,15 +57,9 @@ impl File {
                 if back > self.cursor {
                     return Err(Error::InvalidOffset);
                 }
-                if fwd > size || self.cursor + fwd > size {
-                    return Err(Error::InvalidOffset);
-                }
                 self.cursor + fwd - back
             }
             Whence::END => {
-                if delta > 0 {
-                    return Err(Error::InvalidOffset);
-                }
                 let back: FileSize = (-delta).try_into().map_err(|_| Error::InvalidOffset)?;
                 if back > size {
                     return Err(Error::InvalidOffset);
@@ -272,29 +266,21 @@ mod tests {
         assert_eq!(err, Error::InvalidOffset);
         assert_eq!(file.tell(), 1);
 
-        let err = file.seek(1000, Whence::CUR, storage).unwrap_err();
-        assert_eq!(err, Error::InvalidOffset);
-        assert_eq!(file.tell(), 1);
-
         let pos = file.seek(0, Whence::END, storage).unwrap();
         assert_eq!(pos, 1000);
-        assert_eq!(file.tell(), 1000);
-
-        let err = file.seek(1, Whence::END, storage).unwrap_err();
-        assert_eq!(err, Error::InvalidOffset);
         assert_eq!(file.tell(), 1000);
 
         let pos = file.seek(500, Whence::SET, storage).unwrap();
         assert_eq!(pos, 500);
         assert_eq!(file.tell(), 500);
 
-        let err = file.seek(1001, Whence::SET, storage).unwrap_err();
-        assert_eq!(file.tell(), 500);
-        assert_eq!(err, Error::InvalidOffset);
-
         let err = file.seek(-1, Whence::SET, storage).unwrap_err();
         assert_eq!(err, Error::InvalidOffset);
         assert_eq!(file.tell(), 500);
+
+        let pos = file.seek(1001, Whence::SET, storage).unwrap();
+        assert_eq!(pos, 1001);
+        assert_eq!(file.tell(), 1001);
     }
 
     #[test]
