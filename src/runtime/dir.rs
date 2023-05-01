@@ -92,23 +92,24 @@ impl Dir {
     }
 
     pub fn find_node(&self, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
-        
         let entry_index = self.find_entry_index(path, storage)?;
 
         let entry = storage.get_direntry(self.node, entry_index)?;
 
-        return Ok(entry.node);
+        Ok(entry.node)
     }
 
-    pub fn find_entry_index(&self, path: &str, storage: &dyn Storage) -> Result<DirEntryIndex, Error> {
+    pub fn find_entry_index(
+        &self,
+        path: &str,
+        storage: &dyn Storage,
+    ) -> Result<DirEntryIndex, Error> {
         let path = path.as_bytes();
 
         let mut next_index = storage.get_metadata(self.node)?.first_dir_entry;
 
         while let Some(index) = next_index {
-
             if let Ok(dir_entry) = storage.get_direntry(self.node, index) {
-
                 if &dir_entry.name.bytes[0..path.len()] == path {
                     return Ok(index);
                 }
@@ -118,21 +119,38 @@ impl Dir {
         }
 
         Err(Error::NotFound)
-    }    
+    }
 
-    pub fn get_entry(&self, index: DirEntryIndex, storage: &dyn Storage) -> Result<DirEntry, Error> {
+    pub fn get_entry(
+        &self,
+        index: DirEntryIndex,
+        storage: &dyn Storage,
+    ) -> Result<DirEntry, Error> {
         storage.get_direntry(self.node, index)
     }
 
-    fn add_entry(&self, new_node: Node, path: &str, storage: &mut dyn Storage) -> Result<(), Error> {
-
+    fn add_entry(
+        &self,
+        new_node: Node,
+        path: &str,
+        storage: &mut dyn Storage,
+    ) -> Result<(), Error> {
         let mut metadata = storage.get_metadata(self.node)?;
         let name = FileName::new(path)?;
 
         // start numbering with 1
         let new_entry_index: DirEntryIndex = metadata.last_dir_entry.unwrap_or(0) + 1;
 
-        storage.put_direntry(self.node, new_entry_index, DirEntry { node: new_node, name, next_entry: None, prev_entry: metadata.last_dir_entry });
+        storage.put_direntry(
+            self.node,
+            new_entry_index,
+            DirEntry {
+                node: new_node,
+                name,
+                next_entry: None,
+                prev_entry: metadata.last_dir_entry,
+            },
+        );
 
         // update previous last entry
         if let Some(prev_dir_entry_index) = metadata.last_dir_entry {
@@ -156,11 +174,10 @@ impl Dir {
     }
 
     pub fn rm_entry(&self, path: &str, storage: &mut dyn Storage) -> Result<(), Error> {
-
         let mut metadata = storage.get_metadata(self.node)?;
 
         let removed_entry_index = self.find_entry_index(path, storage)?;
-        
+
         let removed_dir_entry = storage.get_direntry(self.node, removed_entry_index)?;
 
         // update previous entry
@@ -169,7 +186,7 @@ impl Dir {
             prev_dir_entry.next_entry = removed_dir_entry.next_entry;
             storage.put_direntry(self.node, prev_dir_entry_index, prev_dir_entry)
         }
-        
+
         // update next entry
         if let Some(next_dir_entry_index) = removed_dir_entry.next_entry {
             let mut next_dir_entry = storage.get_direntry(self.node, next_dir_entry_index)?;
@@ -195,25 +212,18 @@ impl Dir {
 
         Ok(())
     }
-
-    
 }
-
-
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        runtime::types::{FdStat},
-        test_utils::test_fs,
-    };
+    use crate::{runtime::types::FdStat, test_utils::test_fs};
 
     #[test]
     fn remove_middle_file() {
         let mut fs = test_fs();
 
         let dir = fs.root_fd();
-        
+
         fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
         fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
         fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
@@ -222,10 +232,10 @@ mod tests {
         assert_eq!(meta.size, 3);
 
         fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
-        
+
         let meta = fs.metadata(dir).unwrap();
         assert_eq!(meta.size, 2);
-        
+
         let entry1_index = meta.first_dir_entry.unwrap();
         let entry1 = fs.get_direntry(dir, entry1_index).unwrap();
 
@@ -237,7 +247,6 @@ mod tests {
 
         assert_eq!(entry2.prev_entry, Some(entry1_index));
         assert_eq!(entry2.next_entry, None);
-        
     }
 
     #[test]
@@ -245,18 +254,15 @@ mod tests {
         let mut fs = test_fs();
 
         let dir = fs.root_fd();
-        
+
         fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
-        
+
         fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
-        
+
         let meta = fs.metadata(fs.root_fd()).unwrap();
         assert_eq!(meta.size, 0);
 
         assert_eq!(meta.first_dir_entry, None);
         assert_eq!(meta.last_dir_entry, None);
-        
     }
-
-
 }

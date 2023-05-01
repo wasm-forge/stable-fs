@@ -1,4 +1,3 @@
-
 use crate::{
     error::Error,
     runtime::{
@@ -7,14 +6,16 @@ use crate::{
         file::File,
     },
     storage::{
-        types::{FileSize, FileType, Metadata, Node, DirEntryIndex, DirEntry},
+        types::{DirEntry, DirEntryIndex, FileSize, FileType, Metadata, Node},
         Storage,
     },
 };
 
 pub use crate::runtime::fd::Fd;
 
-pub use crate::runtime::types::{SrcIoVec, SrcBuf, DstIoVec, DstBuf, FdStat, FdFlags, OpenFlags, Whence};
+pub use crate::runtime::types::{
+    DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
+};
 
 pub struct FileSystem {
     root_fd: Fd,
@@ -23,11 +24,11 @@ pub struct FileSystem {
 }
 
 impl FileSystem {
-    pub fn new(mut storage: Box<dyn Storage>) -> Result<Self, Error> {
+    pub fn new(storage: Box<dyn Storage>) -> Result<Self, Error> {
         let mut fd_table = FdTable::new();
 
         let root_node = storage.root_node();
-        let root_entry = Dir::new(root_node, FdStat::default(), &mut *storage)?;
+        let root_entry = Dir::new(root_node, FdStat::default(), &*storage)?;
         let root_fd = fd_table.open(FdEntry::Dir(root_entry));
 
         Ok(Self {
@@ -48,7 +49,7 @@ impl FileSystem {
     pub fn renumber(&mut self, from: Fd, to: Fd) -> Result<(), Error> {
         self.fd_table.renumber(from, to)
     }
-    
+
     fn get_node(&self, fd: Fd) -> Result<Node, Error> {
         match self.fd_table.get(fd) {
             Some(FdEntry::File(file)) => Ok(file.node),
@@ -111,7 +112,12 @@ impl FileSystem {
         Ok(read_size)
     }
 
-    pub fn read_vec_with_offset(&mut self, fd: Fd, dst: DstIoVec, offset: FileSize) -> Result<FileSize, Error> {
+    pub fn read_vec_with_offset(
+        &mut self,
+        fd: Fd,
+        dst: DstIoVec,
+        offset: FileSize,
+    ) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
         let mut read_size = 0;
         for buf in dst {
@@ -135,7 +141,12 @@ impl FileSystem {
         Ok(written_size)
     }
 
-    pub fn write_vec_with_offset(&mut self, fd: Fd, src: SrcIoVec, offset: FileSize) -> Result<FileSize, Error> {
+    pub fn write_vec_with_offset(
+        &mut self,
+        fd: Fd,
+        src: SrcIoVec,
+        offset: FileSize,
+    ) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
         let mut written_size = 0;
         for buf in src {
@@ -242,9 +253,8 @@ impl FileSystem {
         stat: FdStat,
         flags: OpenFlags,
     ) -> Result<Fd, Error> {
-
         let dir = self.get_dir(parent)?;
-        
+
         match dir.find_node(path, self.storage.as_ref()) {
             Ok(node) => self.open(node, stat, flags),
             Err(Error::NotFound) => {
@@ -288,7 +298,7 @@ impl FileSystem {
 
     pub fn create_file(&mut self, parent: Fd, path: &str, stat: FdStat) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
-        
+
         let child = dir.create_file(path, stat, self.storage.as_mut())?;
 
         let child_fd = self.fd_table.open(FdEntry::File(child));
@@ -298,9 +308,8 @@ impl FileSystem {
 
     pub fn remove_file(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
         let dir = self.get_dir(parent)?;
-        
+
         dir.rm_entry(path, self.storage.as_mut())
-        
     }
 
     pub fn create_dir(&mut self, parent: Fd, path: &str, stat: FdStat) -> Result<Fd, Error> {
@@ -332,8 +341,10 @@ mod tests {
     #[test]
     fn create_file() {
         let mut fs = test_fs();
-        
-        let file = fs.create_file(fs.root_fd(), "test.txt", Default::default()).unwrap();
+
+        let file = fs
+            .create_file(fs.root_fd(), "test.txt", Default::default())
+            .unwrap();
 
         assert!(file > fs.root_fd());
     }
@@ -360,7 +371,6 @@ mod tests {
         let mut buf = [0; 13];
         fs.read(fd, &mut buf).unwrap();
         assert_eq!(&buf, "Hello, world!".as_bytes());
-
     }
 
     #[test]
@@ -374,20 +384,20 @@ mod tests {
         fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
 
         let meta = fs.metadata(fs.root_fd()).unwrap();
-        
+
         let entry_index = meta.first_dir_entry.unwrap();
 
         let entry1 = fs.get_direntry(fs.root_fd(), entry_index).unwrap();
-        let entry2 = fs.get_direntry(fs.root_fd(), entry_index+1).unwrap();
-        let entry3 = fs.get_direntry(fs.root_fd(), entry_index+2).unwrap();
+        let entry2 = fs.get_direntry(fs.root_fd(), entry_index + 1).unwrap();
+        let entry3 = fs.get_direntry(fs.root_fd(), entry_index + 2).unwrap();
 
         assert_eq!(entry1.prev_entry, None);
-        assert_eq!(entry1.next_entry, Some(entry_index+1));
+        assert_eq!(entry1.next_entry, Some(entry_index + 1));
 
         assert_eq!(entry2.prev_entry, Some(entry_index));
-        assert_eq!(entry2.next_entry, Some(entry_index+2));
-        
-        assert_eq!(entry3.prev_entry, Some(entry_index+1));
+        assert_eq!(entry2.next_entry, Some(entry_index + 2));
+
+        assert_eq!(entry3.prev_entry, Some(entry_index + 1));
         assert_eq!(entry3.next_entry, None);
     }
 
@@ -424,7 +434,4 @@ mod tests {
         assert!(fs.get_node(fd1).is_err());
         assert_eq!(fs.get_node(fd2), entry1);
     }
-
-
-
 }

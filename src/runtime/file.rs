@@ -234,6 +234,7 @@ mod tests {
     #[test]
     fn get_chunk_infos_full() {
         let chunks = get_chunk_infos(0, 10 * FILE_CHUNK_SIZE as FileSize);
+        #[allow(clippy::needless_range_loop)]
         for i in 0..10 {
             assert_eq!(
                 chunks[i],

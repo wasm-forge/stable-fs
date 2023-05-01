@@ -64,12 +64,10 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
-        let value = self.metadata.get(&node).ok_or(Error::NotFound)?;
-        Ok(value.clone())
+        self.metadata.get(&node).ok_or(Error::NotFound)
     }
 
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        eprintln!("put metadata: {} - {:?}", node, metadata.file_type);
         self.next_node = self.next_node.max(node + 1);
         self.metadata.insert(node, metadata);
     }
@@ -79,23 +77,10 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
-        let value = self.direntry.get(&(node, index)).ok_or(Error::NotFound)?;
-        eprintln!(
-            "getting dir entry: {} {} - node {}",
-            index,
-            std::str::from_utf8(&value.name.bytes[0..value.name.length as usize]).unwrap(),
-            value.node,
-        );
-        Ok(value.clone())
+        self.direntry.get(&(node, index)).ok_or(Error::NotFound)
     }
 
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry) {
-        eprintln!(
-            "adding dir entry: {} {} - node {}",
-            index,
-            std::str::from_utf8(&entry.name.bytes[0..entry.name.length as usize]).unwrap(),
-            entry.node,
-        );
         self.direntry.insert((node, index), entry);
     }
 
@@ -116,10 +101,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
-        let mut entry = self
-            .filechunk
-            .get(&(node, index))
-            .unwrap_or_else(FileChunk::default);
+        let mut entry = self.filechunk.get(&(node, index)).unwrap_or_default();
         entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf);
         self.filechunk.insert((node, index), entry);
     }

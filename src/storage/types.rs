@@ -100,9 +100,9 @@ impl TryFrom<u8> for FileType {
     }
 }
 
-impl Into<u8> for FileType {
-    fn into(self) -> u8 {
-        match self {
+impl From<FileType> for u8 {
+    fn from(val: FileType) -> Self {
+        match val {
             FileType::Directory => 3,
             FileType::RegularFile => 4,
             FileType::SymbolicLink => 7,
@@ -120,10 +120,33 @@ pub struct Times {
 
 // The name of a file or a directory. Most operating systems limit the max file
 // name length to 255.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileName {
     pub length: u8,
+    #[serde(
+        deserialize_with = "deserialize_file_name",
+        serialize_with = "serialize_file_name"
+    )]
     pub bytes: [u8; MAX_FILE_NAME],
+}
+
+fn serialize_file_name<S>(bytes: &[u8; MAX_FILE_NAME], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serde_bytes::Bytes::new(bytes).serialize(serializer)
+}
+
+fn deserialize_file_name<'de, D>(deserializer: D) -> Result<[u8; MAX_FILE_NAME], D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer).unwrap();
+    let len = bytes.len();
+    let bytes_array: [u8; MAX_FILE_NAME] = bytes
+        .try_into()
+        .map_err(|_| serde::de::Error::invalid_length(len, &"expected MAX_FILE_NAME bytes"))?;
+    Ok(bytes_array)
 }
 
 impl Default for FileName {
@@ -135,35 +158,6 @@ impl Default for FileName {
     }
 }
 
-impl Serialize for FileName {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serde_bytes::Bytes::new(&self.bytes).serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for FileName {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let bytes: Vec<u8> = serde_bytes::deserialize(deserializer).unwrap();
-        let length = bytes.len();
-        let bytes_array: [u8; MAX_FILE_NAME] = bytes.try_into().or_else(|_| {
-            Err(serde::de::Error::invalid_length(
-                length,
-                &"expected MAX_FILE_NAME bytes",
-            ))
-        })?;
-        Ok(FileName {
-            length: length as u8,
-            bytes: bytes_array,
-        })
-    }
-}
-
 impl FileName {
     pub fn new(name: &str) -> Result<Self, Error> {
         let name = name.as_bytes();
@@ -172,7 +166,7 @@ impl FileName {
             return Err(Error::NameTooLong);
         }
         let mut bytes = [0; MAX_FILE_NAME];
-        (&mut bytes[0..len]).copy_from_slice(name);
+        bytes[0..len].copy_from_slice(name);
         Ok(Self {
             length: len as u8,
             bytes,
@@ -197,7 +191,7 @@ impl ic_stable_structures::Storable for DirEntry {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-        assert!(Self::MAX_SIZE >= buf.len() as u32);
+        assert!(Self::MAX_SIZE >= buf.len() as u32, "{}", buf.len());
         std::borrow::Cow::Owned(buf)
     }
 
@@ -208,7 +202,7 @@ impl ic_stable_structures::Storable for DirEntry {
 
 impl ic_stable_structures::BoundedStorable for DirEntry {
     // This value was obtained by printing `DirEntry::to_bytes().len()`,
-    // which is 298 and rounding it up to 304.
-    const MAX_SIZE: u32 = 304;
+    // which is 308 and rounding it up to 320.
+    const MAX_SIZE: u32 = 320;
     const IS_FIXED_SIZE: bool = true;
 }

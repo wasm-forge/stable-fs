@@ -58,7 +58,6 @@ impl Storage for TransientStorage {
     }
 
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        eprintln!("put metadata: {} - {:?}", node, metadata.file_type);
         self.next_node = self.next_node.max(node + 1);
         self.metadata.insert(node, metadata);
     }
@@ -69,22 +68,10 @@ impl Storage for TransientStorage {
 
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
         let value = self.direntry.get(&(node, index)).ok_or(Error::NotFound)?;
-        eprintln!(
-            "getting dir entry: {} {} - node {}",
-            index,
-            std::str::from_utf8(&value.name.bytes[0..value.name.length as usize]).unwrap(),
-            value.node,
-        );
         Ok(value.clone())
     }
 
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry) {
-        eprintln!(
-            "adding dir entry: {} {} - node {}",
-            index,
-            std::str::from_utf8(&entry.name.bytes[0..entry.name.length as usize]).unwrap(),
-            entry.node,
-        );
         self.direntry.insert((node, index), entry);
     }
 
