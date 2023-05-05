@@ -308,8 +308,7 @@ impl FileSystem {
 
     pub fn remove_file(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
         let dir = self.get_dir(parent)?;
-
-        dir.rm_entry(path, self.storage.as_mut())
+        dir.remove_file(path, self.fd_table.node_refcount(), self.storage.as_mut())
     }
 
     pub fn create_dir(&mut self, parent: Fd, path: &str, stat: FdStat) -> Result<Fd, Error> {
@@ -318,6 +317,11 @@ impl FileSystem {
         let child_fd = self.fd_table.open(FdEntry::Dir(child));
         self.put_dir(parent, dir);
         Ok(child_fd)
+    }
+
+    pub fn remove_dir(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
+        let dir = self.get_dir(parent)?;
+        dir.remove_dir(path, self.fd_table.node_refcount(), self.storage.as_mut())
     }
 
     #[cfg(test)]
@@ -334,6 +338,7 @@ impl FileSystem {
 #[cfg(test)]
 mod tests {
     use crate::{
+        error::Error,
         runtime::types::{FdStat, OpenFlags},
         test_utils::test_fs,
     };
@@ -433,5 +438,127 @@ mod tests {
 
         assert!(fs.get_node(fd1).is_err());
         assert_eq!(fs.get_node(fd2), entry1);
+    }
+
+    #[test]
+    fn seek_and_write() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE)
+            .unwrap();
+
+        fs.seek(fd, 24, super::Whence::SET).unwrap();
+
+        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+
+        let meta = fs.metadata(fd).unwrap();
+
+        assert_eq!(meta.size, 29);
+
+        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+        let mut buf = [42u8; 29];
+        let rr = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(rr, 29);
+        assert_eq!(
+            buf,
+            [
+                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
+                4, 5
+            ]
+        );
+
+        fs.close(fd).unwrap();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE)
+            .unwrap();
+
+        let mut buf = [42u8; 29];
+        let rr = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(rr, 29);
+        assert_eq!(
+            buf,
+            [
+                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
+                4, 5
+            ]
+        );
+
+        fs.close(fd).unwrap();
+    }
+
+    #[test]
+    fn create_and_remove_file() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE)
+            .unwrap();
+
+        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+        fs.close(fd).unwrap();
+
+        fs.remove_file(dir, "test.txt").unwrap();
+
+        let err = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::empty())
+            .unwrap_err();
+        assert_eq!(err, Error::NotFound);
+    }
+
+    #[test]
+    fn cannot_remove_opened_file() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE)
+            .unwrap();
+
+        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+
+        let err = fs.remove_file(dir, "test.txt").unwrap_err();
+        assert_eq!(err, Error::CannotRemovedOpenedNode);
+
+        fs.close(fd).unwrap();
+        fs.remove_file(dir, "test.txt").unwrap();
+    }
+
+    #[test]
+    fn cannot_remove_directory_as_file() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let fd = fs.create_dir(dir, "test", FdStat::default()).unwrap();
+        fs.close(fd).unwrap();
+
+        let err = fs.remove_file(dir, "test").unwrap_err();
+        assert_eq!(err, Error::ExpectedToRemoveFile);
+
+        fs.remove_dir(dir, "test").unwrap();
+    }
+
+    #[test]
+    fn cannot_remove_file_as_directory() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE)
+            .unwrap();
+        fs.close(fd).unwrap();
+
+        let err = fs.remove_dir(dir, "test.txt").unwrap_err();
+        assert_eq!(err, Error::ExpectedToRemoveDirectory);
+
+        fs.remove_file(dir, "test.txt").unwrap();
     }
 }

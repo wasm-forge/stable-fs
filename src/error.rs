@@ -9,4 +9,8 @@ pub enum Error {
     InvalidFdFlags,
     FileAlreadyExists,
     NameTooLong,
+    DirectoryNotEmpty,
+    ExpectedToRemoveFile,
+    ExpectedToRemoveDirectory,
+    CannotRemovedOpenedNode,
 }

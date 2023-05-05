@@ -1,8 +1,12 @@
+use std::collections::BTreeMap;
+
 use crate::{
     error::Error,
     runtime::file::File,
     storage::{
-        types::{DirEntry, DirEntryIndex, FileName, FileType, Metadata, Node, Times},
+        types::{
+            DirEntry, DirEntryIndex, FileName, FileType, Metadata, Node, Times, FILE_CHUNK_SIZE,
+        },
         Storage,
     },
 };
@@ -59,6 +63,28 @@ impl Dir {
         Self::new(node, stat, storage)
     }
 
+    pub fn remove_dir(
+        &self,
+        path: &str,
+        node_refcount: &BTreeMap<Node, usize>,
+        storage: &mut dyn Storage,
+    ) -> Result<(), Error> {
+        let (node, mut metadata) = self.rm_entry(path, true, node_refcount, storage)?;
+
+        metadata.link_count -= 1;
+
+        if metadata.link_count > 0 {
+            storage.put_metadata(node, metadata);
+        } else {
+            let chunk_cnt = (metadata.size + FILE_CHUNK_SIZE as u64 - 1) / FILE_CHUNK_SIZE as u64;
+            for index in 0..chunk_cnt {
+                storage.rm_filechunk(node, index as u32);
+            }
+            storage.rm_metadata(node);
+        }
+        Ok(())
+    }
+
     pub fn create_file(
         &self,
         path: &str,
@@ -89,6 +115,28 @@ impl Dir {
         self.add_entry(node, path, storage)?;
 
         File::new(node, stat, storage)
+    }
+
+    pub fn remove_file(
+        &self,
+        path: &str,
+        node_refcount: &BTreeMap<Node, usize>,
+        storage: &mut dyn Storage,
+    ) -> Result<(), Error> {
+        let (node, mut metadata) = self.rm_entry(path, false, node_refcount, storage)?;
+
+        metadata.link_count -= 1;
+
+        if metadata.link_count > 0 {
+            storage.put_metadata(node, metadata);
+        } else {
+            let chunk_cnt = (metadata.size + FILE_CHUNK_SIZE as u64 - 1) / FILE_CHUNK_SIZE as u64;
+            for index in 0..chunk_cnt {
+                storage.rm_filechunk(node, index as u32);
+            }
+            storage.rm_metadata(node);
+        }
+        Ok(())
     }
 
     pub fn find_node(&self, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
@@ -173,12 +221,42 @@ impl Dir {
         Ok(())
     }
 
-    pub fn rm_entry(&self, path: &str, storage: &mut dyn Storage) -> Result<(), Error> {
+    pub fn rm_entry(
+        &self,
+        path: &str,
+        expect_dir: bool,
+        node_refcount: &BTreeMap<Node, usize>,
+        storage: &mut dyn Storage,
+    ) -> Result<(Node, Metadata), Error> {
         let mut metadata = storage.get_metadata(self.node)?;
 
         let removed_entry_index = self.find_entry_index(path, storage)?;
 
         let removed_dir_entry = storage.get_direntry(self.node, removed_entry_index)?;
+
+        let removed_metadata = storage.get_metadata(removed_dir_entry.node)?;
+
+        match removed_metadata.file_type {
+            FileType::Directory => {
+                if !expect_dir {
+                    return Err(Error::ExpectedToRemoveFile);
+                }
+                if removed_metadata.size > 0 {
+                    return Err(Error::DirectoryNotEmpty);
+                }
+            }
+            FileType::RegularFile | FileType::SymbolicLink => {
+                if expect_dir {
+                    return Err(Error::ExpectedToRemoveDirectory);
+                }
+            }
+        }
+
+        if let Some(refcount) = node_refcount.get(&removed_metadata.node) {
+            if *refcount > 0 && removed_metadata.link_count == 1 {
+                return Err(Error::CannotRemovedOpenedNode);
+            }
+        }
 
         // update previous entry
         if let Some(prev_dir_entry_index) = removed_dir_entry.prev_entry {
@@ -210,7 +288,7 @@ impl Dir {
         // remove the entry
         storage.rm_direntry(self.node, removed_entry_index);
 
-        Ok(())
+        Ok((removed_dir_entry.node, removed_metadata))
     }
 }
 
@@ -224,9 +302,12 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
-        fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
-        fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
+        let fd = fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
+        fs.close(fd).unwrap();
+        let fd = fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        fs.close(fd).unwrap();
+        let fd = fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
+        fs.close(fd).unwrap();
 
         let meta = fs.metadata(dir).unwrap();
         assert_eq!(meta.size, 3);
@@ -255,7 +336,8 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        let fd = fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        fs.close(fd).unwrap();
 
         fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
 

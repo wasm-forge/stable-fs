@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::{
     error::Error,
     runtime::{dir::Dir, file::File},
+    storage::types::Node,
 };
 
 const RESERVED_FD_COUNT: Fd = 3;
@@ -16,6 +17,7 @@ pub enum FdEntry {
 
 pub struct FdTable {
     table: BTreeMap<Fd, FdEntry>,
+    node_refcount: BTreeMap<Node, usize>,
     next_fd: Fd,
     free_fds: Vec<Fd>,
 }
@@ -24,13 +26,27 @@ impl FdTable {
     pub fn new() -> Self {
         Self {
             table: BTreeMap::default(),
+            node_refcount: BTreeMap::default(),
             next_fd: RESERVED_FD_COUNT,
             free_fds: vec![],
         }
     }
 
+    pub fn node_refcount(&self) -> &BTreeMap<Node, usize> {
+        &self.node_refcount
+    }
+
     pub fn update(&mut self, fd: Fd, entry: FdEntry) {
-        *self.table.get_mut(&fd).unwrap() = entry;
+        self.insert(fd, entry);
+    }
+
+    pub fn insert(&mut self, fd: Fd, entry: FdEntry) -> Option<FdEntry> {
+        self.inc_node_refcount(&entry);
+        let prev_entry = self.table.insert(fd, entry);
+        if let Some(prev_entry) = prev_entry.as_ref() {
+            self.dec_node_refcount(prev_entry);
+        }
+        prev_entry
     }
 
     pub fn get(&self, fd: Fd) -> Option<&FdEntry> {
@@ -46,38 +62,51 @@ impl FdTable {
                 fd
             }
         };
-        let prev = self.table.insert(fd, entry);
+        let prev = self.insert(fd, entry);
         assert!(prev.is_none());
         fd
     }
 
     pub fn renumber(&mut self, src: Fd, dst: Fd) -> Result<(), Error> {
-        
-        let old_entry = self.table.remove(&src).ok_or(Error::NotFound)?;
-        self.free_fds.push(src);
+        let old_entry = self.close(src)?;
+        self.close(dst)?;
 
-        // make fd one of the free ids if it was never used
-        while self.next_fd <= dst {
-            self.free_fds.push(self.next_fd);
-            self.next_fd += 1;
-        }
+        let removed = self.free_fds.pop().unwrap();
+        assert_eq!(removed, dst);
 
-        // make sure destination fd is closed
-        let _ = self.close(dst);
-
-        let idx = self.free_fds.iter().position(|&v| v == dst).unwrap();
-
-        let removed = self.free_fds.remove(idx);
-        assert!(removed == dst);
-
-        self.table.insert(dst, old_entry);
+        self.insert(dst, old_entry);
 
         Ok(())
     }
 
-    pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
-        self.table.remove(&fd).ok_or(Error::NotFound)?;
+    pub fn close(&mut self, fd: Fd) -> Result<FdEntry, Error> {
+        let entry = self.table.remove(&fd).ok_or(Error::NotFound)?;
         self.free_fds.push(fd);
-        Ok(())
+        self.dec_node_refcount(&entry);
+        Ok(entry)
+    }
+
+    fn inc_node_refcount(&mut self, entry: &FdEntry) {
+        let node = match entry {
+            FdEntry::File(file) => file.node,
+            FdEntry::Dir(dir) => dir.node,
+        };
+        let refcount = self.node_refcount.entry(node).or_default();
+        *refcount += 1;
+    }
+
+    fn dec_node_refcount(&mut self, entry: &FdEntry) {
+        let node = match entry {
+            FdEntry::File(file) => file.node,
+            FdEntry::Dir(dir) => dir.node,
+        };
+
+        let refcount = self.node_refcount.remove(&node);
+        if let Some(mut refcount) = refcount {
+            refcount -= 1;
+            if refcount > 0 {
+                self.node_refcount.insert(node, refcount);
+            }
+        }
     }
 }
