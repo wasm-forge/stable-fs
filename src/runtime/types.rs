@@ -25,6 +25,7 @@ pub enum Whence {
 }
 
 bitflags! {
+    #[derive(Copy, Clone, Debug)]
     pub struct FdFlags: u16 {
         const APPEND = 1;
         const DSYNC = 2;

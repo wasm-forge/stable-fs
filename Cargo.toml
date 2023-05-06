@@ -5,7 +5,7 @@ edition = "2021"
 
 
 [dependencies]
-bitflags = "1.0.3"
+bitflags = "2.2.1"
 ic-cdk = "0.7.3"
 ic-cdk-macros = "0.6.8"
 ic-stable-structures = "0.5.3"
