@@ -53,41 +53,50 @@ impl<M: Memory> StableStorage<M> {
 }
 
 impl<M: Memory> Storage for StableStorage<M> {
+    // Get the root node ID of the storage.
     fn root_node(&self) -> Node {
         ROOT_NODE
     }
 
+    // Generate the next available node ID.
     fn new_node(&mut self) -> Node {
         let result = self.next_node;
         self.next_node += 1;
         result
     }
 
+    // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
         self.metadata.get(&node).ok_or(Error::NotFound)
     }
 
+    // Update the metadata associated with the node.
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
         self.next_node = self.next_node.max(node + 1);
         self.metadata.insert(node, metadata);
     }
 
+    // Remove the metadata associated with the node.
     fn rm_metadata(&mut self, node: Node) {
         self.metadata.remove(&node);
     }
 
+    // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
         self.direntry.get(&(node, index)).ok_or(Error::NotFound)
     }
 
+    // Update or insert the DirEntry instance given the Node and DirEntryIndex.
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry) {
         self.direntry.insert((node, index), entry);
     }
 
+    // Remove the DirEntry instance given the Node and DirEntryIndex.
     fn rm_direntry(&mut self, node: Node, index: DirEntryIndex) {
         self.direntry.remove(&(node, index));
     }
 
+    // Fill the buffer contents with data of a chosen file chunk.
     fn read_filechunk(
         &self,
         node: Node,
@@ -100,12 +109,14 @@ impl<M: Memory> Storage for StableStorage<M> {
         Ok(())
     }
 
+    // Insert of update a selected file chunk with the data provided in buffer.
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
         let mut entry = self.filechunk.get(&(node, index)).unwrap_or_default();
         entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf);
         self.filechunk.insert((node, index), entry);
     }
 
+    // Remove file chunk from a given file node.
     fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex) {
         self.filechunk.remove(&(node, index));
     }
