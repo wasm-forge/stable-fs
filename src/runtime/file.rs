@@ -245,7 +245,7 @@ mod tests {
     fn seek_and_tell() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default())
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -287,7 +287,7 @@ mod tests {
     fn read_and_write_cursor() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default())
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -310,7 +310,7 @@ mod tests {
     fn read_and_write_offset() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default())
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);

@@ -38,6 +38,7 @@ impl Dir {
         path: &str,
         stat: FdStat,
         storage: &mut dyn Storage,
+        ctime: u64
     ) -> Result<Self, Error> {
         let found = self.find_node(path, storage);
         match found {
@@ -54,7 +55,7 @@ impl Dir {
                 file_type: FileType::Directory,
                 link_count: 1,
                 size: 0,
-                times: Times::default(),
+                times: Times {accessed: ctime, modified: ctime, created: ctime},
                 first_dir_entry: None,
                 last_dir_entry: None,
             },
@@ -90,6 +91,7 @@ impl Dir {
         path: &str,
         stat: FdStat,
         storage: &mut dyn Storage,
+        ctime: u64
     ) -> Result<File, Error> {
         let found = self.find_node(path, storage);
         match found {
@@ -106,7 +108,7 @@ impl Dir {
                 file_type: FileType::RegularFile,
                 link_count: 1,
                 size: 0,
-                times: Times::default(),
+                times: Times {created: ctime, modified: ctime, accessed: ctime},
                 first_dir_entry: None,
                 last_dir_entry: None,
             },
@@ -302,11 +304,11 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        let fd = fs.create_file(dir, "test1.txt", FdStat::default()).unwrap();
+        let fd = fs.create_file(dir, "test1.txt", FdStat::default(), 0).unwrap();
         fs.close(fd).unwrap();
-        let fd = fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        let fd = fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
         fs.close(fd).unwrap();
-        let fd = fs.create_file(dir, "test3.txt", FdStat::default()).unwrap();
+        let fd = fs.create_file(dir, "test3.txt", FdStat::default(), 0).unwrap();
         fs.close(fd).unwrap();
 
         let meta = fs.metadata(dir).unwrap();
@@ -331,12 +333,35 @@ mod tests {
     }
 
     #[test]
+    fn create_dir_file_creation_time() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let new_dir_fd = fs.create_dir(dir, "dir1", FdStat::default(), 123).unwrap();
+
+        let new_file_fd = fs.create_file(dir, "test.txt", FdStat::default(), 234).unwrap();
+
+        let dir_meta = fs.metadata(new_dir_fd).unwrap();
+        
+        assert_eq!(dir_meta.times.created, 123);
+        assert_eq!(dir_meta.times.modified, 123);
+        assert_eq!(dir_meta.times.accessed, 123);
+
+        let file_meta = fs.metadata(new_file_fd).unwrap();
+        assert_eq!(file_meta.times.created, 234);
+        assert_eq!(file_meta.times.modified, 234);
+        assert_eq!(file_meta.times.accessed, 234);
+
+    }
+
+    #[test]
     fn remove_last_file() {
         let mut fs = test_fs();
 
         let dir = fs.root_fd();
 
-        let fd = fs.create_file(dir, "test2.txt", FdStat::default()).unwrap();
+        let fd = fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
         fs.close(fd).unwrap();
 
         fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
