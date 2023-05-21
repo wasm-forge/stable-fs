@@ -172,7 +172,9 @@ impl FileSystem {
     }
 
     pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
-        self.fd_table.close(fd)?;
+
+        self.fd_table.close(fd).ok_or(Error::NotFound)?;
+
         Ok(())
     }
 
@@ -525,7 +527,7 @@ mod tests {
         fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
 
         let err = fs.remove_file(dir, "test.txt").unwrap_err();
-        assert_eq!(err, Error::CannotRemovedOpenedNode);
+        assert_eq!(err, Error::CannotRemoveOpenedNode);
 
         fs.close(fd).unwrap();
         fs.remove_file(dir, "test.txt").unwrap();

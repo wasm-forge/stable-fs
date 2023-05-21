@@ -12,5 +12,5 @@ pub enum Error {
     DirectoryNotEmpty,
     ExpectedToRemoveFile,
     ExpectedToRemoveDirectory,
-    CannotRemovedOpenedNode,
+    CannotRemoveOpenedNode,
 }

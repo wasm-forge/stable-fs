@@ -64,6 +64,10 @@ impl Dir {
         Self::new(node, stat, storage)
     }
 
+    /// Remove directory entry from the current directory
+    /// path            Name of the directory to remove
+    /// node_refcount   
+    /// storage         Reference to the host storage implementation
     pub fn remove_dir(
         &self,
         path: &str,
@@ -223,6 +227,12 @@ impl Dir {
         Ok(())
     }
 
+    /// Remove the `path` entry from a directory.
+    /// path            The name of the entry to delete
+    /// expect_dir      If true, the directory is deleted. If false - the file is deleted. If the expected entry type does not match with the actual entry - an error is returned.
+    /// node_refcount   
+    /// storage         The reference to the actual storage implementation
+    /// 
     pub fn rm_entry(
         &self,
         path: &str,
@@ -230,7 +240,7 @@ impl Dir {
         node_refcount: &BTreeMap<Node, usize>,
         storage: &mut dyn Storage,
     ) -> Result<(Node, Metadata), Error> {
-        let mut metadata = storage.get_metadata(self.node)?;
+        let mut parent_dir_metadata = storage.get_metadata(self.node)?;
 
         let removed_entry_index = self.find_entry_index(path, storage)?;
 
@@ -256,7 +266,7 @@ impl Dir {
 
         if let Some(refcount) = node_refcount.get(&removed_metadata.node) {
             if *refcount > 0 && removed_metadata.link_count == 1 {
-                return Err(Error::CannotRemovedOpenedNode);
+                return Err(Error::CannotRemoveOpenedNode);
             }
         }
 
@@ -274,18 +284,21 @@ impl Dir {
             storage.put_direntry(self.node, next_dir_entry_index, next_dir_entry)
         }
 
-        // update metadata
-        if Some(removed_entry_index) == metadata.last_dir_entry {
-            metadata.last_dir_entry = removed_dir_entry.prev_entry;
+        // update parent metadata when the last directory entry is removed
+        if Some(removed_entry_index) == parent_dir_metadata.last_dir_entry {
+            parent_dir_metadata.last_dir_entry = removed_dir_entry.prev_entry;
         }
 
-        if Some(removed_entry_index) == metadata.first_dir_entry {
-            metadata.first_dir_entry = removed_dir_entry.next_entry;
+        // update parent metadata when the first directory entry is removed
+        if Some(removed_entry_index) == parent_dir_metadata.first_dir_entry {
+            parent_dir_metadata.first_dir_entry = removed_dir_entry.next_entry;
         }
 
-        metadata.size -= 1;
+        // dir entry size is reduced by one
+        parent_dir_metadata.size -= 1;
 
-        storage.put_metadata(self.node, metadata);
+        // update parent metadata
+        storage.put_metadata(self.node, parent_dir_metadata);
 
         // remove the entry
         storage.rm_direntry(self.node, removed_entry_index);

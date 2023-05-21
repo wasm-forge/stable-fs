@@ -15,14 +15,21 @@ pub enum FdEntry {
     Dir(Dir),
 }
 
+// 
 pub struct FdTable {
+    // currentlty open file descriptors.
     table: BTreeMap<Fd, FdEntry>,
+    // backward links to see how many file descriptors are currently pointing to any particular node.
     node_refcount: BTreeMap<Node, usize>,
+    // the next generated descriptor's ID (if there is nothing to reuse).
     next_fd: Fd,
+    // freed file descriptors ready to reuse.
     free_fds: Vec<Fd>,
 }
 
 impl FdTable {
+
+    // create a new file descriptor table.
     pub fn new() -> Self {
         Self {
             table: BTreeMap::default(),
@@ -32,14 +39,17 @@ impl FdTable {
         }
     }
 
+    // Get the map of node references.
     pub fn node_refcount(&self) -> &BTreeMap<Node, usize> {
         &self.node_refcount
     }
 
+    // Update a file descriptor entry.
     pub fn update(&mut self, fd: Fd, entry: FdEntry) {
         self.insert(fd, entry);
     }
 
+    // Update a file descriptor entry, it returns the old entry if existed.
     pub fn insert(&mut self, fd: Fd, entry: FdEntry) -> Option<FdEntry> {
         self.inc_node_refcount(&entry);
         let prev_entry = self.table.insert(fd, entry);
@@ -49,10 +59,12 @@ impl FdTable {
         prev_entry
     }
 
+    // Get an FdEntry for a given file descriptor.
     pub fn get(&self, fd: Fd) -> Option<&FdEntry> {
         self.table.get(&fd)
     }
 
+    // Open a new file descriptor.
     pub fn open(&mut self, entry: FdEntry) -> Fd {
         let fd = match self.free_fds.pop() {
             Some(fd) => fd,
@@ -67,9 +79,14 @@ impl FdTable {
         fd
     }
 
+    // Reassign a file descriptor to a new number, the source descriptor is closed in the process. 
+    // If the destination descriptor is busy, it is closed in the process. 
     pub fn renumber(&mut self, src: Fd, dst: Fd) -> Result<(), Error> {
-        let old_entry = self.close(src)?;
-        self.close(dst)?;
+
+        let old_entry = self.close(src).ok_or(Error::NotFound)?;
+
+        // quietly close the destination file descriptor
+        self.close(dst);
 
         let removed = self.free_fds.pop().unwrap();
         assert_eq!(removed, dst);
@@ -79,11 +96,21 @@ impl FdTable {
         Ok(())
     }
 
-    pub fn close(&mut self, fd: Fd) -> Result<FdEntry, Error> {
-        let entry = self.table.remove(&fd).ok_or(Error::NotFound)?;
-        self.free_fds.push(fd);
-        self.dec_node_refcount(&entry);
-        Ok(entry)
+    // Close file descriptor.
+    pub fn close(&mut self, fd: Fd) -> Option<FdEntry> {
+
+        let entry = self.table.remove(&fd);
+
+        if entry.is_some() {
+            self.free_fds.push(fd);
+            let entry = entry.unwrap();
+            self.dec_node_refcount(&entry);
+
+            Some(entry)
+        } else {
+            None
+        }
+
     }
 
     fn inc_node_refcount(&mut self, entry: &FdEntry) {
