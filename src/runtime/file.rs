@@ -15,6 +15,7 @@ pub struct File {
 }
 
 impl File {
+    // Create new file entry.
     pub fn new(node: Node, stat: FdStat, storage: &dyn Storage) -> Result<Self, Error> {
         let metadata = storage.get_metadata(node)?;
         let file_type = metadata.file_type;
@@ -33,6 +34,7 @@ impl File {
         Ok(Self { node, cursor, stat })
     }
 
+    // Seek a position in a file for reading or writing.
     pub fn seek(
         &mut self,
         delta: i64,
@@ -71,10 +73,12 @@ impl File {
         Ok(self.cursor)
     }
 
+    // Get the file's current cursor position.
     pub fn tell(&self) -> FileSize {
         self.cursor
     }
 
+    // Read file at the given curson position, the cursor position will be updated after reading.
     pub fn read_with_cursor(
         &mut self,
         buf: &mut [u8],
@@ -85,6 +89,7 @@ impl File {
         Ok(read_size)
     }
 
+    // Write file at the current file cursor, the cursor position will be updated after reading.
     pub fn write_with_cursor(
         &mut self,
         buf: &[u8],
@@ -95,6 +100,7 @@ impl File {
         Ok(written_size)
     }
 
+    // Read file at the current file cursor, the cursor position will NOT be updated after reading.
     pub fn read_with_offset(
         &self,
         offset: FileSize,
@@ -117,6 +123,8 @@ impl File {
         Ok(read_size as FileSize)
     }
 
+
+    // Write file at the current file cursor, the cursor position will NOT be updated after reading.
     pub fn write_with_offset(
         &self,
         offset: FileSize,
@@ -143,6 +151,7 @@ impl File {
         Ok(written_size as FileSize)
     }
 
+    // Truncate file to 0 size.
     pub fn truncate(&self, storage: &mut dyn Storage) -> Result<(), Error> {
         let mut metadata = storage.get_metadata(self.node)?;
         metadata.size = 0;

@@ -17,6 +17,7 @@ pub use crate::runtime::types::{
     DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
 };
 
+// The main class implementing the API to work with the file system.
 pub struct FileSystem {
     root_fd: Fd,
     fd_table: FdTable,
@@ -24,6 +25,8 @@ pub struct FileSystem {
 }
 
 impl FileSystem {
+
+    // Create a new file system hosted on a given storage implementation. 
     pub fn new(storage: Box<dyn Storage>) -> Result<Self, Error> {
         let mut fd_table = FdTable::new();
 
@@ -38,14 +41,18 @@ impl FileSystem {
         })
     }
 
+    // Get the file descriptor of the root folder.
     pub fn root_fd(&self) -> Fd {
         self.root_fd
     }
 
+    // Get the path of the root folder.
     pub fn root_path(&self) -> &str {
         "/"
     }
 
+    // Reassign a file descriptor to a new number, the source descriptor is closed in the process. 
+    // If the destination descriptor is busy, it is closed in the process. 
     pub fn renumber(&mut self, from: Fd, to: Fd) -> Result<(), Error> {
         self.fd_table.renumber(from, to)
     }
@@ -78,6 +85,7 @@ impl FileSystem {
         }
     }
 
+    // Get dir entry for a given directory and the directory index.
     pub fn get_direntry(&self, fd: Fd, index: DirEntryIndex) -> Result<DirEntry, Error> {
         self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
     }
@@ -86,6 +94,7 @@ impl FileSystem {
         self.fd_table.update(fd, FdEntry::Dir(dir))
     }
 
+    // Read file's `fd` contents into `dst`.
     pub fn read(&mut self, fd: Fd, dst: &mut [u8]) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
         let read_size = file.read_with_cursor(dst, self.storage.as_mut())?;
@@ -93,6 +102,7 @@ impl FileSystem {
         Ok(read_size)
     }
 
+    // Write `src` contents into a file.
     pub fn write(&mut self, fd: Fd, src: &[u8]) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
         let written_size = file.write_with_cursor(src, self.storage.as_mut())?;
@@ -100,6 +110,7 @@ impl FileSystem {
         Ok(written_size)
     }
 
+    // Read file into a vector of buffers.
     pub fn read_vec(&mut self, fd: Fd, dst: DstIoVec) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
         let mut read_size = 0;
@@ -112,6 +123,8 @@ impl FileSystem {
         Ok(read_size)
     }
 
+
+    // Read file into a vector of buffers at a given offset, the file cursor is NOT updated.
     pub fn read_vec_with_offset(
         &mut self,
         fd: Fd,
@@ -129,6 +142,7 @@ impl FileSystem {
         Ok(read_size)
     }
 
+    // Write a vector of buffers into a file at a given offset, the file cursor is updated.
     pub fn write_vec(&mut self, fd: Fd, src: SrcIoVec) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
         let mut written_size = 0;
@@ -141,6 +155,7 @@ impl FileSystem {
         Ok(written_size)
     }
 
+    // Write a vector of buffers into a file at a given offset, the file cursor is NOT updated.
     pub fn write_vec_with_offset(
         &mut self,
         fd: Fd,
@@ -158,6 +173,7 @@ impl FileSystem {
         Ok(written_size)
     }
 
+    // Position file cursor to a given position.
     pub fn seek(&mut self, fd: Fd, delta: i64, whence: Whence) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
         let pos = file.seek(delta, whence, self.storage.as_mut())?;
@@ -165,12 +181,14 @@ impl FileSystem {
         Ok(pos)
     }
 
+    // Get the current file cursor position.
     pub fn tell(&mut self, fd: Fd) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
         let pos = file.tell();
         Ok(pos)
     }
 
+    // Close the opened file and release the corresponding file descriptor.
     pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
 
         self.fd_table.close(fd).ok_or(Error::NotFound)?;
@@ -178,15 +196,18 @@ impl FileSystem {
         Ok(())
     }
 
+    // Get the metadata for a given file descriptor
     pub fn metadata(&self, fd: Fd) -> Result<Metadata, Error> {
         let node = self.get_node(fd)?;
         self.storage.get_metadata(node)
     }
 
+    // find metadata for a given file descriptor.
     pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
         self.storage.get_metadata(node)
     }
 
+    // update metadata of a given file descriptor
     pub fn set_metadata(&mut self, fd: Fd, metadata: Metadata) -> Result<(), Error> {
         let node = self.get_node(fd)?;
         self.storage.put_metadata(node, metadata);
@@ -194,6 +215,7 @@ impl FileSystem {
         Ok(())
     }
 
+    // Update access time.
     pub fn set_accessed_time(&mut self, fd: Fd, time: u64) -> Result<(), Error> {
         let node = self.get_node(fd)?;
         let mut metadata = self.storage.get_metadata(node)?;
@@ -205,6 +227,7 @@ impl FileSystem {
         Ok(())
     }
 
+    // Update modification time.
     pub fn set_modified_time(&mut self, fd: Fd, time: u64) -> Result<(), Error> {
         let node = self.get_node(fd)?;
         let mut metadata = self.storage.get_metadata(node)?;
@@ -216,6 +239,7 @@ impl FileSystem {
         Ok(())
     }
 
+    // Get file or directory stats.
     pub fn get_stat(&self, fd: Fd) -> Result<(FileType, FdStat), Error> {
         match self.fd_table.get(fd) {
             None => Err(Error::NotFound),
@@ -224,6 +248,7 @@ impl FileSystem {
         }
     }
 
+    // Update stats of a given file.
     pub fn set_stat(&mut self, fd: Fd, stat: FdStat) -> Result<(), Error> {
         match self.fd_table.get(fd) {
             Some(FdEntry::File(file)) => {
@@ -242,12 +267,14 @@ impl FileSystem {
         }
     }
 
+    // Get metadata of a file with name `path` in a given folder.
     pub fn open_metadata(&self, parent: Fd, path: &str) -> Result<Metadata, Error> {
         let dir = self.get_dir(parent)?;
         let node = dir.find_node(path, self.storage.as_ref())?;
         self.storage.get_metadata(node)
     }
 
+    // Opens of creates a new file.
     pub fn open_or_create(
         &mut self,
         parent: Fd,
@@ -273,6 +300,7 @@ impl FileSystem {
         }
     }
 
+    // Opens a file and return its new file descriptor.
     pub fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
         if flags.contains(OpenFlags::EXCLUSIVE) {
             return Err(Error::FileAlreadyExists);
@@ -299,6 +327,7 @@ impl FileSystem {
         }
     }
 
+    // Create a new file named `path` in the given `parent` folder.
     pub fn create_file(&mut self, parent: Fd, path: &str, stat: FdStat, ctime: u64) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
 
@@ -309,11 +338,14 @@ impl FileSystem {
         Ok(child_fd)
     }
 
+    // Delete a file by name `path` in the given file folder.
     pub fn remove_file(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
         let dir = self.get_dir(parent)?;
         dir.remove_file(path, self.fd_table.node_refcount(), self.storage.as_mut())
     }
 
+
+    // Create a new directory named `path` in the given `parent` folder.
     pub fn create_dir(&mut self, parent: Fd, path: &str, stat: FdStat, ctime: u64) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
         let child = dir.create_dir(path, stat, self.storage.as_mut(), ctime)?;
@@ -322,6 +354,7 @@ impl FileSystem {
         Ok(child_fd)
     }
 
+    // Delete a directory by name `path` in the given file folder.
     pub fn remove_dir(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
         let dir = self.get_dir(parent)?;
         dir.remove_dir(path, self.fd_table.node_refcount(), self.storage.as_mut())

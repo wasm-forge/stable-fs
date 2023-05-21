@@ -33,6 +33,7 @@ impl Dir {
         Ok(Self { node, stat })
     }
 
+    // Create directory entry in the current directory.
     pub fn create_dir(
         &self,
         path: &str,
@@ -64,10 +65,7 @@ impl Dir {
         Self::new(node, stat, storage)
     }
 
-    /// Remove directory entry from the current directory
-    /// path            Name of the directory to remove
-    /// node_refcount   
-    /// storage         Reference to the host storage implementation
+    // Remove directory entry from the current directory.
     pub fn remove_dir(
         &self,
         path: &str,
@@ -90,6 +88,7 @@ impl Dir {
         Ok(())
     }
 
+    // Create file entry in the current directory.
     pub fn create_file(
         &self,
         path: &str,
@@ -123,6 +122,7 @@ impl Dir {
         File::new(node, stat, storage)
     }
 
+    // Remove file entry from the current directory.
     pub fn remove_file(
         &self,
         path: &str,
@@ -145,6 +145,7 @@ impl Dir {
         Ok(())
     }
 
+    // Find directory entry node in by name.
     pub fn find_node(&self, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
         let entry_index = self.find_entry_index(path, storage)?;
 
@@ -153,6 +154,7 @@ impl Dir {
         Ok(entry.node)
     }
 
+    // Iterate directory entries, find entry index by name.
     pub fn find_entry_index(
         &self,
         path: &str,
@@ -175,6 +177,7 @@ impl Dir {
         Err(Error::NotFound)
     }
 
+    // Get directory entry by index.
     pub fn get_entry(
         &self,
         index: DirEntryIndex,
@@ -183,6 +186,7 @@ impl Dir {
         storage.get_direntry(self.node, index)
     }
 
+    //  Add new directory entry 
     fn add_entry(
         &self,
         new_node: Node,
@@ -227,10 +231,11 @@ impl Dir {
         Ok(())
     }
 
-    /// Remove the `path` entry from a directory.
+    /// Remove the direcotry entry from the current directory by entry name.
+    /// 
     /// path            The name of the entry to delete
     /// expect_dir      If true, the directory is deleted. If false - the file is deleted. If the expected entry type does not match with the actual entry - an error is returned.
-    /// node_refcount   
+    /// node_refcount   A map of nodes to check if the file being deleted is opened by multiple file descriptors. Deleting an entry referenced by multiple file descriptors is not allowed and will result in an error.
     /// storage         The reference to the actual storage implementation
     /// 
     pub fn rm_entry(
