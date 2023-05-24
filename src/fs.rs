@@ -360,6 +360,19 @@ impl FileSystem {
         dir.remove_dir(path, self.fd_table.node_refcount(), self.storage.as_mut())
     }
 
+    // Create a hard link to an existing file
+    pub fn create_hard_link(&mut self, old_fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> Result<Fd, Error> {
+        let src_dir = self.get_dir(old_fd)?;
+        let dst_dir = self.get_dir(new_fd)?;
+
+        dst_dir.create_hard_link(new_path, &src_dir, old_path, self.storage.as_mut())?;
+
+        let node = dst_dir.find_node(new_path, self.storage.as_ref())?;
+
+        self.open(node, FdStat::default(), OpenFlags::empty())
+    }
+
+
     #[cfg(test)]
     pub(crate) fn get_test_storage(&mut self) -> &mut dyn Storage {
         self.storage.as_mut()

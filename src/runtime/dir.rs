@@ -122,6 +122,36 @@ impl Dir {
         File::new(node, stat, storage)
     }
 
+    // Create a hard link to an existing node
+    pub fn create_hard_link(
+        &self,
+        new_path: &str,
+        src_dir: &Dir, 
+        src_path: &str,
+        storage: &mut dyn Storage
+    ) -> Result<(), Error> {
+
+        // Check if the node exists already.
+        let found = self.find_node(new_path, storage);
+        match found {
+            Err(Error::NotFound) => {}
+            Ok(_) => return Err(Error::FileAlreadyExists),
+            Err(err) => return Err(err),
+        }
+
+        // Get the node and metadata, the node must exist in the source folder.
+        let node: Node = src_dir.find_node(src_path, storage)?;
+
+        let mut metadata = storage.get_metadata(node)?;
+
+        metadata.link_count += 1;
+        storage.put_metadata(node, metadata);
+
+        self.add_entry(node, new_path, storage)?;
+
+        Ok(())
+    }
+
     // Remove file entry from the current directory.
     pub fn remove_file(
         &self,
@@ -145,7 +175,7 @@ impl Dir {
         Ok(())
     }
 
-    // Find directory entry node in by name.
+    // Find directory entry node by its name.
     pub fn find_node(&self, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
         let entry_index = self.find_entry_index(path, storage)?;
 
@@ -390,4 +420,80 @@ mod tests {
         assert_eq!(meta.first_dir_entry, None);
         assert_eq!(meta.last_dir_entry, None);
     }
+
+
+    #[test]
+    fn create_hard_link() {
+        let mut fs = test_fs();
+
+        let parent_fd = fs.root_fd();
+
+        fs.create_file(parent_fd, "test1.txt", FdStat::default(), 120).unwrap();
+
+        let fd2 = fs.create_hard_link(parent_fd, "test1.txt", parent_fd, "test2.txt").unwrap();
+
+        let metadata = fs.metadata(fd2).unwrap();
+
+        assert_eq!(120, metadata.times.created);
+    }
+
+    #[test]
+    fn create_directory_hard_link_and_delete_it() {
+        let mut fs = test_fs();
+
+        let root_fd = fs.root_fd();
+
+        let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
+        let dir2_fd = fs.create_dir(root_fd, "dir2", FdStat::default(), 123).unwrap();
+        let dir3_fd = fs.create_dir(dir1_fd, "dir3", FdStat::default(), 320).unwrap();
+        let dir4_fd = fs.create_hard_link(dir1_fd, "dir3", dir2_fd, "dir4").unwrap();
+
+
+        let meta3 = fs.metadata(dir3_fd).unwrap();
+        let meta4 = fs.metadata(dir4_fd).unwrap();
+        
+        assert_eq!(meta3.times.created, meta4.times.created);
+        assert_eq!(meta3.size, 0);
+        assert_eq!(meta4.size, 0);
+
+        let file_fd=fs.create_file(dir3_fd, "test.txt", FdStat::default(), 523).unwrap();
+        fs.close(file_fd).unwrap();
+
+        let meta3 = fs.metadata(dir3_fd).unwrap();
+        let meta4 = fs.metadata(dir4_fd).unwrap();
+        
+        assert_eq!(meta3.times.created, meta4.times.created);
+
+        assert_eq!(meta3.size, 1);
+        assert_eq!(meta4.size, 1);
+
+        fs.remove_file(dir3_fd, "test.txt").unwrap();
+
+        let meta3 = fs.metadata(dir3_fd).unwrap();
+        let meta4 = fs.metadata(dir4_fd).unwrap();
+        
+        assert_eq!(meta3.size, 0);
+        assert_eq!(meta4.size, 0);
+
+        // check that we can still create files after deleting dir3
+        fs.close(dir3_fd).unwrap();
+        fs.remove_dir(dir1_fd, "dir3").unwrap();
+
+        let file_fd=fs.create_file(dir4_fd, "test1.txt", FdStat::default(), 623).unwrap();
+        fs.close(file_fd).unwrap();
+
+        let file_fd=fs.create_file(dir4_fd, "test2.txt", FdStat::default(), 653).unwrap();
+        fs.close(file_fd).unwrap();
+
+        // create dir3 again, check it has the files already
+        let dir3_fd = fs.create_hard_link(dir2_fd, "dir4", dir1_fd, "dir3").unwrap();
+
+        let meta3 = fs.metadata(dir3_fd).unwrap();
+        let meta4 = fs.metadata(dir4_fd).unwrap();
+        
+        assert_eq!(meta3.size, 2);
+        assert_eq!(meta4.size, 2);
+
+    }
+
 }
