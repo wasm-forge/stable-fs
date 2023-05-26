@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap};
 
 use crate::{
     error::Error,
@@ -72,19 +72,16 @@ impl Dir {
         node_refcount: &BTreeMap<Node, usize>,
         storage: &mut dyn Storage,
     ) -> Result<(), Error> {
-        let (node, mut metadata) = self.rm_entry(path, true, node_refcount, storage)?;
+        let (node, metadata) = self.rm_entry(path, Some(true), node_refcount, storage)?;
 
-        metadata.link_count -= 1;
-
-        if metadata.link_count > 0 {
-            storage.put_metadata(node, metadata);
-        } else {
+        if metadata.link_count == 0 {
             let chunk_cnt = (metadata.size + FILE_CHUNK_SIZE as u64 - 1) / FILE_CHUNK_SIZE as u64;
             for index in 0..chunk_cnt {
                 storage.rm_filechunk(node, index as u32);
             }
             storage.rm_metadata(node);
         }
+
         Ok(())
     }
 
@@ -122,12 +119,14 @@ impl Dir {
         File::new(node, stat, storage)
     }
 
+
     // Create a hard link to an existing node
     pub fn create_hard_link(
         &self,
         new_path: &str,
-        src_dir: &Dir, 
+        src_dir: &Dir,
         src_path: &str,
+        is_renaming: bool,
         storage: &mut dyn Storage
     ) -> Result<(), Error> {
 
@@ -144,6 +143,11 @@ impl Dir {
 
         let mut metadata = storage.get_metadata(node)?;
 
+        // only allow creating a hardlink on a folder if it is a part of renaming and another link will be removed
+        if !is_renaming && metadata.file_type == FileType::Directory {
+            return Err(Error::InvalidFileType);
+        }
+
         metadata.link_count += 1;
         storage.put_metadata(node, metadata);
 
@@ -159,19 +163,16 @@ impl Dir {
         node_refcount: &BTreeMap<Node, usize>,
         storage: &mut dyn Storage,
     ) -> Result<(), Error> {
-        let (node, mut metadata) = self.rm_entry(path, false, node_refcount, storage)?;
+        let (node, metadata) = self.rm_entry(path, Some(false), node_refcount, storage)?;
 
-        metadata.link_count -= 1;
-
-        if metadata.link_count > 0 {
-            storage.put_metadata(node, metadata);
-        } else {
+        if metadata.link_count == 0 {
             let chunk_cnt = (metadata.size + FILE_CHUNK_SIZE as u64 - 1) / FILE_CHUNK_SIZE as u64;
             for index in 0..chunk_cnt {
                 storage.rm_filechunk(node, index as u32);
             }
             storage.rm_metadata(node);
         }
+
         Ok(())
     }
 
@@ -261,17 +262,18 @@ impl Dir {
         Ok(())
     }
 
-    /// Remove the direcotry entry from the current directory by entry name.
+    /// Remove the directory entry from the current directory by entry name.
     /// 
     /// path            The name of the entry to delete
     /// expect_dir      If true, the directory is deleted. If false - the file is deleted. If the expected entry type does not match with the actual entry - an error is returned.
     /// node_refcount   A map of nodes to check if the file being deleted is opened by multiple file descriptors. Deleting an entry referenced by multiple file descriptors is not allowed and will result in an error.
     /// storage         The reference to the actual storage implementation
+    /// is_renaming     true if renaming is in progress, this allows to "delete" a non-empty folder
     /// 
     pub fn rm_entry(
         &self,
         path: &str,
-        expect_dir: bool,
+        expect_dir: Option<bool>,
         node_refcount: &BTreeMap<Node, usize>,
         storage: &mut dyn Storage,
     ) -> Result<(Node, Metadata), Error> {
@@ -281,19 +283,20 @@ impl Dir {
 
         let removed_dir_entry = storage.get_direntry(self.node, removed_entry_index)?;
 
-        let removed_metadata = storage.get_metadata(removed_dir_entry.node)?;
+        let mut removed_metadata = storage.get_metadata(removed_dir_entry.node)?;
 
         match removed_metadata.file_type {
             FileType::Directory => {
-                if !expect_dir {
+                if expect_dir == Some(false) {
                     return Err(Error::ExpectedToRemoveFile);
                 }
-                if removed_metadata.size > 0 {
+
+                if removed_metadata.link_count == 1 && removed_metadata.size > 0 {
                     return Err(Error::DirectoryNotEmpty);
                 }
             }
             FileType::RegularFile | FileType::SymbolicLink => {
-                if expect_dir {
+                if expect_dir == Some(true) {
                     return Err(Error::ExpectedToRemoveDirectory);
                 }
             }
@@ -338,13 +341,16 @@ impl Dir {
         // remove the entry
         storage.rm_direntry(self.node, removed_entry_index);
 
+        removed_metadata.link_count -= 1;
+        storage.put_metadata(removed_metadata.node, removed_metadata.clone());
+
         Ok((removed_dir_entry.node, removed_metadata))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{runtime::types::FdStat, test_utils::test_fs};
+    use crate::{runtime::types::FdStat, test_utils::test_fs, fs::OpenFlags, error::Error};
 
     #[test]
     fn remove_middle_file() {
@@ -421,7 +427,6 @@ mod tests {
         assert_eq!(meta.last_dir_entry, None);
     }
 
-
     #[test]
     fn create_hard_link() {
         let mut fs = test_fs();
@@ -438,62 +443,75 @@ mod tests {
     }
 
     #[test]
-    fn create_directory_hard_link_and_delete_it() {
+    fn create_directory_hard_link_fails() {
         let mut fs = test_fs();
 
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
         let dir2_fd = fs.create_dir(root_fd, "dir2", FdStat::default(), 123).unwrap();
-        let dir3_fd = fs.create_dir(dir1_fd, "dir3", FdStat::default(), 320).unwrap();
-        let dir4_fd = fs.create_hard_link(dir1_fd, "dir3", dir2_fd, "dir4").unwrap();
+        let _dir3_fd = fs.create_dir(dir1_fd, "dir3", FdStat::default(), 320).unwrap();
+        let dir4_res = fs.create_hard_link(dir1_fd, "dir3", dir2_fd, "dir4");
+
+        assert!(dir4_res.is_err());
+    }
 
 
-        let meta3 = fs.metadata(dir3_fd).unwrap();
-        let meta4 = fs.metadata(dir4_fd).unwrap();
-        
-        assert_eq!(meta3.times.created, meta4.times.created);
-        assert_eq!(meta3.size, 0);
-        assert_eq!(meta4.size, 0);
+    #[test]
+    fn rename_a_file() {
+        let mut fs = test_fs();
 
-        let file_fd=fs.create_file(dir3_fd, "test.txt", FdStat::default(), 523).unwrap();
-        fs.close(file_fd).unwrap();
+        let root_fd = fs.root_fd();
 
-        let meta3 = fs.metadata(dir3_fd).unwrap();
-        let meta4 = fs.metadata(dir4_fd).unwrap();
-        
-        assert_eq!(meta3.times.created, meta4.times.created);
+        let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
+        let file_fd = fs.create_file(root_fd, "test1.txt", FdStat::default(), 120).unwrap();
 
-        assert_eq!(meta3.size, 1);
-        assert_eq!(meta4.size, 1);
+        let fd2 = fs.rename(root_fd, "test1.txt", dir1_fd, "test2.txt").unwrap();
 
-        fs.remove_file(dir3_fd, "test.txt").unwrap();
+        let meta = fs.metadata(file_fd).unwrap();
+        let meta2 = fs.metadata(fd2).unwrap();
 
-        let meta3 = fs.metadata(dir3_fd).unwrap();
-        let meta4 = fs.metadata(dir4_fd).unwrap();
-        
-        assert_eq!(meta3.size, 0);
-        assert_eq!(meta4.size, 0);
+        assert_eq!(meta.node, meta2.node);
 
-        // check that we can still create files after deleting dir3
-        fs.close(dir3_fd).unwrap();
-        fs.remove_dir(dir1_fd, "dir3").unwrap();
+        let res = fs.open_or_create(root_fd, "test1.txt", FdStat::default(), OpenFlags::empty(), 123);
 
-        let file_fd=fs.create_file(dir4_fd, "test1.txt", FdStat::default(), 623).unwrap();
-        fs.close(file_fd).unwrap();
+        assert_eq!(res, Err(Error::NotFound));
 
-        let file_fd=fs.create_file(dir4_fd, "test2.txt", FdStat::default(), 653).unwrap();
-        fs.close(file_fd).unwrap();
+        let res = fs.open_or_create(dir1_fd, "test2.txt", FdStat::default(), OpenFlags::empty(), 123);
 
-        // create dir3 again, check it has the files already
-        let dir3_fd = fs.create_hard_link(dir2_fd, "dir4", dir1_fd, "dir3").unwrap();
-
-        let meta3 = fs.metadata(dir3_fd).unwrap();
-        let meta4 = fs.metadata(dir4_fd).unwrap();
-        
-        assert_eq!(meta3.size, 2);
-        assert_eq!(meta4.size, 2);
+        assert!(res.is_ok());
 
     }
+
+
+    #[test]
+    fn rename_a_folder() {
+        let mut fs = test_fs();
+
+        let root_fd = fs.root_fd();
+
+        let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
+        let _file_fd = fs.create_file(dir1_fd, "test1.txt", FdStat::default(), 123).unwrap();
+
+        let dir2_fd = fs.create_dir(root_fd, "dir2", FdStat::default(), 125).unwrap();
+
+        let fd2 = fs.rename(root_fd, "dir1", dir2_fd, "dir3").unwrap();
+
+        let meta = fs.metadata(dir1_fd).unwrap();
+        let meta2 = fs.metadata(fd2).unwrap();
+
+        assert_eq!(meta.node, meta2.node);
+
+        let res = fs.open_or_create(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
+
+        assert_eq!(res, Err(Error::NotFound));
+
+        let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
+
+        assert!(res.is_ok());
+
+    }
+
+
 
 }
