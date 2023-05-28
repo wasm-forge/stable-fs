@@ -25,8 +25,7 @@ pub struct FileSystem {
 }
 
 impl FileSystem {
-
-    // Create a new file system hosted on a given storage implementation. 
+    // Create a new file system hosted on a given storage implementation.
     pub fn new(storage: Box<dyn Storage>) -> Result<Self, Error> {
         let mut fd_table = FdTable::new();
 
@@ -51,8 +50,8 @@ impl FileSystem {
         "/"
     }
 
-    // Reassign a file descriptor to a new number, the source descriptor is closed in the process. 
-    // If the destination descriptor is busy, it is closed in the process. 
+    // Reassign a file descriptor to a new number, the source descriptor is closed in the process.
+    // If the destination descriptor is busy, it is closed in the process.
     pub fn renumber(&mut self, from: Fd, to: Fd) -> Result<(), Error> {
         self.fd_table.renumber(from, to)
     }
@@ -123,7 +122,6 @@ impl FileSystem {
         Ok(read_size)
     }
 
-
     // Read file into a vector of buffers at a given offset, the file cursor is NOT updated.
     pub fn read_vec_with_offset(
         &mut self,
@@ -190,7 +188,6 @@ impl FileSystem {
 
     // Close the opened file and release the corresponding file descriptor.
     pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
-
         self.fd_table.close(fd).ok_or(Error::NotFound)?;
 
         Ok(())
@@ -281,7 +278,7 @@ impl FileSystem {
         path: &str,
         stat: FdStat,
         flags: OpenFlags,
-        ctime: u64
+        ctime: u64,
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
 
@@ -328,7 +325,13 @@ impl FileSystem {
     }
 
     // Create a new file named `path` in the given `parent` folder.
-    pub fn create_file(&mut self, parent: Fd, path: &str, stat: FdStat, ctime: u64) -> Result<Fd, Error> {
+    pub fn create_file(
+        &mut self,
+        parent: Fd,
+        path: &str,
+        stat: FdStat,
+        ctime: u64,
+    ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
 
         let child = dir.create_file(path, stat, self.storage.as_mut(), ctime)?;
@@ -344,9 +347,14 @@ impl FileSystem {
         dir.remove_file(path, self.fd_table.node_refcount(), self.storage.as_mut())
     }
 
-
     // Create a new directory named `path` in the given `parent` folder.
-    pub fn create_dir(&mut self, parent: Fd, path: &str, stat: FdStat, ctime: u64) -> Result<Fd, Error> {
+    pub fn create_dir(
+        &mut self,
+        parent: Fd,
+        path: &str,
+        stat: FdStat,
+        ctime: u64,
+    ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
         let child = dir.create_dir(path, stat, self.storage.as_mut(), ctime)?;
         let child_fd = self.fd_table.open(FdEntry::Dir(child));
@@ -361,7 +369,13 @@ impl FileSystem {
     }
 
     // Create a hard link to an existing file.
-    pub fn create_hard_link(&mut self, old_fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> Result<Fd, Error> {
+    pub fn create_hard_link(
+        &mut self,
+        old_fd: Fd,
+        old_path: &str,
+        new_fd: Fd,
+        new_path: &str,
+    ) -> Result<Fd, Error> {
         let src_dir = self.get_dir(old_fd)?;
         let dst_dir = self.get_dir(new_fd)?;
 
@@ -373,7 +387,13 @@ impl FileSystem {
     }
 
     // Rename a file.
-    pub fn rename(&mut self, old_fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> Result<Fd, Error> {
+    pub fn rename(
+        &mut self,
+        old_fd: Fd,
+        old_path: &str,
+        new_fd: Fd,
+        new_path: &str,
+    ) -> Result<Fd, Error> {
         let src_dir = self.get_dir(old_fd)?;
         let dst_dir = self.get_dir(new_fd)?;
 
@@ -381,7 +401,12 @@ impl FileSystem {
         dst_dir.create_hard_link(new_path, &src_dir, old_path, true, self.storage.as_mut())?;
 
         // now unlink the older version
-        let (node, _metadata) = src_dir.rm_entry(old_path, None, self.fd_table.node_refcount(), self.storage.as_mut())?;
+        let (node, _metadata) = src_dir.rm_entry(
+            old_path,
+            None,
+            self.fd_table.node_refcount(),
+            self.storage.as_mut(),
+        )?;
 
         self.open(node, FdStat::default(), OpenFlags::empty())
     }
@@ -424,11 +449,19 @@ mod tests {
             .create_dir(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
-        let fd = fs.create_file(dir, "file.txt", FdStat::default(), 0).unwrap();
+        let fd = fs
+            .create_file(dir, "file.txt", FdStat::default(), 0)
+            .unwrap();
         fs.write(fd, "Hello, world!".as_bytes()).unwrap();
 
         let dir = fs
-            .open_or_create(fs.root_fd(), "test", FdStat::default(), OpenFlags::empty(), 0)
+            .open_or_create(
+                fs.root_fd(),
+                "test",
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
             .unwrap();
 
         let fd = fs
@@ -446,9 +479,12 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        fs.create_file(dir, "test1.txt", FdStat::default(), 0).unwrap();
-        fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
-        fs.create_file(dir, "test3.txt", FdStat::default(), 0).unwrap();
+        fs.create_file(dir, "test1.txt", FdStat::default(), 0)
+            .unwrap();
+        fs.create_file(dir, "test2.txt", FdStat::default(), 0)
+            .unwrap();
+        fs.create_file(dir, "test3.txt", FdStat::default(), 0)
+            .unwrap();
 
         let meta = fs.metadata(fs.root_fd()).unwrap();
 
@@ -474,13 +510,19 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        fs.create_file(dir, "test1.txt", FdStat::default(), 0).unwrap();
-        let fd2 = fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
-        fs.create_file(dir, "test3.txt", FdStat::default(), 0).unwrap();
+        fs.create_file(dir, "test1.txt", FdStat::default(), 0)
+            .unwrap();
+        let fd2 = fs
+            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .unwrap();
+        fs.create_file(dir, "test3.txt", FdStat::default(), 0)
+            .unwrap();
 
         fs.close(fd2).unwrap();
 
-        let fd4 = fs.create_file(dir, "test4.txt", FdStat::default(), 0).unwrap();
+        let fd4 = fs
+            .create_file(dir, "test4.txt", FdStat::default(), 0)
+            .unwrap();
 
         assert_eq!(fd2, fd4);
     }
@@ -491,8 +533,12 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        let fd1 = fs.create_file(dir, "test1.txt", FdStat::default(), 0).unwrap();
-        let fd2 = fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
+        let fd1 = fs
+            .create_file(dir, "test1.txt", FdStat::default(), 0)
+            .unwrap();
+        let fd2 = fs
+            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .unwrap();
 
         let entry1 = fs.get_node(fd1);
 

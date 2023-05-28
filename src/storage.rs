@@ -9,13 +9,11 @@ pub mod types;
 
 // Abstraction of the underlying storage layer.
 pub trait Storage {
-
     // Get the root node ID of the storage
     fn root_node(&self) -> Node;
 
     // Generate the next available node ID.
     fn new_node(&mut self) -> Node;
-
 
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error>;

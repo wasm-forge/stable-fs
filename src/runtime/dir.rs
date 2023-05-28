@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use crate::{
     error::Error,
@@ -39,7 +39,7 @@ impl Dir {
         path: &str,
         stat: FdStat,
         storage: &mut dyn Storage,
-        ctime: u64
+        ctime: u64,
     ) -> Result<Self, Error> {
         let found = self.find_node(path, storage);
         match found {
@@ -56,7 +56,11 @@ impl Dir {
                 file_type: FileType::Directory,
                 link_count: 1,
                 size: 0,
-                times: Times {accessed: ctime, modified: ctime, created: ctime},
+                times: Times {
+                    accessed: ctime,
+                    modified: ctime,
+                    created: ctime,
+                },
                 first_dir_entry: None,
                 last_dir_entry: None,
             },
@@ -91,7 +95,7 @@ impl Dir {
         path: &str,
         stat: FdStat,
         storage: &mut dyn Storage,
-        ctime: u64
+        ctime: u64,
     ) -> Result<File, Error> {
         let found = self.find_node(path, storage);
         match found {
@@ -108,7 +112,11 @@ impl Dir {
                 file_type: FileType::RegularFile,
                 link_count: 1,
                 size: 0,
-                times: Times {created: ctime, modified: ctime, accessed: ctime},
+                times: Times {
+                    created: ctime,
+                    modified: ctime,
+                    accessed: ctime,
+                },
                 first_dir_entry: None,
                 last_dir_entry: None,
             },
@@ -119,7 +127,6 @@ impl Dir {
         File::new(node, stat, storage)
     }
 
-
     // Create a hard link to an existing node
     pub fn create_hard_link(
         &self,
@@ -127,9 +134,8 @@ impl Dir {
         src_dir: &Dir,
         src_path: &str,
         is_renaming: bool,
-        storage: &mut dyn Storage
+        storage: &mut dyn Storage,
     ) -> Result<(), Error> {
-
         // Check if the node exists already.
         let found = self.find_node(new_path, storage);
         match found {
@@ -217,7 +223,7 @@ impl Dir {
         storage.get_direntry(self.node, index)
     }
 
-    //  Add new directory entry 
+    //  Add new directory entry
     fn add_entry(
         &self,
         new_node: Node,
@@ -263,13 +269,13 @@ impl Dir {
     }
 
     /// Remove the directory entry from the current directory by entry name.
-    /// 
+    ///
     /// path            The name of the entry to delete
     /// expect_dir      If true, the directory is deleted. If false - the file is deleted. If the expected entry type does not match with the actual entry - an error is returned.
     /// node_refcount   A map of nodes to check if the file being deleted is opened by multiple file descriptors. Deleting an entry referenced by multiple file descriptors is not allowed and will result in an error.
     /// storage         The reference to the actual storage implementation
     /// is_renaming     true if renaming is in progress, this allows to "delete" a non-empty folder
-    /// 
+    ///
     pub fn rm_entry(
         &self,
         path: &str,
@@ -350,7 +356,7 @@ impl Dir {
 
 #[cfg(test)]
 mod tests {
-    use crate::{runtime::types::FdStat, test_utils::test_fs, fs::OpenFlags, error::Error};
+    use crate::{error::Error, fs::OpenFlags, runtime::types::FdStat, test_utils::test_fs};
 
     #[test]
     fn remove_middle_file() {
@@ -358,11 +364,17 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        let fd = fs.create_file(dir, "test1.txt", FdStat::default(), 0).unwrap();
+        let fd = fs
+            .create_file(dir, "test1.txt", FdStat::default(), 0)
+            .unwrap();
         fs.close(fd).unwrap();
-        let fd = fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
+        let fd = fs
+            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .unwrap();
         fs.close(fd).unwrap();
-        let fd = fs.create_file(dir, "test3.txt", FdStat::default(), 0).unwrap();
+        let fd = fs
+            .create_file(dir, "test3.txt", FdStat::default(), 0)
+            .unwrap();
         fs.close(fd).unwrap();
 
         let meta = fs.metadata(dir).unwrap();
@@ -394,10 +406,12 @@ mod tests {
 
         let new_dir_fd = fs.create_dir(dir, "dir1", FdStat::default(), 123).unwrap();
 
-        let new_file_fd = fs.create_file(dir, "test.txt", FdStat::default(), 234).unwrap();
+        let new_file_fd = fs
+            .create_file(dir, "test.txt", FdStat::default(), 234)
+            .unwrap();
 
         let dir_meta = fs.metadata(new_dir_fd).unwrap();
-        
+
         assert_eq!(dir_meta.times.created, 123);
         assert_eq!(dir_meta.times.modified, 123);
         assert_eq!(dir_meta.times.accessed, 123);
@@ -406,7 +420,6 @@ mod tests {
         assert_eq!(file_meta.times.created, 234);
         assert_eq!(file_meta.times.modified, 234);
         assert_eq!(file_meta.times.accessed, 234);
-
     }
 
     #[test]
@@ -415,7 +428,9 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        let fd = fs.create_file(dir, "test2.txt", FdStat::default(), 0).unwrap();
+        let fd = fs
+            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .unwrap();
         fs.close(fd).unwrap();
 
         fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
@@ -433,9 +448,12 @@ mod tests {
 
         let parent_fd = fs.root_fd();
 
-        fs.create_file(parent_fd, "test1.txt", FdStat::default(), 120).unwrap();
+        fs.create_file(parent_fd, "test1.txt", FdStat::default(), 120)
+            .unwrap();
 
-        let fd2 = fs.create_hard_link(parent_fd, "test1.txt", parent_fd, "test2.txt").unwrap();
+        let fd2 = fs
+            .create_hard_link(parent_fd, "test1.txt", parent_fd, "test2.txt")
+            .unwrap();
 
         let metadata = fs.metadata(fd2).unwrap();
 
@@ -448,14 +466,19 @@ mod tests {
 
         let root_fd = fs.root_fd();
 
-        let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
-        let dir2_fd = fs.create_dir(root_fd, "dir2", FdStat::default(), 123).unwrap();
-        let _dir3_fd = fs.create_dir(dir1_fd, "dir3", FdStat::default(), 320).unwrap();
+        let dir1_fd = fs
+            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .unwrap();
+        let dir2_fd = fs
+            .create_dir(root_fd, "dir2", FdStat::default(), 123)
+            .unwrap();
+        let _dir3_fd = fs
+            .create_dir(dir1_fd, "dir3", FdStat::default(), 320)
+            .unwrap();
         let dir4_res = fs.create_hard_link(dir1_fd, "dir3", dir2_fd, "dir4");
 
         assert!(dir4_res.is_err());
     }
-
 
     #[test]
     fn rename_a_file() {
@@ -463,26 +486,42 @@ mod tests {
 
         let root_fd = fs.root_fd();
 
-        let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
-        let file_fd = fs.create_file(root_fd, "test1.txt", FdStat::default(), 120).unwrap();
+        let dir1_fd = fs
+            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .unwrap();
+        let file_fd = fs
+            .create_file(root_fd, "test1.txt", FdStat::default(), 120)
+            .unwrap();
 
-        let fd2 = fs.rename(root_fd, "test1.txt", dir1_fd, "test2.txt").unwrap();
+        let fd2 = fs
+            .rename(root_fd, "test1.txt", dir1_fd, "test2.txt")
+            .unwrap();
 
         let meta = fs.metadata(file_fd).unwrap();
         let meta2 = fs.metadata(fd2).unwrap();
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(root_fd, "test1.txt", FdStat::default(), OpenFlags::empty(), 123);
+        let res = fs.open_or_create(
+            root_fd,
+            "test1.txt",
+            FdStat::default(),
+            OpenFlags::empty(),
+            123,
+        );
 
         assert_eq!(res, Err(Error::NotFound));
 
-        let res = fs.open_or_create(dir1_fd, "test2.txt", FdStat::default(), OpenFlags::empty(), 123);
+        let res = fs.open_or_create(
+            dir1_fd,
+            "test2.txt",
+            FdStat::default(),
+            OpenFlags::empty(),
+            123,
+        );
 
         assert!(res.is_ok());
-
     }
-
 
     #[test]
     fn rename_a_folder() {
@@ -490,10 +529,16 @@ mod tests {
 
         let root_fd = fs.root_fd();
 
-        let dir1_fd = fs.create_dir(root_fd, "dir1", FdStat::default(), 120).unwrap();
-        let _file_fd = fs.create_file(dir1_fd, "test1.txt", FdStat::default(), 123).unwrap();
+        let dir1_fd = fs
+            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .unwrap();
+        let _file_fd = fs
+            .create_file(dir1_fd, "test1.txt", FdStat::default(), 123)
+            .unwrap();
 
-        let dir2_fd = fs.create_dir(root_fd, "dir2", FdStat::default(), 125).unwrap();
+        let dir2_fd = fs
+            .create_dir(root_fd, "dir2", FdStat::default(), 125)
+            .unwrap();
 
         let fd2 = fs.rename(root_fd, "dir1", dir2_fd, "dir3").unwrap();
 
@@ -509,9 +554,5 @@ mod tests {
         let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 
         assert!(res.is_ok());
-
     }
-
-
-
 }

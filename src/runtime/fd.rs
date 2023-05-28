@@ -15,7 +15,7 @@ pub enum FdEntry {
     Dir(Dir),
 }
 
-// 
+//
 pub struct FdTable {
     // currentlty open file descriptors.
     table: BTreeMap<Fd, FdEntry>,
@@ -28,7 +28,6 @@ pub struct FdTable {
 }
 
 impl FdTable {
-
     // create a new file descriptor table.
     pub fn new() -> Self {
         Self {
@@ -79,10 +78,9 @@ impl FdTable {
         fd
     }
 
-    // Reassign a file descriptor to a new number, the source descriptor is closed in the process. 
-    // If the destination descriptor is busy, it is closed in the process. 
+    // Reassign a file descriptor to a new number, the source descriptor is closed in the process.
+    // If the destination descriptor is busy, it is closed in the process.
     pub fn renumber(&mut self, src: Fd, dst: Fd) -> Result<(), Error> {
-
         let old_entry = self.close(src).ok_or(Error::NotFound)?;
 
         // quietly close the destination file descriptor
@@ -98,19 +96,16 @@ impl FdTable {
 
     // Close file descriptor.
     pub fn close(&mut self, fd: Fd) -> Option<FdEntry> {
-
         let entry = self.table.remove(&fd);
 
-        if entry.is_some() {
+        if let Some(entry) = entry {
             self.free_fds.push(fd);
-            let entry = entry.unwrap();
             self.dec_node_refcount(&entry);
 
             Some(entry)
         } else {
             None
         }
-
     }
 
     fn inc_node_refcount(&mut self, entry: &FdEntry) {

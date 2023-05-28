@@ -1,4 +1,3 @@
-
 use std::collections::BTreeMap;
 
 use crate::{
@@ -27,7 +26,7 @@ pub struct TransientStorage {
 }
 
 impl TransientStorage {
-    // Initializes a new TransientStorage. 
+    // Initializes a new TransientStorage.
     pub fn new() -> Self {
         let metadata = Metadata {
             node: ROOT_NODE,
@@ -50,7 +49,6 @@ impl TransientStorage {
 }
 
 impl Storage for TransientStorage {
-
     // Get the root node ID of the storage
     fn root_node(&self) -> Node {
         ROOT_NODE
@@ -110,13 +108,7 @@ impl Storage for TransientStorage {
     }
 
     // Insert of update a selected file chunk with the data provided in buffer.
-    fn write_filechunk(
-        &mut self, 
-        node: Node, 
-        index: FileChunkIndex, 
-        offset: FileSize, 
-        buf: &[u8],
-    ) {
+    fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
         let entry = self
             .filechunk
             .entry((node, index))

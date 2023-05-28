@@ -123,7 +123,6 @@ impl File {
         Ok(read_size as FileSize)
     }
 
-
     // Write file at the current file cursor, the cursor position will NOT be updated after reading.
     pub fn write_with_offset(
         &self,
