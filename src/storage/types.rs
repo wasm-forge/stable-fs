@@ -73,8 +73,8 @@ impl ic_stable_structures::Storable for Metadata {
 
 impl ic_stable_structures::BoundedStorable for Metadata {
     // This value was obtained by printing `Storable::to_bytes().len()`,
-    // which is 120 and rounding it up to 128.
-    const MAX_SIZE: u32 = 128;
+    // which is 140 and rounding it up to 144.
+    const MAX_SIZE: u32 = 144;
     const IS_FIXED_SIZE: bool = true;
 }
 
