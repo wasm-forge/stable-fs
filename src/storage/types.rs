@@ -62,7 +62,7 @@ impl ic_stable_structures::Storable for Metadata {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-        assert!(Self::MAX_SIZE >= buf.len() as u32);
+        assert!(Self::MAX_SIZE >= buf.len() as u32, "Metadata size assertion fails: Self::MAX_SIZE = {}, buf.len() = {}", Self::MAX_SIZE, buf.len());
         std::borrow::Cow::Owned(buf)
     }
 
@@ -191,7 +191,7 @@ impl ic_stable_structures::Storable for DirEntry {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-        assert!(Self::MAX_SIZE >= buf.len() as u32, "{}", buf.len());
+        assert!(Self::MAX_SIZE >= buf.len() as u32, "DirEntry size assertion fails: Self::MAX_SIZE = {}, buf.len() = {}", Self::MAX_SIZE, buf.len());
         std::borrow::Cow::Owned(buf)
     }
 
