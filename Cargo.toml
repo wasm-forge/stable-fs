@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 bitflags = "2.3.1"
-ic-cdk = "=0.8.0"
+ic-cdk = "0.8"
 ic-stable-structures = "0.5.4"
 serde = "1.0.164"
 serde_bytes = "0.11"
