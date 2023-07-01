@@ -12,6 +12,8 @@ use crate::{
 // The root node ID.
 const ROOT_NODE: Node = 0;
 
+const FS_TRANSIENT_VERSION: u32 = 1;
+
 // Transient storage representation.
 #[derive(Debug, Default)]
 pub struct TransientStorage {
@@ -52,6 +54,11 @@ impl Storage for TransientStorage {
     // Get the root node ID of the storage
     fn root_node(&self) -> Node {
         ROOT_NODE
+    }
+
+    // Get version of the file system
+    fn get_version(&self) -> u32 {
+        FS_TRANSIENT_VERSION
     }
 
     // Generate the next available node ID.

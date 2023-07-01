@@ -14,12 +14,15 @@ use super::{
 };
 
 const ROOT_NODE: Node = 0;
+const FS_VERSION: u32 = 1;
 
-const METADATA_MEMORY_INDEX: MemoryId = MemoryId::new(0);
-const DIRENTRY_MEMORY_INDEX: MemoryId = MemoryId::new(1);
-const FILECHUNK_MEMORY_INDEX: MemoryId = MemoryId::new(2);
+const METADATA_MEMORY_INDEX: MemoryId = MemoryId::new(230);
+const DIRENTRY_MEMORY_INDEX: MemoryId = MemoryId::new(231);
+const FILECHUNK_MEMORY_INDEX: MemoryId = MemoryId::new(232);
 
+#[repr(C)]
 pub struct StableStorage<M: Memory> {
+    version: u32,
     metadata: BTreeMap<Node, Metadata, VirtualMemory<M>>,
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
@@ -29,7 +32,13 @@ pub struct StableStorage<M: Memory> {
 }
 
 impl<M: Memory> StableStorage<M> {
+
     pub fn new(memory: M) -> Self {
+        Self::new_with_memory_indices(memory, METADATA_MEMORY_INDEX, DIRENTRY_MEMORY_INDEX, FILECHUNK_MEMORY_INDEX)
+    }
+
+    pub fn new_with_memory_indices(memory: M, metadata_id: MemoryId, direntry_id: MemoryId, filechunk_id: MemoryId) -> Self {
+
         let memory_manager = MemoryManager::init(memory);
         let metadata = Metadata {
             node: ROOT_NODE,
@@ -41,15 +50,17 @@ impl<M: Memory> StableStorage<M> {
             last_dir_entry: None,
         };
         let mut result = Self {
-            metadata: BTreeMap::init(memory_manager.get(METADATA_MEMORY_INDEX)),
-            direntry: BTreeMap::init(memory_manager.get(DIRENTRY_MEMORY_INDEX)),
-            filechunk: BTreeMap::init(memory_manager.get(FILECHUNK_MEMORY_INDEX)),
+            version: FS_VERSION,
+            metadata: BTreeMap::init(memory_manager.get(metadata_id)),
+            direntry: BTreeMap::init(memory_manager.get(direntry_id)),
+            filechunk: BTreeMap::init(memory_manager.get(filechunk_id)),
             next_node: ROOT_NODE + 1,
             _memory_manager: memory_manager,
         };
+
         result.put_metadata(ROOT_NODE, metadata);
         result
-    }
+    }    
 }
 
 impl<M: Memory> Storage for StableStorage<M> {
@@ -63,6 +74,10 @@ impl<M: Memory> Storage for StableStorage<M> {
         let result = self.next_node;
         self.next_node += 1;
         result
+    }
+
+    fn get_version(&self) -> u32 {
+        self.version
     }
 
     // Get the metadata associated with the node.

@@ -12,6 +12,9 @@ pub trait Storage {
     // Get the root node ID of the storage
     fn root_node(&self) -> Node;
 
+    // Get version of the file system
+    fn get_version(&self) -> u32;
+
     // Generate the next available node ID.
     fn new_node(&mut self) -> Node;
 
