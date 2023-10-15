@@ -132,8 +132,11 @@ impl FileSystem {
         let file = self.get_file(fd)?;
         let mut read_size = 0;
         for buf in dst {
-            let buf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
-            let size = file.read_with_offset(offset, buf, self.storage.as_mut())?;
+            
+            let rbuf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
+
+            let size = file.read_with_offset(read_size + offset, rbuf, self.storage.as_mut())?;
+
             read_size += size;
         }
         self.put_file(fd, file);
@@ -164,7 +167,7 @@ impl FileSystem {
         let mut written_size = 0;
         for buf in src {
             let buf = unsafe { std::slice::from_raw_parts(buf.buf, buf.len) };
-            let size = file.write_with_offset(offset, buf, self.storage.as_mut())?;
+            let size = file.write_with_offset(written_size + offset, buf, self.storage.as_mut())?;
             written_size += size;
         }
         self.put_file(fd, file);
