@@ -433,6 +433,18 @@ mod tests {
         test_utils::test_fs,
     };
 
+
+    #[test]
+    fn get_root_info() {
+        let fs = test_fs();
+
+        let fd = fs.root_fd();
+        let path = fs.root_path();
+
+        assert!(fd == 3);
+        assert!(path == "/");
+    }
+
     #[test]
     fn create_file() {
         let mut fs = test_fs();
