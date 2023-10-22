@@ -430,7 +430,7 @@ mod tests {
     use crate::{
         error::Error,
         runtime::types::{FdStat, OpenFlags},
-        test_utils::test_fs,
+        test_utils::{test_fs, test_fs_transient}, fs::{SrcIoVec, SrcBuf, DstBuf},
     };
 
 
@@ -612,6 +612,140 @@ mod tests {
 
         fs.close(fd).unwrap();
     }
+
+    #[test]
+    fn read_and_write_vec() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let write_content1 = "This is a sample file content.";
+        let write_content2 = "1234567890";
+        
+        let write_content = [
+            SrcBuf {buf: write_content1.as_ptr(), len: write_content1.len()},
+            SrcBuf {buf: write_content2.as_ptr(), len: write_content2.len()}
+        ];
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        fs.write_vec(fd, write_content.as_ref()).unwrap();
+
+        let meta = fs.metadata(fd).unwrap();
+        assert_eq!(meta.size, 40);
+
+        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+
+
+        let mut read_content1 = String::from("......................");
+        let mut read_content2 = String::from("......................");
+        
+        let read_content = [
+            DstBuf {buf: read_content1.as_mut_ptr(), len: read_content1.len()},
+            DstBuf {buf: read_content2.as_mut_ptr(), len: read_content2.len()}
+        ];
+
+        fs.read_vec(fd, &read_content).unwrap();
+
+        assert_eq!("This is a sample file ", read_content1);
+        assert_eq!("content.1234567890....", read_content2);
+
+        fs.close(fd).unwrap();
+    }
+
+    #[test]
+    fn read_and_write_vec_with_offset() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let write_content1 = "This is a sample file content.";
+        let write_content2 = "1234567890";
+        
+        let write_content = [
+            SrcBuf {buf: write_content1.as_ptr(), len: write_content1.len()},
+            SrcBuf {buf: write_content2.as_ptr(), len: write_content2.len()}
+        ];
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        fs.write_vec_with_offset(fd, write_content.as_ref(), 2).unwrap();
+
+        let meta = fs.metadata(fd).unwrap();
+        assert_eq!(meta.size, 42);
+
+        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+
+        let mut read_content1 = String::from("......................");
+        let mut read_content2 = String::from("......................");
+        
+        let read_content = [
+            DstBuf {buf: read_content1.as_mut_ptr(), len: read_content1.len()},
+            DstBuf {buf: read_content2.as_mut_ptr(), len: read_content2.len()}
+        ];
+
+        fs.read_vec_with_offset(fd, &read_content, 1).unwrap();
+
+        assert_eq!("\0This is a sample file", read_content1);
+        assert_eq!(" content.1234567890...", read_content2);
+
+        fs.close(fd).unwrap();
+    }
+
+
+    #[test]
+    fn seek_and_write_transient() {
+        let mut fs = test_fs_transient();
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        fs.seek(fd, 24, super::Whence::SET).unwrap();
+
+        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+
+        let meta = fs.metadata(fd).unwrap();
+
+        assert_eq!(meta.size, 29);
+
+        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+        let mut buf = [42u8; 29];
+        let rr = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(rr, 29);
+        assert_eq!(
+            buf,
+            [
+                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
+                4, 5
+            ]
+        );
+
+        fs.close(fd).unwrap();
+
+        let fd = fs
+            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        let mut buf = [42u8; 29];
+        let rr = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(rr, 29);
+        assert_eq!(
+            buf,
+            [
+                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
+                4, 5
+            ]
+        );
+
+        fs.close(fd).unwrap();
+    }    
 
     #[test]
     fn create_and_remove_file() {
