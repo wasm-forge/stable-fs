@@ -84,10 +84,12 @@ impl FdTable {
         let old_entry = self.close(src).ok_or(Error::NotFound)?;
 
         // quietly close the destination file descriptor
-        self.close(dst);
+        if let Some(_old_dst_entry) = self.close(dst) {
 
-        let removed = self.free_fds.pop().unwrap();
-        assert_eq!(removed, dst);
+            let removed = self.free_fds.pop().unwrap();
+            assert_eq!(removed, dst);
+
+        }
 
         self.insert(dst, old_entry);
 

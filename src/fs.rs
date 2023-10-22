@@ -684,4 +684,66 @@ mod tests {
 
         fs.remove_file(dir, "test.txt").unwrap();
     }
+
+    #[test]
+    fn renumber_when_the_alternative_file_exists() {
+        let mut fs = test_fs();
+        let dir = fs.root_fd();
+
+        let fd1 = fs
+            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+
+        let pos1 = fs.tell(fd1).unwrap();
+
+        let fd2 = fs
+            .open_or_create(dir, "file2.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        let pos2 = fs.tell(fd2).unwrap();
+
+        assert!(pos1 == 5);
+        assert!(pos2 == 0);
+        
+        fs.renumber(fd1, fd2).unwrap();
+
+        let pos2_renumbered = fs.tell(fd2).unwrap();
+
+        assert!(pos1 == pos2_renumbered);
+
+        let res = fs.tell(fd1);
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn renumber_when_the_alternative_file_doesnt_exist() {
+        let mut fs = test_fs();
+        let dir = fs.root_fd();
+
+        let fd1 = fs
+            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+
+        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+
+        let pos1 = fs.tell(fd1).unwrap();
+
+        assert!(pos1 == 5);
+        
+        let fd2 = 100;
+
+        fs.renumber(fd1, fd2).unwrap();
+
+        let pos2_renumbered = fs.tell(fd2).unwrap();
+
+        assert!(pos1 == pos2_renumbered);
+
+        let res = fs.tell(fd1);
+
+        assert!(res.is_err());
+    }
+
 }
