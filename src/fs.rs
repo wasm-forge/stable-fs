@@ -427,10 +427,11 @@ impl FileSystem {
 
 #[cfg(test)]
 mod tests {
+
     use crate::{
         error::Error,
         runtime::types::{FdStat, OpenFlags},
-        test_utils::{test_fs, test_fs_transient}, fs::{SrcIoVec, SrcBuf, DstBuf},
+        test_utils::{test_fs, test_fs_transient}, fs::{SrcBuf, DstBuf, FdFlags}, storage::types::FileType,
     };
 
 
@@ -880,4 +881,58 @@ mod tests {
         assert!(res.is_err());
     }
 
+    #[test]
+    fn set_modified_set_accessed_time() {
+
+        let mut fs = test_fs();
+        let dir = fs.root_fd();
+
+        let fd1 = fs
+            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
+            .unwrap();
+
+        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+
+        fs.set_accessed_time(fd1, 333).unwrap();
+        fs.set_modified_time(fd1, 222).unwrap();
+
+        let metadata = fs.metadata(fd1).unwrap();
+
+        let times = metadata.times;
+
+        assert_eq!(times.created, 111);
+        assert_eq!(times.accessed, 333);
+        assert_eq!(times.modified, 222);
+
+        assert_eq!(metadata.size, 5);
+        assert_eq!(metadata.file_type, FileType::RegularFile);
+
+    }    
+
+    #[test]
+    fn set_stat_get_stat() {
+
+        let mut fs = test_fs();
+        let dir = fs.root_fd();
+
+        let fd1 = fs
+            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
+            .unwrap();
+
+        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+
+        let (file_type, mut stat) = fs.get_stat(fd1).unwrap();
+
+        assert_eq!(file_type, FileType::RegularFile);
+
+        assert_eq!(stat.flags, FdFlags::empty());
+
+        stat.flags = FdFlags::APPEND;
+
+        fs.set_stat(fd1, stat).unwrap();
+
+        let (_, stat2) = fs.get_stat(fd1).unwrap();
+
+        assert_eq!(stat2.flags, FdFlags::APPEND);
+    }        
 }
