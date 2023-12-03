@@ -29,6 +29,14 @@ impl FileSystem {
     pub fn new(storage: Box<dyn Storage>) -> Result<Self, Error> {
         let mut fd_table = FdTable::new();
 
+        if storage.get_version() == 0 {
+            return Ok(Self {
+                root_fd: 0,
+                fd_table,
+                storage,
+            })
+        }
+        
         let root_node = storage.root_node();
         let root_entry = Dir::new(root_node, FdStat::default(), &*storage)?;
         let root_fd = fd_table.open(FdEntry::Dir(root_entry));
@@ -38,6 +46,10 @@ impl FileSystem {
             fd_table,
             storage,
         })
+    }
+
+    pub fn get_storage_version(&self) -> u32 {
+        self.storage.get_version()
     }
 
     // Get the file descriptor of the root folder.
