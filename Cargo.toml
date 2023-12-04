@@ -5,7 +5,7 @@ edition = "2021"
 description = "A Simple File system implementing WASI endpoints and using the stable structures of the Internet Computer"
 keywords = ["ic", "internet computer", "file system"]
 license = "MIT"
-license-file = "LICENSE.txt"
+license-file = "LICENSE"
 
 [dependencies]
 bitflags = "2.3.1"
