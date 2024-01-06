@@ -40,15 +40,7 @@ impl<M: Memory> StableStorage<M> {
     pub fn new_with_memory_indices(memory: M, metadata_id: MemoryId, direntry_id: MemoryId, filechunk_id: MemoryId) -> Self {
 
         let memory_manager = MemoryManager::init(memory);
-        let metadata = Metadata {
-            node: ROOT_NODE,
-            file_type: FileType::Directory,
-            link_count: 1,
-            size: 0,
-            times: Times::default(),
-            first_dir_entry: None,
-            last_dir_entry: None,
-        };
+
         let mut result = Self {
             version: FS_VERSION,
             metadata: BTreeMap::init(memory_manager.get(metadata_id)),
@@ -58,7 +50,25 @@ impl<M: Memory> StableStorage<M> {
             _memory_manager: memory_manager,
         };
 
-        result.put_metadata(ROOT_NODE, metadata);
+        match result.get_metadata(ROOT_NODE) {
+            Ok(_) => {}
+            Err(Error::NotFound) => {
+                let metadata = Metadata {
+                    node: ROOT_NODE,
+                    file_type: FileType::Directory,
+                    link_count: 1,
+                    size: 0,
+                    times: Times::default(),
+                    first_dir_entry: None,
+                    last_dir_entry: None,
+                };
+                result.put_metadata(ROOT_NODE, metadata);
+            }
+            Err(err) => {
+                unreachable!("Unexpected error while loading root metadata: {:?}", err);
+            }
+        }
+
         result
     }    
 }
