@@ -107,7 +107,6 @@ impl File {
         buf: &mut [u8],
         storage: &mut dyn Storage,
     ) -> Result<FileSize, Error> {
-        
         if buf.is_empty() {
             return Ok(0 as FileSize);
         }

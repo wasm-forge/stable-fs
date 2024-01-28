@@ -119,7 +119,7 @@ impl Storage for TransientStorage {
         let entry = self
             .filechunk
             .entry((node, index))
-            .or_insert_with(FileChunk::default);
+            .or_default();
         entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
     }
 

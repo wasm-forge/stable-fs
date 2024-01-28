@@ -3,9 +3,9 @@ use crate::{
     storage::types::{DirEntry, DirEntryIndex, FileChunkIndex, FileSize, Metadata, Node},
 };
 
+pub mod dummy;
 pub mod stable;
 pub mod transient;
-pub mod dummy;
 pub mod types;
 
 // Abstraction of the underlying storage layer.

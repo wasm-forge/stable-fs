@@ -401,8 +401,6 @@ mod tests {
 
     #[test]
     fn create_dir_file_creation_time() {
-        use std::mem;
-
         let mut fs = test_fs();
 
         let dir = fs.root_fd();
@@ -414,8 +412,6 @@ mod tests {
             .unwrap();
 
         let dir_meta = fs.metadata(new_dir_fd).unwrap();
-
-        println!("size:{}", mem::size_of_val(&dir_meta));
 
         assert_eq!(dir_meta.times.created, 123);
         assert_eq!(dir_meta.times.modified, 123);

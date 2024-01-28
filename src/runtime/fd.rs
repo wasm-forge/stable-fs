@@ -85,10 +85,8 @@ impl FdTable {
 
         // quietly close the destination file descriptor
         if let Some(_old_dst_entry) = self.close(dst) {
-
             let removed = self.free_fds.pop().unwrap();
             assert_eq!(removed, dst);
-
         }
 
         self.insert(dst, old_entry);

@@ -34,9 +34,9 @@ impl FileSystem {
                 root_fd: 0,
                 fd_table,
                 storage,
-            })
+            });
         }
-        
+
         let root_node = storage.root_node();
         let root_entry = Dir::new(root_node, FdStat::default(), &*storage)?;
         let root_fd = fd_table.open(FdEntry::Dir(root_entry));
@@ -144,7 +144,6 @@ impl FileSystem {
         let file = self.get_file(fd)?;
         let mut read_size = 0;
         for buf in dst {
-            
             let rbuf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
 
             let size = file.read_with_offset(read_size + offset, rbuf, self.storage.as_mut())?;
@@ -442,10 +441,11 @@ mod tests {
 
     use crate::{
         error::Error,
+        fs::{DstBuf, FdFlags, SrcBuf},
         runtime::types::{FdStat, OpenFlags},
-        test_utils::{test_fs, test_fs_transient}, fs::{SrcBuf, DstBuf, FdFlags}, storage::types::FileType,
+        storage::types::FileType,
+        test_utils::{test_fs, test_fs_transient},
     };
-
 
     #[test]
     fn get_root_info() {
@@ -634,10 +634,16 @@ mod tests {
 
         let write_content1 = "This is a sample file content.";
         let write_content2 = "1234567890";
-        
+
         let write_content = [
-            SrcBuf {buf: write_content1.as_ptr(), len: write_content1.len()},
-            SrcBuf {buf: write_content2.as_ptr(), len: write_content2.len()}
+            SrcBuf {
+                buf: write_content1.as_ptr(),
+                len: write_content1.len(),
+            },
+            SrcBuf {
+                buf: write_content2.as_ptr(),
+                len: write_content2.len(),
+            },
         ];
 
         let fd = fs
@@ -651,13 +657,18 @@ mod tests {
 
         fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
 
-
         let mut read_content1 = String::from("......................");
         let mut read_content2 = String::from("......................");
-        
+
         let read_content = [
-            DstBuf {buf: read_content1.as_mut_ptr(), len: read_content1.len()},
-            DstBuf {buf: read_content2.as_mut_ptr(), len: read_content2.len()}
+            DstBuf {
+                buf: read_content1.as_mut_ptr(),
+                len: read_content1.len(),
+            },
+            DstBuf {
+                buf: read_content2.as_mut_ptr(),
+                len: read_content2.len(),
+            },
         ];
 
         fs.read_vec(fd, &read_content).unwrap();
@@ -676,17 +687,24 @@ mod tests {
 
         let write_content1 = "This is a sample file content.";
         let write_content2 = "1234567890";
-        
+
         let write_content = [
-            SrcBuf {buf: write_content1.as_ptr(), len: write_content1.len()},
-            SrcBuf {buf: write_content2.as_ptr(), len: write_content2.len()}
+            SrcBuf {
+                buf: write_content1.as_ptr(),
+                len: write_content1.len(),
+            },
+            SrcBuf {
+                buf: write_content2.as_ptr(),
+                len: write_content2.len(),
+            },
         ];
 
         let fd = fs
             .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
             .unwrap();
 
-        fs.write_vec_with_offset(fd, write_content.as_ref(), 2).unwrap();
+        fs.write_vec_with_offset(fd, write_content.as_ref(), 2)
+            .unwrap();
 
         let meta = fs.metadata(fd).unwrap();
         assert_eq!(meta.size, 42);
@@ -695,10 +713,16 @@ mod tests {
 
         let mut read_content1 = String::from("......................");
         let mut read_content2 = String::from("......................");
-        
+
         let read_content = [
-            DstBuf {buf: read_content1.as_mut_ptr(), len: read_content1.len()},
-            DstBuf {buf: read_content2.as_mut_ptr(), len: read_content2.len()}
+            DstBuf {
+                buf: read_content1.as_mut_ptr(),
+                len: read_content1.len(),
+            },
+            DstBuf {
+                buf: read_content2.as_mut_ptr(),
+                len: read_content2.len(),
+            },
         ];
 
         fs.read_vec_with_offset(fd, &read_content, 1).unwrap();
@@ -708,7 +732,6 @@ mod tests {
 
         fs.close(fd).unwrap();
     }
-
 
     #[test]
     fn seek_and_write_transient() {
@@ -758,7 +781,7 @@ mod tests {
         );
 
         fs.close(fd).unwrap();
-    }    
+    }
 
     #[test]
     fn create_and_remove_file() {
@@ -853,7 +876,7 @@ mod tests {
 
         assert!(pos1 == 5);
         assert!(pos2 == 0);
-        
+
         fs.renumber(fd1, fd2).unwrap();
 
         let pos2_renumbered = fs.tell(fd2).unwrap();
@@ -879,7 +902,7 @@ mod tests {
         let pos1 = fs.tell(fd1).unwrap();
 
         assert!(pos1 == 5);
-        
+
         let fd2 = 100;
 
         fs.renumber(fd1, fd2).unwrap();
@@ -895,7 +918,6 @@ mod tests {
 
     #[test]
     fn set_modified_set_accessed_time() {
-
         let mut fs = test_fs();
         let dir = fs.root_fd();
 
@@ -918,12 +940,10 @@ mod tests {
 
         assert_eq!(metadata.size, 5);
         assert_eq!(metadata.file_type, FileType::RegularFile);
-
-    }    
+    }
 
     #[test]
     fn set_stat_get_stat() {
-
         let mut fs = test_fs();
         let dir = fs.root_fd();
 
@@ -946,5 +966,5 @@ mod tests {
         let (_, stat2) = fs.get_stat(fd1).unwrap();
 
         assert_eq!(stat2.flags, FdFlags::APPEND);
-    }        
+    }
 }

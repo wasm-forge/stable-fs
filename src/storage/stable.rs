@@ -32,13 +32,21 @@ pub struct StableStorage<M: Memory> {
 }
 
 impl<M: Memory> StableStorage<M> {
-
     pub fn new(memory: M) -> Self {
-        Self::new_with_memory_indices(memory, METADATA_MEMORY_INDEX, DIRENTRY_MEMORY_INDEX, FILECHUNK_MEMORY_INDEX)
+        Self::new_with_memory_indices(
+            memory,
+            METADATA_MEMORY_INDEX,
+            DIRENTRY_MEMORY_INDEX,
+            FILECHUNK_MEMORY_INDEX,
+        )
     }
 
-    pub fn new_with_memory_indices(memory: M, metadata_id: MemoryId, direntry_id: MemoryId, filechunk_id: MemoryId) -> Self {
-
+    pub fn new_with_memory_indices(
+        memory: M,
+        metadata_id: MemoryId,
+        direntry_id: MemoryId,
+        filechunk_id: MemoryId,
+    ) -> Self {
         let memory_manager = MemoryManager::init(memory);
 
         let mut result = Self {
@@ -70,7 +78,7 @@ impl<M: Memory> StableStorage<M> {
         }
 
         result
-    }    
+    }
 }
 
 impl<M: Memory> Storage for StableStorage<M> {

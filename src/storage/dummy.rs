@@ -1,23 +1,25 @@
-
 use crate::error::Error;
 
-use super::{Storage, types::{Node, DirEntryIndex, DirEntry, Metadata, FileChunkIndex, FileSize}};
+use super::{
+    types::{DirEntry, DirEntryIndex, FileChunkIndex, FileSize, Metadata, Node},
+    Storage,
+};
 
-pub struct DummyStorage {
-}
+pub struct DummyStorage {}
 
 impl DummyStorage {
-
     pub fn new() -> Self {
-        Self {
-
-        }
+        Self {}
     }
+}
 
+impl Default for DummyStorage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Storage for DummyStorage {
-
     fn root_node(&self) -> Node {
         panic!("Not supported")
     }
@@ -29,7 +31,7 @@ impl Storage for DummyStorage {
     fn get_version(&self) -> u32 {
         0
     }
-    
+
     fn get_metadata(&self, _node: Node) -> Result<Metadata, Error> {
         panic!("Not supported")
     }
@@ -64,7 +66,13 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn write_filechunk(&mut self, _node: Node, _index: FileChunkIndex, _offset: FileSize, _buf: &[u8]) {
+    fn write_filechunk(
+        &mut self,
+        _node: Node,
+        _index: FileChunkIndex,
+        _offset: FileSize,
+        _buf: &[u8],
+    ) {
         panic!("Not supported")
     }
 
@@ -73,12 +81,11 @@ impl Storage for DummyStorage {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
-    use crate::storage::types::{FileType, Times};
     use super::*;
+    use crate::storage::types::{FileType, Times};
 
     #[test]
     #[should_panic]
@@ -99,14 +106,13 @@ mod tests {
         )
     }
 
-
     #[test]
     #[should_panic]
     fn get_metadata_panic() {
         let storage = DummyStorage::new();
 
         let _ = storage.get_metadata(0u64);
-    }  
+    }
 
     #[test]
     #[should_panic]
@@ -115,9 +121,7 @@ mod tests {
         let node = storage.new_node();
 
         let _ = storage.rm_metadata(node);
-    }   
-
-
+    }
 
     #[test]
     #[should_panic]
@@ -132,7 +136,6 @@ mod tests {
         let storage = DummyStorage::new();
         storage.root_node();
     }
-
 
     #[test]
     fn get_version_panic() {
@@ -181,5 +184,4 @@ mod tests {
         let mut storage = DummyStorage::new();
         storage.rm_filechunk(0, 0);
     }
-
 }
