@@ -1,6 +1,6 @@
 [package]
 name = "stable-fs"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "A Simple File system implementing WASI endpoints and using the stable structures of the Internet Computer"
 keywords = ["ic", "internet-computer", "file-system"]
@@ -8,8 +8,8 @@ license = "MIT"
 
 [dependencies]
 bitflags = "2.3.1"
-ic-cdk = "0.8"
-ic-stable-structures = "0.5.4"
+ic-cdk = "0.12.1"
+ic-stable-structures = "0.6.2"
 serde = "1.0.164"
 serde_bytes = "0.11"
 ciborium = "0.2.1"

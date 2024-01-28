@@ -1,5 +1,5 @@
 use crate::error::Error;
-use ic_stable_structures::BoundedStorable;
+use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
 pub const FILE_CHUNK_SIZE: usize = 4096;
@@ -39,11 +39,9 @@ impl ic_stable_structures::Storable for FileChunk {
             bytes: bytes.as_ref().try_into().unwrap(),
         }
     }
-}
 
-impl ic_stable_structures::BoundedStorable for FileChunk {
-    const MAX_SIZE: u32 = FILE_CHUNK_SIZE as u32;
-    const IS_FIXED_SIZE: bool = true;
+    const BOUND: Bound = Bound::Bounded { max_size: FILE_CHUNK_SIZE as u32, is_fixed_size: true };
+
 }
 
 // Contains metadata of a node.
@@ -58,25 +56,39 @@ pub struct Metadata {
     pub last_dir_entry: Option<DirEntryIndex>,
 }
 
+// This value was obtained by printing `Storable::to_bytes().len()`,
+// which is 140 and rounding it up to 144.
+const MAX_META_SIZE: u32 = 144;
+
 impl ic_stable_structures::Storable for Metadata {
+
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        let mut buf = vec![];
+        let mut buf = vec![0u8; MAX_META_SIZE as usize];
+
+        unsafe {
+            buf.set_len(0)
+        }
+
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-        assert!(Self::MAX_SIZE >= buf.len() as u32, "Metadata size assertion fails: Self::MAX_SIZE = {}, buf.len() = {}", Self::MAX_SIZE, buf.len());
+
+        unsafe {
+            buf.set_len(MAX_META_SIZE as usize)
+        }
+
+        assert!(MAX_META_SIZE >= buf.len() as u32, "Metadata size assertion fails: MAX_META_SIZE = {}, buf.len() = {}", MAX_META_SIZE, buf.len());
         std::borrow::Cow::Owned(buf)
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
         ciborium::de::from_reader(bytes.as_ref()).unwrap()
     }
+
+    const BOUND: Bound = Bound::Bounded {
+        max_size: MAX_META_SIZE,
+        is_fixed_size: true,
+    };
 }
 
-impl ic_stable_structures::BoundedStorable for Metadata {
-    // This value was obtained by printing `Storable::to_bytes().len()`,
-    // which is 140 and rounding it up to 144.
-    const MAX_SIZE: u32 = 144;
-    const IS_FIXED_SIZE: bool = true;
-}
 
 // The type of a node.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,22 +199,39 @@ pub struct DirEntry {
     pub prev_entry: Option<DirEntryIndex>,
 }
 
+// This value was obtained by printing `DirEntry::to_bytes().len()`,
+// which is 308 and rounding it up to 320.
+pub const MAX_DIR_ENTRY_SIZE: u32 = 320;
+
+
 impl ic_stable_structures::Storable for DirEntry {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        let mut buf = vec![];
+        let mut buf = vec![0; MAX_DIR_ENTRY_SIZE as usize];
+
+        unsafe {
+            buf.set_len(0)
+        }
+
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-        assert!(Self::MAX_SIZE >= buf.len() as u32, "DirEntry size assertion fails: Self::MAX_SIZE = {}, buf.len() = {}", Self::MAX_SIZE, buf.len());
+
+        unsafe {
+            buf.set_len(MAX_DIR_ENTRY_SIZE as usize)
+        }
+
+/*         while buf.len() < MAX_DIR_ENTRY_SIZE as usize {
+            buf.push(0);
+        }*/
+
+        assert!(MAX_DIR_ENTRY_SIZE >= buf.len() as u32, "DirEntry size assertion fails: MAX_DIR_ENTRY_SIZE = {}, buf.len() = {}", MAX_DIR_ENTRY_SIZE, buf.len());
         std::borrow::Cow::Owned(buf)
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
         ciborium::de::from_reader(bytes.as_ref()).unwrap()
     }
-}
 
-impl ic_stable_structures::BoundedStorable for DirEntry {
-    // This value was obtained by printing `DirEntry::to_bytes().len()`,
-    // which is 308 and rounding it up to 320.
-    const MAX_SIZE: u32 = 320;
-    const IS_FIXED_SIZE: bool = true;
+    const BOUND: ic_stable_structures::storable::Bound = ic_stable_structures::storable::Bound::Bounded {
+        max_size: MAX_DIR_ENTRY_SIZE,
+        is_fixed_size: true,
+    };
 }
