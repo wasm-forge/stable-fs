@@ -203,8 +203,11 @@ impl Dir {
 
         while let Some(index) = next_index {
             if let Ok(dir_entry) = storage.get_direntry(self.node, index) {
-                if &dir_entry.name.bytes[0..path.len()] == path {
-                    return Ok(index);
+
+                if dir_entry.name.length as usize == path.len() {
+                    if &dir_entry.name.bytes[0..path.len()] == path {
+                        return Ok(index);
+                    }
                 }
 
                 next_index = dir_entry.next_entry;
@@ -441,6 +444,32 @@ mod tests {
 
         assert_eq!(meta.first_dir_entry, None);
         assert_eq!(meta.last_dir_entry, None);
+    }
+
+    #[test]
+    fn find_entry_index_finds_by_exact_name() {
+        let mut fs = test_fs();
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .unwrap();
+
+        fs.close(fd).unwrap();
+
+        let res = fs.remove_file(fs.root_fd(), "test2.tx");
+
+        assert!(res.is_err());
+
+        let meta = fs.metadata(fs.root_fd()).unwrap();
+        assert_eq!(meta.size, 1);
+
+        fs.remove_file(fs.root_fd(), "test2.txt").unwrap();
+
+        let meta = fs.metadata(fs.root_fd()).unwrap();
+        assert_eq!(meta.size, 0);
+
     }
 
     #[test]
