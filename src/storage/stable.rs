@@ -201,14 +201,17 @@ mod tests {
             7,
             DirEntry {
                 node,
-                name: FileName::new("test").unwrap(),
+                name: FileName::new("test".as_bytes()).unwrap(),
                 next_entry: Some(42),
                 prev_entry: Some(24),
             },
         );
         let direntry = storage.get_direntry(node, 7).unwrap();
         assert_eq!(direntry.node, node);
-        assert_eq!(direntry.name.bytes, FileName::new("test").unwrap().bytes);
+        assert_eq!(
+            direntry.name.bytes,
+            FileName::new("test".as_bytes()).unwrap().bytes
+        );
         assert_eq!(direntry.next_entry, Some(42));
         assert_eq!(direntry.prev_entry, Some(24));
     }

@@ -3,6 +3,7 @@ pub enum Error {
     NotFound,
     InvalidOffset,
     InvalidFileType,
+    InvalidFileName,
     InvalidFileDescriptor,
     InvalidBufferLength,
     InvalidOpenFlags,

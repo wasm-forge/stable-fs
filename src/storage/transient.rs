@@ -116,10 +116,7 @@ impl Storage for TransientStorage {
 
     // Insert of update a selected file chunk with the data provided in buffer.
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
-        let entry = self
-            .filechunk
-            .entry((node, index))
-            .or_default();
+        let entry = self.filechunk.entry((node, index)).or_default();
         entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
     }
 

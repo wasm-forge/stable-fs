@@ -4,6 +4,7 @@ use crate::{
         dir::Dir,
         fd::{FdEntry, FdTable},
         file::File,
+        structure_helpers::{create_hard_link, find_node, rm_dir_entry},
     },
     storage::{
         types::{DirEntry, DirEntryIndex, FileSize, FileType, Metadata, Node},
@@ -21,7 +22,7 @@ pub use crate::runtime::types::{
 pub struct FileSystem {
     root_fd: Fd,
     fd_table: FdTable,
-    storage: Box<dyn Storage>,
+    pub storage: Box<dyn Storage>,
 }
 
 impl FileSystem {
@@ -281,7 +282,7 @@ impl FileSystem {
     // Get metadata of a file with name `path` in a given folder.
     pub fn open_metadata(&self, parent: Fd, path: &str) -> Result<Metadata, Error> {
         let dir = self.get_dir(parent)?;
-        let node = dir.find_node(path, self.storage.as_ref())?;
+        let node = find_node(dir.node, path, self.storage.as_ref())?;
         self.storage.get_metadata(node)
     }
 
@@ -296,7 +297,7 @@ impl FileSystem {
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
 
-        match dir.find_node(path, self.storage.as_ref()) {
+        match find_node(dir.node, path, self.storage.as_ref()) {
             Ok(node) => self.open(node, stat, flags),
             Err(Error::NotFound) => {
                 if !flags.contains(OpenFlags::CREATE) {
@@ -393,9 +394,9 @@ impl FileSystem {
         let src_dir = self.get_dir(old_fd)?;
         let dst_dir = self.get_dir(new_fd)?;
 
-        dst_dir.create_hard_link(new_path, &src_dir, old_path, false, self.storage.as_mut())?;
+        create_hard_link(dst_dir.node, new_path, src_dir.node, old_path, false, self.storage.as_mut())?;
 
-        let node = dst_dir.find_node(new_path, self.storage.as_ref())?;
+        let node = find_node(dst_dir.node, new_path, self.storage.as_ref())?;
 
         self.open(node, FdStat::default(), OpenFlags::empty())
     }
@@ -412,10 +413,11 @@ impl FileSystem {
         let dst_dir = self.get_dir(new_fd)?;
 
         // create a new link
-        dst_dir.create_hard_link(new_path, &src_dir, old_path, true, self.storage.as_mut())?;
+        create_hard_link(dst_dir.node, new_path, src_dir.node, old_path, true, self.storage.as_mut())?;
 
         // now unlink the older version
-        let (node, _metadata) = src_dir.rm_entry(
+        let (node, _metadata) = rm_dir_entry(
+            src_dir.node,
             old_path,
             None,
             self.fd_table.node_refcount(),

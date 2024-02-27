@@ -172,8 +172,7 @@ impl Default for FileName {
 }
 
 impl FileName {
-    pub fn new(name: &str) -> Result<Self, Error> {
-        let name = name.as_bytes();
+    pub fn new(name: &[u8]) -> Result<Self, Error> {
         let len = name.len();
         if len > MAX_FILE_NAME {
             return Err(Error::NameTooLong);
