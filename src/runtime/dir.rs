@@ -49,7 +49,7 @@ impl Dir {
             Err(err) => return Err(err),
         }
 
-        let (node, _leaf_name) = create_path(self.node, path, FileType::Directory, ctime, storage)?;
+        let (node, _leaf_name) = create_path(self.node, path, Some(FileType::Directory), ctime, storage)?;
 
         Self::new(node, stat, storage)
     }
@@ -90,7 +90,7 @@ impl Dir {
         }
 
         let (node, _leaf_name) =
-            create_path(self.node, path, FileType::RegularFile, ctime, storage)?;
+            create_path(self.node, path, Some(FileType::RegularFile), ctime, storage)?;
 
         File::new(node, stat, storage)
     }

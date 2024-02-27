@@ -107,6 +107,7 @@ impl File {
         buf: &mut [u8],
         storage: &mut dyn Storage,
     ) -> Result<FileSize, Error> {
+
         if buf.is_empty() {
             return Ok(0 as FileSize);
         }
@@ -114,8 +115,11 @@ impl File {
         let file_size = storage.get_metadata(self.node)?.size;
         let end = (offset + buf.len() as FileSize).min(file_size);
         let chunk_infos = get_chunk_infos(offset, end);
+
         let mut read_size = 0;
+        
         for chunk in chunk_infos.into_iter() {
+
             storage.read_filechunk(
                 self.node,
                 chunk.index,

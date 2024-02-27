@@ -83,7 +83,7 @@ pub fn create_hard_link(
 
     //
     let (dir_node, leaf_name) =
-        create_path(parent_dir_node, new_path, FileType::Directory, ctime, storage)?;
+        create_path(parent_dir_node, new_path, None, ctime, storage)?;
 
     // only allow creating a hardlink on a folder if it is a part of renaming and another link will be removed
     if !is_renaming && metadata.file_type == FileType::Directory {
@@ -143,7 +143,7 @@ pub fn create_dir_entry(
 pub fn create_path<'a>(
     parent_node: Node,
     path: &'a str,
-    leaf_type: FileType,
+    leaf_type: Option<FileType>,
     ctime: u64,
     storage: &mut dyn Storage,
 ) -> Result<(Node, &'a str), Error> {
@@ -210,8 +210,10 @@ pub fn create_path<'a>(
             return Err(Error::InvalidFileType);
         }
 
-        // create new folder
-        cur_node = create_dir_entry(parent_node, last_name.as_bytes(), leaf_type, storage, ctime)?;
+        if let Some(leaf_type) = leaf_type {
+            // create new folder
+            cur_node = create_dir_entry(parent_node, last_name.as_bytes(), leaf_type, storage, ctime)?;
+        }
     }
 
     Ok((cur_node, last_name))
@@ -397,7 +399,7 @@ mod tests {
         let (test3, _) = create_path(
             root_node,
             "test1/test2/test3",
-            FileType::Directory,
+            Some(FileType::Directory),
             43u64,
             storage,
         )
@@ -405,7 +407,7 @@ mod tests {
         let (test4, _) = create_path(
             root_node,
             "test1/test2/test4",
-            FileType::Directory,
+            Some(FileType::Directory),
             44u64,
             storage,
         )
@@ -413,7 +415,7 @@ mod tests {
         let (test6, _) = create_path(
             root_node,
             "test1/test2/test5/test6",
-            FileType::Directory,
+            Some(FileType::Directory),
             45u64,
             storage,
         )
@@ -424,7 +426,7 @@ mod tests {
         let (test7, _) = create_path(
             test1,
             "test2/test4/test7",
-            FileType::Directory,
+            Some(FileType::Directory),
             45u64,
             storage,
         )
@@ -463,7 +465,7 @@ mod tests {
         let (test3, _) = create_path(
             root_node,
             "test1/test2/test3.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             43u64,
             storage,
         )
@@ -471,7 +473,7 @@ mod tests {
         let (test4, _) = create_path(
             root_node,
             "test1/test2/test4",
-            FileType::Directory,
+            Some(FileType::Directory),
             44u64,
             storage,
         )
@@ -479,7 +481,7 @@ mod tests {
         let (test6, _) = create_path(
             root_node,
             "test1/test2/test5/test6.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             45u64,
             storage,
         )
@@ -490,7 +492,7 @@ mod tests {
         let (test7, _) = create_path(
             test1,
             "test2/test4/test7.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             45u64,
             storage,
         )
@@ -529,7 +531,7 @@ mod tests {
         create_path(
             root_node,
             "test1/test2",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             43u64,
             storage,
         )
@@ -538,7 +540,7 @@ mod tests {
         let res = create_path(
             root_node,
             "test1/test2/test4",
-            FileType::Directory,
+            Some(FileType::Directory),
             44u64,
             storage,
         );
@@ -547,7 +549,7 @@ mod tests {
         let res = create_path(
             root_node,
             "test1/test2/test4.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             44u64,
             storage,
         );
@@ -556,7 +558,7 @@ mod tests {
         let res = create_path(
             root_node,
             "test1/test2/test3/test4",
-            FileType::Directory,
+            Some(FileType::Directory),
             44u64,
             storage,
         );
@@ -565,7 +567,7 @@ mod tests {
         let res = create_path(
             root_node,
             "test1/test2/test3/test4.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             44u64,
             storage,
         );
@@ -582,7 +584,7 @@ mod tests {
         let res = create_path(
             root_node,
             "test1/sym_link.txt",
-            FileType::SymbolicLink,
+            Some(FileType::SymbolicLink),
             43u64,
             storage,
         );
@@ -599,7 +601,7 @@ mod tests {
         let (test3, _) = create_path(
             root_node,
             "test1/test2/test3.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             43u64,
             storage,
         )
@@ -607,7 +609,7 @@ mod tests {
         let (test4, _) = create_path(
             root_node,
             "test1/test2/test4",
-            FileType::Directory,
+            Some(FileType::Directory),
             44u64,
             storage,
         )
@@ -615,7 +617,7 @@ mod tests {
         let (test6, _) = create_path(
             root_node,
             "test1/test2/test5/test6.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             45u64,
             storage,
         )
@@ -626,7 +628,7 @@ mod tests {
         let (test7, _) = create_path(
             test1,
             "test2/test4/test7.txt",
-            FileType::RegularFile,
+            Some(FileType::RegularFile),
             45u64,
             storage,
         )

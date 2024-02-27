@@ -444,10 +444,12 @@ mod tests {
     use crate::{
         error::Error,
         fs::{DstBuf, FdFlags, SrcBuf},
-        runtime::types::{FdStat, OpenFlags},
+        runtime::{structure_helpers::find_node, types::{FdStat, OpenFlags}},
         storage::types::FileType,
         test_utils::{test_fs, test_fs_transient},
     };
+
+    use super::{Fd, FileSystem};
 
     #[test]
     fn get_root_info() {
@@ -969,4 +971,124 @@ mod tests {
 
         assert_eq!(stat2.flags, FdFlags::APPEND);
     }
+
+
+    fn create_test_file_with_content(fs: &mut FileSystem, parent: Fd, file_name: &str, content: Vec<String>) -> Fd {
+    
+        let file_fd = fs.create_file(parent, file_name, FdStat::default(), 0).unwrap();
+    
+        let mut src = String::from("");
+    
+        for str in content.iter() {
+            src.push_str(str.as_str());
+        }
+    
+        let bytes_written = fs.write(file_fd, src.as_bytes()).unwrap();
+    
+        assert!(bytes_written > 0);
+
+        file_fd as Fd
+    }
+
+
+    fn create_test_file(fs: &mut FileSystem, parent_fd: Fd, file_name: &str) -> Fd {
+
+        create_test_file_with_content(
+            fs,
+            parent_fd,
+            file_name,
+            vec![
+                String::from("This is a sample text."),
+                String::from("1234567890"),
+            ],
+        )
+
+    }
+
+    #[test]
+    fn test_link_seek_tell() {
+        let mut fs = test_fs();
+        let dir = fs.root_fd();
+
+        let root_fd = 3i32;
+
+        let file_name1 = String::from("file.txt");
+        let file_name2 = String::from("file_link.txt");
+        
+        let file_fd = create_test_file(&mut fs, root_fd as Fd, &file_name1);
+
+
+        let root_node = fs.storage.as_ref().root_node();
+        let node1 = find_node(root_node, &file_name1, fs.storage.as_ref()).unwrap();
+
+
+        // test seek and tell
+        let position = fs.tell(file_fd).unwrap();
+
+        assert_eq!(position, 32);
+
+        fs.seek(file_fd, 10, crate::fs::Whence::SET).unwrap();
+
+        let position_after_seek = fs.tell(file_fd).unwrap();
+
+        assert_eq!(position_after_seek, 10);
+
+        let mut buf_to_read1 = String::from("...............");
+
+        let bytes_read = fs.read(file_fd, unsafe { buf_to_read1.as_bytes_mut() }).unwrap();
+
+        assert_eq!(bytes_read, 15);
+        assert_eq!(buf_to_read1, "sample text.123");
+
+        // create link
+        fs.create_hard_link(dir, &file_name1, dir, &file_name2).unwrap();
+
+        let node2 = find_node(root_node, &file_name2, fs.storage.as_ref()).unwrap();
+
+        assert_eq!(node1, node2);
+
+        let link_file_fd = fs.open_or_create(dir, "file_link.txt", FdStat::default(), OpenFlags::empty(), 0).unwrap();
+
+        fs.seek(link_file_fd, 10, crate::fs::Whence::SET).unwrap();
+
+        let position_link = fs.tell(link_file_fd).unwrap();
+
+        assert_eq!(position_link, 10);
+
+        let mut buf_to_read1 = String::from("................");
+
+        let bytes_read = fs.read(link_file_fd, unsafe { buf_to_read1.as_bytes_mut() }).unwrap();
+
+        assert_eq!(bytes_read, 16);
+
+        assert_eq!(buf_to_read1, "sample text.1234");
+        
+    }
+
+
+    #[test]
+    fn test_renaming_with_contents() {
+        let mut fs = test_fs();
+        let root_fd = fs.root_fd();
+
+        let file_name = String::from("dir1/dir2/file.txt");
+        create_test_file(&mut fs, root_fd as Fd, &file_name);
+
+        fs.rename(root_fd, "dir1/dir2", root_fd, "dir2").unwrap();
+
+        let file_fd = fs.open_or_create(root_fd, "dir2/file.txt", FdStat::default(), OpenFlags::empty(), 0).unwrap();
+
+        fs.seek(file_fd, 10, crate::fs::Whence::SET).unwrap();
+
+        let mut buf_to_read1 = String::from("................");
+
+        let bytes_read = fs.read(file_fd, unsafe { buf_to_read1.as_bytes_mut() }).unwrap();
+
+        assert_eq!(bytes_read, 16);
+
+        assert_eq!(buf_to_read1, "sample text.1234");
+        
+    }
+
+
 }
