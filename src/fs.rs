@@ -1067,7 +1067,7 @@ mod tests {
 
 
     #[test]
-    fn test_renaming_with_contents() {
+    fn test_renaming_folder_with_contents() {
         let mut fs = test_fs();
         let root_fd = fs.root_fd();
 
