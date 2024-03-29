@@ -20,7 +20,6 @@ fn find_node_with_index(
     path: &str,
     storage: &dyn Storage,
 ) -> Result<EntryFindResult, Error> {
-    
     let parts = path.split('/');
 
     let mut parent_dir_node = parent_dir_node;
@@ -82,8 +81,7 @@ pub fn create_hard_link(
     let ctime = metadata.times.created;
 
     //
-    let (dir_node, leaf_name) =
-        create_path(parent_dir_node, new_path, None, ctime, storage)?;
+    let (dir_node, leaf_name) = create_path(parent_dir_node, new_path, None, ctime, storage)?;
 
     // only allow creating a hardlink on a folder if it is a part of renaming and another link will be removed
     if !is_renaming && metadata.file_type == FileType::Directory {
@@ -97,7 +95,6 @@ pub fn create_hard_link(
 
     Ok(())
 }
-
 
 pub fn create_dir_entry(
     parent_dir_node: Node,
@@ -212,7 +209,8 @@ pub fn create_path<'a>(
 
         if let Some(leaf_type) = leaf_type {
             // create new folder
-            cur_node = create_dir_entry(parent_node, last_name.as_bytes(), leaf_type, storage, ctime)?;
+            cur_node =
+                create_dir_entry(parent_node, last_name.as_bytes(), leaf_type, storage, ctime)?;
         }
     }
 
@@ -376,7 +374,6 @@ pub fn rm_dir_entry(
 
     Ok((removed_dir_entry_node, removed_metadata))
 }
-
 
 #[cfg(test)]
 mod tests {

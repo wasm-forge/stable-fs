@@ -58,26 +58,10 @@ pub struct Metadata {
     pub last_dir_entry: Option<DirEntryIndex>,
 }
 
-// This value was obtained by printing `Storable::to_bytes().len()`,
-// which is 140 and rounding it up to 144.
-const MAX_META_SIZE: u32 = 144;
-
 impl ic_stable_structures::Storable for Metadata {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        let mut buf = vec![0u8; MAX_META_SIZE as usize];
-
-        unsafe { buf.set_len(0) }
-
+        let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-
-        unsafe { buf.set_len(MAX_META_SIZE as usize) }
-
-        assert!(
-            MAX_META_SIZE >= buf.len() as u32,
-            "Metadata size assertion fails: MAX_META_SIZE = {}, buf.len() = {}",
-            MAX_META_SIZE,
-            buf.len()
-        );
         std::borrow::Cow::Owned(buf)
     }
 
@@ -85,10 +69,7 @@ impl ic_stable_structures::Storable for Metadata {
         ciborium::de::from_reader(bytes.as_ref()).unwrap()
     }
 
-    const BOUND: Bound = Bound::Bounded {
-        max_size: MAX_META_SIZE,
-        is_fixed_size: true,
-    };
+    const BOUND: Bound = Bound::Unbounded;
 }
 
 // The type of a node.
@@ -199,26 +180,10 @@ pub struct DirEntry {
     pub prev_entry: Option<DirEntryIndex>,
 }
 
-// This value was obtained by printing `DirEntry::to_bytes().len()`,
-// which is 308 and rounding it up to 320.
-pub const MAX_DIR_ENTRY_SIZE: u32 = 320;
-
 impl ic_stable_structures::Storable for DirEntry {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        let mut buf = vec![0; MAX_DIR_ENTRY_SIZE as usize];
-
-        unsafe { buf.set_len(0) }
-
+        let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
-
-        unsafe { buf.set_len(MAX_DIR_ENTRY_SIZE as usize) }
-
-        assert!(
-            MAX_DIR_ENTRY_SIZE >= buf.len() as u32,
-            "DirEntry size assertion fails: MAX_DIR_ENTRY_SIZE = {}, buf.len() = {}",
-            MAX_DIR_ENTRY_SIZE,
-            buf.len()
-        );
         std::borrow::Cow::Owned(buf)
     }
 
@@ -226,9 +191,5 @@ impl ic_stable_structures::Storable for DirEntry {
         ciborium::de::from_reader(bytes.as_ref()).unwrap()
     }
 
-    const BOUND: ic_stable_structures::storable::Bound =
-        ic_stable_structures::storable::Bound::Bounded {
-            max_size: MAX_DIR_ENTRY_SIZE,
-            is_fixed_size: true,
-        };
+    const BOUND: ic_stable_structures::storable::Bound = Bound::Unbounded;
 }
