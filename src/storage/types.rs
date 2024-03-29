@@ -58,7 +58,6 @@ pub struct Metadata {
     pub last_dir_entry: Option<DirEntryIndex>,
 }
 
-
 impl ic_stable_structures::Storable for Metadata {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         let mut buf = vec![];

@@ -394,7 +394,14 @@ impl FileSystem {
         let src_dir = self.get_dir(old_fd)?;
         let dst_dir = self.get_dir(new_fd)?;
 
-        create_hard_link(dst_dir.node, new_path, src_dir.node, old_path, false, self.storage.as_mut())?;
+        create_hard_link(
+            dst_dir.node,
+            new_path,
+            src_dir.node,
+            old_path,
+            false,
+            self.storage.as_mut(),
+        )?;
 
         let node = find_node(dst_dir.node, new_path, self.storage.as_ref())?;
 
@@ -413,7 +420,14 @@ impl FileSystem {
         let dst_dir = self.get_dir(new_fd)?;
 
         // create a new link
-        create_hard_link(dst_dir.node, new_path, src_dir.node, old_path, true, self.storage.as_mut())?;
+        create_hard_link(
+            dst_dir.node,
+            new_path,
+            src_dir.node,
+            old_path,
+            true,
+            self.storage.as_mut(),
+        )?;
 
         // now unlink the older version
         let (node, _metadata) = rm_dir_entry(
@@ -444,7 +458,10 @@ mod tests {
     use crate::{
         error::Error,
         fs::{DstBuf, FdFlags, SrcBuf},
-        runtime::{structure_helpers::find_node, types::{FdStat, OpenFlags}},
+        runtime::{
+            structure_helpers::find_node,
+            types::{FdStat, OpenFlags},
+        },
         storage::types::FileType,
         test_utils::{test_fs, test_fs_transient},
     };
@@ -972,27 +989,30 @@ mod tests {
         assert_eq!(stat2.flags, FdFlags::APPEND);
     }
 
+    fn create_test_file_with_content(
+        fs: &mut FileSystem,
+        parent: Fd,
+        file_name: &str,
+        content: Vec<String>,
+    ) -> Fd {
+        let file_fd = fs
+            .create_file(parent, file_name, FdStat::default(), 0)
+            .unwrap();
 
-    fn create_test_file_with_content(fs: &mut FileSystem, parent: Fd, file_name: &str, content: Vec<String>) -> Fd {
-    
-        let file_fd = fs.create_file(parent, file_name, FdStat::default(), 0).unwrap();
-    
         let mut src = String::from("");
-    
+
         for str in content.iter() {
             src.push_str(str.as_str());
         }
-    
+
         let bytes_written = fs.write(file_fd, src.as_bytes()).unwrap();
-    
+
         assert!(bytes_written > 0);
 
         file_fd as Fd
     }
 
-
     fn create_test_file(fs: &mut FileSystem, parent_fd: Fd, file_name: &str) -> Fd {
-
         create_test_file_with_content(
             fs,
             parent_fd,
@@ -1002,7 +1022,6 @@ mod tests {
                 String::from("1234567890"),
             ],
         )
-
     }
 
     #[test]
@@ -1014,13 +1033,11 @@ mod tests {
 
         let file_name1 = String::from("file.txt");
         let file_name2 = String::from("file_link.txt");
-        
-        let file_fd = create_test_file(&mut fs, root_fd as Fd, &file_name1);
 
+        let file_fd = create_test_file(&mut fs, root_fd as Fd, &file_name1);
 
         let root_node = fs.storage.as_ref().root_node();
         let node1 = find_node(root_node, &file_name1, fs.storage.as_ref()).unwrap();
-
 
         // test seek and tell
         let position = fs.tell(file_fd).unwrap();
@@ -1035,19 +1052,30 @@ mod tests {
 
         let mut buf_to_read1 = String::from("...............");
 
-        let bytes_read = fs.read(file_fd, unsafe { buf_to_read1.as_bytes_mut() }).unwrap();
+        let bytes_read = fs
+            .read(file_fd, unsafe { buf_to_read1.as_bytes_mut() })
+            .unwrap();
 
         assert_eq!(bytes_read, 15);
         assert_eq!(buf_to_read1, "sample text.123");
 
         // create link
-        fs.create_hard_link(dir, &file_name1, dir, &file_name2).unwrap();
+        fs.create_hard_link(dir, &file_name1, dir, &file_name2)
+            .unwrap();
 
         let node2 = find_node(root_node, &file_name2, fs.storage.as_ref()).unwrap();
 
         assert_eq!(node1, node2);
 
-        let link_file_fd = fs.open_or_create(dir, "file_link.txt", FdStat::default(), OpenFlags::empty(), 0).unwrap();
+        let link_file_fd = fs
+            .open_or_create(
+                dir,
+                "file_link.txt",
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
 
         fs.seek(link_file_fd, 10, crate::fs::Whence::SET).unwrap();
 
@@ -1057,14 +1085,14 @@ mod tests {
 
         let mut buf_to_read1 = String::from("................");
 
-        let bytes_read = fs.read(link_file_fd, unsafe { buf_to_read1.as_bytes_mut() }).unwrap();
+        let bytes_read = fs
+            .read(link_file_fd, unsafe { buf_to_read1.as_bytes_mut() })
+            .unwrap();
 
         assert_eq!(bytes_read, 16);
 
         assert_eq!(buf_to_read1, "sample text.1234");
-        
     }
-
 
     #[test]
     fn test_renaming_folder_with_contents() {
@@ -1076,19 +1104,73 @@ mod tests {
 
         fs.rename(root_fd, "dir1/dir2", root_fd, "dir2").unwrap();
 
-        let file_fd = fs.open_or_create(root_fd, "dir2/file.txt", FdStat::default(), OpenFlags::empty(), 0).unwrap();
+        let file_fd = fs
+            .open_or_create(
+                root_fd,
+                "dir2/file.txt",
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
 
         fs.seek(file_fd, 10, crate::fs::Whence::SET).unwrap();
 
         let mut buf_to_read1 = String::from("................");
 
-        let bytes_read = fs.read(file_fd, unsafe { buf_to_read1.as_bytes_mut() }).unwrap();
+        let bytes_read = fs
+            .read(file_fd, unsafe { buf_to_read1.as_bytes_mut() })
+            .unwrap();
 
         assert_eq!(bytes_read, 16);
 
         assert_eq!(buf_to_read1, "sample text.1234");
-        
     }
 
+    #[test]
+    fn write_and_read_25_files() {
+        let mut fs = test_fs();
+        let root_fd = fs.root_fd();
+        const SIZE_OF_FILE: usize = 1_000_000;
 
+        // write files
+        let dir_name = "auto";
+        let file_count: u8 = 25;
+
+        for i in 0..file_count {
+            let path = format!("{}/my_file_{}.txt", dir_name, i);
+            println!("Writing to {}", path);
+
+            let write_buff = [i; SIZE_OF_FILE];
+
+            let file_fd = fs
+                .create_file(root_fd, path.as_str(), FdStat::default(), u64::MAX)
+                .unwrap();
+            fs.write(file_fd, &write_buff).unwrap();
+        }
+
+        // read files
+
+        for i in 0..file_count {
+            let path = format!("{}/my_file_{}.txt", dir_name, i);
+            println!("Reading {}", path);
+
+            let mut read_buf = [1, 1, 1];
+
+            let file_fd = fs
+                .open_or_create(
+                    root_fd,
+                    path.as_str(),
+                    FdStat::default(),
+                    OpenFlags::empty(),
+                    0,
+                )
+                .unwrap();
+
+            let num_bytes = fs.read(file_fd, &mut read_buf).unwrap();
+            ic_cdk::println!("Read {} bytes {}", num_bytes, path);
+        }
+
+        // This test should not crash with an error
+    }
 }

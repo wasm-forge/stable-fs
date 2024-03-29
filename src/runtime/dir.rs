@@ -49,7 +49,8 @@ impl Dir {
             Err(err) => return Err(err),
         }
 
-        let (node, _leaf_name) = create_path(self.node, path, Some(FileType::Directory), ctime, storage)?;
+        let (node, _leaf_name) =
+            create_path(self.node, path, Some(FileType::Directory), ctime, storage)?;
 
         Self::new(node, stat, storage)
     }
@@ -447,8 +448,6 @@ mod tests {
         assert!(res.is_ok());
     }
 
-
-
     #[test]
     fn rename_a_file_using_path_with_subfolders() {
         let mut fs = test_fs();
@@ -527,8 +526,6 @@ mod tests {
         assert!(res.is_ok());
     }
 
-
-
     #[test]
     fn rename_a_folder_using_subfolders() {
         let mut fs = test_fs();
@@ -561,7 +558,5 @@ mod tests {
         let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 
         assert!(res.is_ok());
-
-
-    }    
+    }
 }
