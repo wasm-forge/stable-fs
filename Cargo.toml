@@ -5,6 +5,7 @@ edition = "2021"
 description = "A Simple File system implementing WASI endpoints and using the stable structures of the Internet Computer"
 keywords = ["ic", "internet-computer", "file-system"]
 license = "MIT"
+repository = "https://github.com/wasm-forge/stable-fs"
 
 [dependencies]
 bitflags = "2.3.1"
