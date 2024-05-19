@@ -19,11 +19,11 @@ jobs:
     - name: Install Rust
       run: rustup update stable
 
+    - name: Build test projects
+      run: ./build_tests.sh
+
     - name: Install pocket-ic
       run: src/tests/download-pocket-ic.sh
-
-    - name: Build test projects
-      run: build_tests.sh
 
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
