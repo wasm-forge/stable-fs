@@ -18,6 +18,10 @@ jobs:
     - uses: actions/checkout@v4
     - name: Install Rust
       run: rustup update stable
+
+    - name: Install pocket-ic
+      run: src/tests/download-pocket-ic.sh
+
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
       

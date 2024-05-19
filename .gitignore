@@ -1,5 +1,7 @@
 target
 
+pocket-ic
+
 **/*.rs.bk
 
 /.vscode/
