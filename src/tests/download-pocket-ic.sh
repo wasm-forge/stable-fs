@@ -1,6 +1,6 @@
 #!/bin/bash
 
-POCKET_IC_VERSION="3.0.1"
+POCKET_IC_VERSION="4.0.0"
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   PLATFORM=linux
@@ -22,3 +22,4 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 export POCKET_IC_BIN=$(pwd)/pocket-ic
+
