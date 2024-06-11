@@ -65,3 +65,26 @@ fn test_hello() {
 
 
 }
+
+
+#[test]
+fn test_writing_10mb() {
+
+     setup_test_projects();
+
+    let (pic, backend_canister) = setup();
+
+    let Ok(WasmResult::Reply(response)) = pic.query_call(
+        backend_canister,
+        Principal::anonymous(),
+        "write_mb_text",
+        candid::encode_args(("test.txt", 10u64)).unwrap(),
+    ) else {
+        panic!("Expected reply");
+    };
+
+    // get some return value
+    let _result: u64 = decode_one(&response).unwrap();
+
+    
+}
