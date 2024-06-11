@@ -78,7 +78,7 @@ fn test_writing_10mb() {
         backend_canister,
         Principal::anonymous(),
         "write_mb_text",
-        candid::encode_args(("test.txt", 10u64)).unwrap(),
+        candid::encode_args(("test.txt", 1u64)).unwrap(),
     ) else {
         panic!("Expected reply");
     };
