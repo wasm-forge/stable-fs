@@ -2,8 +2,8 @@ use candid::{decode_one, encode_one, Principal};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
 
-const BACKEND_WASM: &str = "src/tests/demo_test/target/wasm32-unknown-unknown/release/demo_test_backend.wasm";
-const BACKEND_WASM_UPGRADED: &str = "src/tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend.wasm";
+const BACKEND_WASM: &str = "src/tests/demo_test/target/wasm32-unknown-unknown/release/demo_test_backend.zip";
+const BACKEND_WASM_UPGRADED: &str = "src/tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend.zip";
 
 fn setup_test_projects() {
     use std::process::Command;
