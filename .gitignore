@@ -1,4 +1,10 @@
-/target/
+target
+
+pocket-ic
+
+wasi2ic
+
+*.wasm
 
 **/*.rs.bk
 
