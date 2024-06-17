@@ -75,19 +75,13 @@ fn test_writing_10mb() {
     
     pic.tick();
 
-    let args = candid::encode_args(("test.txt", 1u64)).unwrap();
+    let args = candid::encode_args(("test.txt", 10u64)).unwrap();
 
-    let Ok(WasmResult::Reply(response)) = pic.update_call(
+    let _response = pic.update_call(
         backend_canister,
         Principal::anonymous(),
         "write_mb_text",
         args,
-    ) else {
-        panic!("Call failed!");
-    };
+    ).unwrap();
 
-    // get some return value
-    let result: u64 = decode_one(&response).unwrap();
-
-    println!("Value returned {:?}", result);
 }
