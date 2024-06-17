@@ -83,7 +83,7 @@ fn write_mb_text(filename: String, mb_size: usize) -> u64 {
 #[ic_cdk::update]
 fn write_text(filename: String, text: String, times: usize) -> u64 {
 
-    let stime = ic_cdk::api::instruction_counter();    
+    let stime = ic_cdk::api::instruction_counter();
 
     FS.with(|fs| {
 

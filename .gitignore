@@ -2,6 +2,10 @@ target
 
 pocket-ic
 
+wasi2ic
+
+*.wasm
+
 **/*.rs.bk
 
 /.vscode/

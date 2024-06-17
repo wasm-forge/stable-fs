@@ -3,7 +3,8 @@
     "demo_test_backend": {
       "candid": "src/demo_test_backend/demo_test_backend.did",
       "package": "demo_test_backend",
-      "type": "rust"
+      "type": "rust",
+      "optimize": "size"
     }
   },
   "defaults": {

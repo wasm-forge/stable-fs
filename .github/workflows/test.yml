@@ -25,6 +25,9 @@ jobs:
     - name: Install pocket-ic
       run: src/tests/download-pocket-ic.sh
 
+    - name: Install wasi2ic
+      run: src/tests/download-wasi2ic.sh
+
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
       
