@@ -1,6 +1,6 @@
 use std::{cell::RefCell, str::FromStr};
 
-use stable_fs::{fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence}, storage::{stable::StableStorage, types::MAX_FILE_NAME}};
+use stable_fs::{fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence}, storage::stable::StableStorage};
 use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMemoryImpl, Memory};
 
 
@@ -255,7 +255,7 @@ fn create_depth_folders(path: String, count: usize) -> String {
             dir_name = format!("{}/d{}", dir_name, num);
         }
 
-        fs.create_dir(root_dir, dir_name.as_str(), FdStat::default(), 0);
+        fs.create_dir(root_dir, dir_name.as_str(), FdStat::default(), 0).unwrap();
 
         format!("{}/{}", path, dir_name)
 
