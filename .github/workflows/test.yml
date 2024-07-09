@@ -19,6 +19,9 @@ jobs:
     - name: Install Rust
       run: rustup update stable
 
+    - name: Install target
+      run: rustup target add wasm32-unknown-unknown
+
     - name: Build test projects
       run: ./build_tests.sh
 
