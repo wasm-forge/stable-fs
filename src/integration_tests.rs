@@ -2,8 +2,7 @@ use candid::{decode_one, encode_one, Principal};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
 
-const BACKEND_WASM: &str =
-    "src/tests/demo_test/target/wasm32-unknown-unknown/release/demo_test_backend_small.wasm";
+const BACKEND_WASM: &str = "src/tests/fs_benchmark_test/target/wasm32-unknown-unknown/release/fs_benchmark_test_backend_small.wasm";
 const BACKEND_WASM_UPGRADED: &str = "src/tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend.wasm";
 
 fn setup_test_projects() {
@@ -24,17 +23,16 @@ fn setup() -> (PocketIc, Principal) {
 
     pic.install_canister(backend_canister, wasm, vec![], None);
 
+    pic.tick();
+
     (pic, backend_canister)
 }
 
 #[test]
 fn test_hello() {
-
     setup_test_projects();
 
     let (pic, backend_canister) = setup();
-
-    pic.tick();
 
     let Ok(WasmResult::Reply(response)) = pic.query_call(
         backend_canister,
@@ -68,20 +66,19 @@ fn test_hello() {
 }
 
 #[test]
-fn test_writing_10mb() {
+fn test_writing_10mib() {
     setup_test_projects();
 
     let (pic, backend_canister) = setup();
-    
-    pic.tick();
 
     let args = candid::encode_args(("test.txt", 10u64)).unwrap();
 
-    let _response = pic.update_call(
-        backend_canister,
-        Principal::anonymous(),
-        "write_mb_text",
-        args,
-    ).unwrap();
-
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "write_mib_text",
+            args,
+        )
+        .unwrap();
 }
