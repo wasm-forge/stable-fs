@@ -144,6 +144,7 @@ impl FileSystem {
     ) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
         let mut read_size = 0;
+        
         for buf in dst {
             let rbuf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
 

@@ -82,3 +82,81 @@ fn test_writing_10mib() {
         )
         .unwrap();
 }
+
+
+#[test]
+fn test_reading_after_upgrade() {
+    setup_test_projects();
+
+    let (pic, backend_canister) = setup();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("d1/d2/d3/test1.txt", "test1", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("d1/d2/test2.txt", "test2", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("test3.txt", "test3", 10u64)).unwrap(),
+        )
+        .unwrap();
+    
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("d1/d2/test2.txt", "abc", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let response = pic.query_call(
+        backend_canister,
+        Principal::anonymous(),
+        "read_text",
+        candid::encode_args(("d1/d2/test2.txt", 45i64, 100u64)).unwrap(),
+    ).unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: String = decode_one(&response).unwrap();
+        assert_eq!(result, "test2abcabcabcabcabcabcabcabcabcabc");    
+    }
+
+    // do upgrade
+
+    let wasm_upgraded =
+        fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'dfx build'.");
+
+    pic.upgrade_canister(backend_canister, wasm_upgraded, vec![], None)
+        .unwrap();
+
+    let response = pic.query_call(
+        backend_canister,
+        Principal::anonymous(),
+        "read_text",
+        candid::encode_args(("d1/d2/test2.txt", 40i64, 15u64)).unwrap(),
+    ).unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: String = decode_one(&response).unwrap();
+        assert_eq!(result, "test2test2abcab");    
+    }
+    
+}

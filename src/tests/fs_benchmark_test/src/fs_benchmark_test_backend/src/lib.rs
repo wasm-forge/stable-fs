@@ -363,11 +363,13 @@ fn read_text(filename: String, offset: i64, size: usize) -> String {
             },
         ];
         
-        fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
+        let read = fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
+
+        let min = std::cmp::min(read, size as u64) as usize;
         
         let _ = fs.close(fd);
 
-        content
+        content[..min].to_string()
     })
 
 }
