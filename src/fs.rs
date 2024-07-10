@@ -464,7 +464,7 @@ mod tests {
             types::{FdStat, OpenFlags},
         },
         storage::types::FileType,
-        test_utils::{read_text_file, test_fs, test_fs_transient, write_text_file},
+        test_utils::{read_text_file, test_fs, test_fs_transient, write_text_fd, write_text_file},
     };
 
     use super::{Fd, FileSystem};
@@ -1195,9 +1195,25 @@ mod tests {
         // This test should not crash with an error
     }    
 
+    #[test]
+    fn writing_from_different_file_descriptors() {
+        let mut fs = test_fs();
+        let root_fd = fs.root_fd();
+
+        let fd1 = fs.open_or_create(root_fd, "f1/f2/text.txt", FdStat::default(), OpenFlags::CREATE, 40).unwrap();
+        let fd2 = fs.open_or_create(root_fd, "f1//f2/text.txt", FdStat::default(), OpenFlags::CREATE, 44).unwrap();
+
+        write_text_fd(&mut fs, fd1, "abc", 1).unwrap();
+        write_text_fd(&mut fs, fd2, "123", 1).unwrap();
+        write_text_fd(&mut fs, fd1, "xyz", 1).unwrap();
+
+        let content = read_text_file(&mut fs, root_fd, "/f1/f2/text.txt", 0, 9);
+
+        assert_eq!("123xyz", content);
+    }
 
     #[test]
-    fn write_into_empty_file_fails() {
+    fn write_into_empty_filename_fails() {
         let mut fs = test_fs();
         let root_fd = fs.root_fd();
 

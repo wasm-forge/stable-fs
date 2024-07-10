@@ -58,10 +58,6 @@ fn find_node_with_index(
 
 // Find directory entry node by its name, paths containing separator '/' are allowed and processed.
 pub fn find_node(parent_dir_node: Node, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
-    // special case, empty path returns the current parent
-    if path.is_empty() {
-        return Ok(parent_dir_node);
-    }
 
     let find_result = find_node_with_index(parent_dir_node, path, storage)?;
 

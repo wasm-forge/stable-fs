@@ -23,13 +23,20 @@ pub fn write_text_file(fs: &mut FileSystem, parent_fd: u32, path: &str, content:
     let file_fd = fs
         .open_or_create(parent_fd, path, FdStat::default(), OpenFlags::CREATE, 0)?;
 
-    let mut str = content.to_string();
+    write_text_fd(fs, file_fd, content, times)
+}
+
+
+#[cfg(test)]
+pub fn write_text_fd(fs: &mut FileSystem, file_fd: u32, content: &str, times: usize) -> Result<(), Error> {
+
+    let mut str = "".to_string();
 
     for _ in 0..times {
         str.push_str(content)
     }
 
-    fs.write(file_fd, str.as_bytes()).unwrap();
+    fs.write(file_fd, str.as_bytes())?;
 
     Ok(())
 }
