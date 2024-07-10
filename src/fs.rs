@@ -144,7 +144,7 @@ impl FileSystem {
     ) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
         let mut read_size = 0;
-        
+
         for buf in dst {
             let rbuf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
 
@@ -464,7 +464,7 @@ mod tests {
             types::{FdStat, OpenFlags},
         },
         storage::types::FileType,
-        test_utils::{test_fs, test_fs_transient},
+        test_utils::{read_text_file, test_fs, test_fs_transient, write_text_file},
     };
 
     use super::{Fd, FileSystem};
@@ -1026,7 +1026,7 @@ mod tests {
     }
 
     #[test]
-    fn test_link_seek_tell() {
+    fn link_seek_tell() {
         let mut fs = test_fs();
         let dir = fs.root_fd();
 
@@ -1096,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn test_renaming_folder_with_contents() {
+    fn renaming_folder_with_contents() {
         let mut fs = test_fs();
         let root_fd = fs.root_fd();
 
@@ -1128,6 +1128,7 @@ mod tests {
         assert_eq!(buf_to_read1, "sample text.1234");
     }
 
+
     #[test]
     fn write_and_read_25_files() {
         let mut fs = test_fs();
@@ -1139,39 +1140,70 @@ mod tests {
         let file_count: u8 = 25;
 
         for i in 0..file_count {
-            let path = format!("{}/my_file_{}.txt", dir_name, i);
-            println!("Writing to {}", path);
 
-            let write_buff = [i; SIZE_OF_FILE];
+            let filename = format!("{}/my_file_{}.txt", dir_name, i);
+            let content = format!("{i}");
+            let times = SIZE_OF_FILE / content.len();
 
-            let file_fd = fs
-                .create_file(root_fd, path.as_str(), FdStat::default(), u64::MAX)
-                .unwrap();
-            fs.write(file_fd, &write_buff).unwrap();
+            println!("Writing to {filename}");
+
+            write_text_file(&mut fs, root_fd, filename.as_str(), content.as_str(), times).unwrap();
         }
 
         // read files
-
         for i in 0..file_count {
-            let path = format!("{}/my_file_{}.txt", dir_name, i);
-            println!("Reading {}", path);
+            let filename = format!("{}/my_file_{}.txt", dir_name, i);
+            let expected_content = format!("{i}{i}{i}");
 
-            let mut read_buf = [1, 1, 1];
+            println!("Reading {}", filename);
 
-            let file_fd = fs
-                .open_or_create(
-                    root_fd,
-                    path.as_str(),
-                    FdStat::default(),
-                    OpenFlags::empty(),
-                    0,
-                )
-                .unwrap();
+            let text_read = read_text_file(&mut fs, root_fd, filename.as_str(), 0, expected_content.len());
 
-            let num_bytes = fs.read(file_fd, &mut read_buf).unwrap();
-            ic_cdk::println!("Read {} bytes {}", num_bytes, path);
+            assert_eq!(expected_content, text_read);
         }
 
         // This test should not crash with an error
     }
+
+    #[test]
+    fn empty_path_support() {
+        let mut fs = test_fs();
+        let root_fd = fs.root_fd();
+
+        write_text_file(&mut fs, root_fd, "f1/f2/text.txt", "content123", 100).unwrap();
+
+        let content = read_text_file(&mut fs, root_fd, "f1/f2/text.txt", 7, 10);
+        assert_eq!(content, "123content");
+
+        let content = read_text_file(&mut fs, root_fd, "f1//f2/text.txt", 6, 10);
+        assert_eq!(content, "t123conten");
+
+        let content = read_text_file(&mut fs, root_fd, "/f1//f2/text.txt", 5, 10);
+        assert_eq!(content, "nt123conte");
+
+        write_text_file(&mut fs, root_fd, "text.txt", "abc", 100).unwrap();
+
+        let content = read_text_file(&mut fs, root_fd, "text.txt", 0, 6);
+        assert_eq!(content, "abcabc");
+
+        let content = read_text_file(&mut fs, root_fd, "/text.txt", 0, 6);
+        assert_eq!(content, "abcabc");
+
+        let content = read_text_file(&mut fs, root_fd, "///////text.txt", 0, 6);
+        assert_eq!(content, "abcabc");
+
+        // This test should not crash with an error
+    }    
+
+
+    #[test]
+    fn write_into_empty_file_fails() {
+        let mut fs = test_fs();
+        let root_fd = fs.root_fd();
+
+        let res = write_text_file(&mut fs, root_fd, "", "content123", 100);
+
+        assert!(res.is_err());
+    }    
+
 }

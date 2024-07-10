@@ -1,7 +1,16 @@
-use std::{cell::RefCell, cmp::min, fs::{self, File}, io::{Read, Seek, Write}};
+use std::{cell::RefCell, str::FromStr};
 
 use stable_fs::{fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence}, storage::stable::StableStorage};
 use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMemoryImpl, Memory};
+
+
+
+
+#[ic_cdk::query]
+fn greet(name: String) -> String {
+    format!("Greetings, {}!", name)
+}
+
 
 
 const PROFILING: MemoryId = MemoryId::new(100);
@@ -32,137 +41,268 @@ fn init() {
     });
 }
 
+#[ic_cdk::update]
+fn write_kib_text(filename: String, kb_size: usize) -> u64 {
+    let stime = ic_cdk::api::instruction_counter();    
 
-#[ic_cdk::query]
-fn greet(name: String) -> String {
-    format!("Greetings, {}!", name)
+    FS.with(|fs| {
+
+        let mut fs = fs.borrow_mut();
+
+        let dir = fs.root_fd();
+
+        // 64 byte block
+        let text = "0123456789012345678901234567890123456789012345678901234567890123";
+
+        let write_content = [
+            SrcBuf {
+                buf: text.as_ptr(),
+                len: text.len(),
+            },
+        ];
+    
+        let fd = fs
+            .open_or_create(dir, filename.as_str(), FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+        
+        let _ = fs.seek(fd, 0, Whence::END);
+
+        let times = 1024 * kb_size / text.len();
+
+        for _ in 0..times {
+            fs.write_vec(fd, write_content.as_ref()).unwrap();
+        }
+    
+        let _ = fs.close(fd);
+
+    });
+
+    let etime = ic_cdk::api::instruction_counter();    
+
+    etime - stime
 }
 
 
 #[ic_cdk::update]
-fn read_kb(filename: String, kb_size: usize, offset: u64) -> Vec<u8> {
-    let size = kb_size * 1024;
+fn write_mib_text(filename: String, mib_size: usize) -> u64 {
+    let stime = ic_cdk::api::instruction_counter();    
 
+    FS.with(|fs| {
+
+        let mut fs = fs.borrow_mut();
+
+        let dir = fs.root_fd();
+
+        // create 4kib block
+        let mut text1kib = "0123456789012345678901234567890123456789012345678901234567890123".to_string();
+
+        while text1kib.len() < 4096 {
+            text1kib.push_str(&text1kib.clone());
+        }
+
+        let write_content = [
+            SrcBuf {
+                buf: text1kib.as_ptr(),
+                len: text1kib.len(),
+            },
+        ];
+    
+        let fd = fs
+            .open_or_create(dir, filename.as_str(), FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
+        
+        let _ = fs.seek(fd, 0, Whence::END);
+
+        let times = 1024 * 1024 * mib_size / text1kib.len();
+
+        for _ in 0..times {
+            fs.write_vec(fd, write_content.as_ref()).unwrap();
+        }
+    
+        let _ = fs.close(fd);
+
+    });
+
+    let etime = ic_cdk::api::instruction_counter();    
+
+    etime - stime
+}
+
+#[ic_cdk::update]
+fn read_kb(filename: String, kb_size: usize, offset: i64) -> Vec<u8> {
+    let size = kb_size * 1024;
     let mut res = Vec::with_capacity(size);
 
-    let f = File::open(filename).expect("Unable to open file");
+    FS.with(|fs| {
 
-    let mut f = std::io::BufReader::new(f);
+        let mut fs = fs.borrow_mut();
 
-    f.seek(std::io::SeekFrom::Start(offset)).unwrap();
+        let dir = fs.root_fd();
 
-    f.read(res.as_mut_slice()).unwrap();
+        let fd = fs
+            .open_or_create(dir, filename.as_str(), FdStat::default(), OpenFlags::empty(), 0)
+            .unwrap();
+
+        let read_content = [
+            DstBuf {
+                buf: res.as_mut_ptr(),
+                len: size,
+            },
+        ];
+        
+        fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
+        
+        let _ = fs.close(fd);
+
+    });
 
     res
 }
 
+
 // delete file
 #[ic_cdk::query]
 fn delete_file(filename: String) {
-    fs::remove_file(filename).unwrap();
+    FS.with(|fs| {
+
+        let mut fs = fs.borrow_mut();
+        let dir = fs.root_fd();
+
+        fs.remove_file(dir, filename.as_str()).unwrap();
+    });
 }
 
 // delete folder
 #[ic_cdk::query]
-fn delete_folder(path: String) {
-    fs::remove_dir_all(path).unwrap();
+fn delete_folder(filename: String) {
+    FS.with(|fs| {
+
+        let mut fs = fs.borrow_mut();
+        let dir = fs.root_fd();
+
+        fs.remove_dir(dir, filename.as_str()).unwrap();
+    });
 }
 
 
 #[ic_cdk::query]
 fn list_files(path: String) -> Vec<String> {
-    println!("Reading directory: {}", path);
-
     let mut res = vec![];
-    let entries = fs::read_dir(path).unwrap();
 
-    for entry in entries {
-        let entry = entry.unwrap();
+    FS.with(|fs| {
 
-        res.push(entry.path().into_os_string().into_string().unwrap());
-    }
+        let mut fs = fs.borrow_mut();
+        let dir = fs.root_fd();
 
-    res
-}
+        let fd = fs.open_or_create(dir, path.as_str(), FdStat::default(), OpenFlags::DIRECTORY, 0).unwrap();
 
-fn list_all_files_recursive(path: &String, files: &mut Vec<String>) {
-    
-    let entries = fs::read_dir(&path).unwrap();
+        let meta = fs.metadata(fd).unwrap();
 
-    for entry in entries {
-        let entry = entry.unwrap();
+        let mut entry_index = meta.first_dir_entry;
 
-        let folder_name = entry.path().into_os_string().into_string().unwrap();
+        while let Some(index) = entry_index {
 
-        println!("{}", &folder_name);
-        files.push(folder_name.clone());
+            let entry = fs.get_direntry(fd, index).unwrap();
 
-        if entry.metadata().unwrap().is_dir() {
-            list_all_files_recursive(&folder_name, files);
+            let filename_str = std::str::from_utf8(&entry.name.bytes[0..(entry.name.length as usize)]).unwrap();
+
+            let st = String::from_str(filename_str).unwrap();
+
+            res.push(st);
+
+            entry_index = entry.next_entry;
+            
         }
 
-    }
-}
-
-#[ic_cdk::query]
-fn list_all_files(path: String) -> Vec<String> {
-    println!("Reading directory: {}", path);
-
-    let mut res = vec![];
-    list_all_files_recursive(&path, &mut res);
+    });
 
     res
+}
+
+
+#[ic_cdk::query]
+fn cat_file(filename: String) -> String {
+    
+    FS.with(|fs| {
+
+        let mut fs = fs.borrow_mut();
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, filename.as_str() , FdStat::default(), OpenFlags::empty(), 0)
+            .unwrap();
+
+        let mut buf = [0u8; 100];
+
+        let read_size = fs.read(fd, &mut buf).unwrap();
+
+        unsafe {
+            let st = std::str::from_utf8_unchecked(&buf[..(read_size as usize)]);
+
+            return st.to_string();
+        }
+    })
 }
 
 #[ic_cdk::update]
 fn create_depth_folders(path: String, count: usize) -> String {
 
-    let mut dir_name = "d0".to_string();
-    
-    for num in 1..count {
-        dir_name = format!("{}/d{}", dir_name, num);
-    }
+    FS.with(|fs| {
 
-    dir_name = format!("{}/{}", path, dir_name);
+        let mut fs = fs.borrow_mut();
 
-    fs::create_dir_all(&dir_name).unwrap();
+        let root_dir = fs.root_fd();
 
-    dir_name
+        let mut dir_name = "d0".to_string();
+        
+        for num in 1..count {
+            dir_name = format!("{}/d{}", dir_name, num);
+        }
+
+        fs.create_dir(root_dir, dir_name.as_str(), FdStat::default(), 0).unwrap();
+
+        format!("{}/{}", path, dir_name)
+
+    })
 }
-
-#[ic_cdk::update]
-fn delete_depth_folders(path: String, count: usize) -> String {
-
-    let mut dir_name = "d0".to_string();
-    
-    for num in 1..count {
-        dir_name = format!("{}/d{}", dir_name, num);
-    }
-
-    dir_name = format!("{}/{}", path, dir_name);
-
-    fs::remove_dir_all(&dir_name).unwrap();
-
-    dir_name
-}
-
 
 #[ic_cdk::update]
 fn create_files(path: String, count: usize) -> u64 {
-    let stime = ic_cdk::api::instruction_counter();
+    let stime = ic_cdk::api::instruction_counter();    
 
-    for num in 0..count {
+    FS.with(|fs| {
 
-        let filename = format!("{}/f{}.txt", path, num);
-        let mut file = File::create(&filename).unwrap();
+        let mut fs = fs.borrow_mut();
 
-        // 64 byte block + file name
-        let text = format!("0123456789012345678901234567890123456789012345678901234567890123:{}", filename);
+        let dir = fs.root_fd();
 
-        file.write_all(text.as_bytes()).unwrap();
+        for num in 0..count {
 
-        file.flush().unwrap();
-    }
+            let filename = format!("{}/{}.txt", path, num);
+
+            let fd = fs
+                .open_or_create(dir, filename.as_str() , FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+            
+            let _ = fs.seek(fd, 0, Whence::END);
+
+            // 64 byte block
+            let text = format!("0123456789012345678901234567890123456789012345678901234567890123:{}", filename);
+
+            let write_content = [
+                SrcBuf {
+                    buf: text.as_ptr(),
+                    len: text.len(),
+                },
+            ];
+            
+            fs.write_vec(fd, write_content.as_ref()).unwrap();
+        
+            let _ = fs.close(fd);
+
+        }
+    
+    });
 
     let etime = ic_cdk::api::instruction_counter();    
 
@@ -229,8 +369,8 @@ fn read_text(filename: String, offset: i64, size: usize) -> String {
         
         let read = fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
 
-        let min = min(read, size as u64) as usize;
-
+        let min = std::cmp::min(read, size as u64) as usize;
+        
         let _ = fs.close(fd);
 
         content[..min].to_string()

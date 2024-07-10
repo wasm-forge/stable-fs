@@ -4,6 +4,16 @@ use stable_fs::{fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence}, sto
 use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMemoryImpl, Memory};
 
 
+
+
+#[ic_cdk::query]
+fn greet(name: String) -> String {
+    format!("Hello, {}!", name)
+}
+
+
+
+
 const PROFILING: MemoryId = MemoryId::new(100);
 const WASI_MEMORY_ID: MemoryId = MemoryId::new(1);
 
@@ -30,11 +40,6 @@ fn init() {
     FS.with(|_fs| {
         // empty call to create the file system for the following calls
     });
-}
-
-#[ic_cdk::query]
-fn greet(name: String) -> String {
-    format!("Hello, {}!", name)
 }
 
 #[ic_cdk::update]

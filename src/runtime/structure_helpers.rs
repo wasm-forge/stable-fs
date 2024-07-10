@@ -29,7 +29,12 @@ fn find_node_with_index(
     let mut next_entry_index = None;
 
     for part in parts {
-        if part.is_empty() || part == "." || part == ".." {
+
+        if part.is_empty() {
+            continue;
+        }
+
+        if part == "." || part == ".." {
             return Err(Error::InvalidFileName);
         }
 
@@ -159,6 +164,11 @@ pub fn create_path<'a>(
     let mut last_file_type = FileType::Directory;
 
     for part in parts {
+
+        if part.is_empty() {
+            continue;
+        }
+
         if needs_folder_creation {
             // last_name contains the folder name to create
             if last_file_type != FileType::Directory {
@@ -178,7 +188,7 @@ pub fn create_path<'a>(
         last_name = part;
         parent_node = cur_node;
 
-        if part.is_empty() || part == "." || part == ".." {
+        if part == "." || part == ".." {
             return Err(Error::InvalidFileName);
         }
 
