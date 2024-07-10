@@ -1,7 +1,9 @@
 service : {
     "greet": (text) -> (text) query;
 
-    "write_mb_text": (text, nat64) -> (nat64);
+    "write_mib_text": (text, nat64) -> (nat64);
+
+    "write_kib_text": (text, nat64) -> (nat64);
 
     "write_text": (text, text, nat64) -> (nat64);
 

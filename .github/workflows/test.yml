@@ -19,17 +19,20 @@ jobs:
     - name: Install Rust
       run: rustup update stable
 
-    - name: Build test projects
-      run: ./build_tests.sh
+    - name: Install target
+      run: rustup target add wasm32-unknown-unknown
 
     - name: Install pocket-ic
       run: src/tests/download-pocket-ic.sh
 
     - name: Install wasi2ic
-      run: src/tests/download-wasi2ic.sh
+      run: cargo install wasi2ic
 
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Build test projects
+      run: ./build_tests.sh
       
     - name: Run tests
       run: cargo test --verbose

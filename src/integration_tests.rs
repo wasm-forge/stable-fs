@@ -2,9 +2,8 @@ use candid::{decode_one, encode_one, Principal};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
 
-const BACKEND_WASM: &str =
-    "src/tests/demo_test/target/wasm32-unknown-unknown/release/demo_test_backend_small.wasm";
-const BACKEND_WASM_UPGRADED: &str = "src/tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend.wasm";
+const BACKEND_WASM: &str = "src/tests/fs_benchmark_test/target/wasm32-unknown-unknown/release/fs_benchmark_test_backend_small.wasm";
+const BACKEND_WASM_UPGRADED: &str = "src/tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend_small.wasm";
 
 fn setup_test_projects() {
     use std::process::Command;
@@ -24,17 +23,16 @@ fn setup() -> (PocketIc, Principal) {
 
     pic.install_canister(backend_canister, wasm, vec![], None);
 
+    pic.tick();
+
     (pic, backend_canister)
 }
 
 #[test]
-fn test_hello() {
-
+fn greet_after_upgrade() {
     setup_test_projects();
 
     let (pic, backend_canister) = setup();
-
-    pic.tick();
 
     let Ok(WasmResult::Reply(response)) = pic.query_call(
         backend_canister,
@@ -68,26 +66,201 @@ fn test_hello() {
 }
 
 #[test]
-fn test_writing_10mb() {
+fn writing_10mib() {
     setup_test_projects();
 
     let (pic, backend_canister) = setup();
-    
-    pic.tick();
 
-    let args = candid::encode_args(("test.txt", 1u64)).unwrap();
+    let args = candid::encode_args(("test.txt", 10u64)).unwrap();
 
-    let Ok(WasmResult::Reply(response)) = pic.update_call(
-        backend_canister,
-        Principal::anonymous(),
-        "write_mb_text",
-        args,
-    ) else {
-        panic!("Call failed!");
-    };
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "write_mib_text",
+            args,
+        )
+        .unwrap();
+}
 
-    // get some return value
-    let result: u64 = decode_one(&response).unwrap();
+#[test]
+fn reading_file_after_upgrade() {
+    setup_test_projects();
 
-    println!("Value returned {:?}", result);
+    let (pic, backend_canister) = setup();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("d1/d2/d3/test1.txt", "test1", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("d1/d2/test2.txt", "test2", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("test3.txt", "test3", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "append_text",
+            candid::encode_args(("d1/d2/test2.txt", "abc", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let response = pic
+        .query_call(
+            backend_canister,
+            Principal::anonymous(),
+            "read_text",
+            candid::encode_args(("d1/d2/test2.txt", 45i64, 100u64)).unwrap(),
+        )
+        .unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: String = decode_one(&response).unwrap();
+        assert_eq!(result, "test2abcabcabcabcabcabcabcabcabcabc");
+    }
+
+    // do upgrade
+    let wasm_upgraded =
+        fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'dfx build'.");
+
+    pic.upgrade_canister(backend_canister, wasm_upgraded, vec![], None)
+        .unwrap();
+
+    let response = pic
+        .query_call(
+            backend_canister,
+            Principal::anonymous(),
+            "read_text",
+            candid::encode_args(("d1/d2/test2.txt", 40i64, 15u64)).unwrap(),
+        )
+        .unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: String = decode_one(&response).unwrap();
+        assert_eq!(result, "test2test2abcab");
+    }
+}
+
+#[test]
+fn list_folders_after_upgrade() {
+    setup_test_projects();
+
+    let (pic, backend_canister) = setup();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "create_files",
+            candid::encode_args(("files", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let _response = pic
+        .update_call(
+            backend_canister,
+            Principal::anonymous(),
+            "create_files",
+            candid::encode_args(("files/f2", 10u64)).unwrap(),
+        )
+        .unwrap();
+
+    let response = pic
+        .query_call(
+            backend_canister,
+            Principal::anonymous(),
+            "list_files",
+            encode_one("files").unwrap(),
+        )
+        .unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: Vec<String> = decode_one(&response).unwrap();
+
+        assert_eq!(
+            result,
+            vec! {"0.txt", "1.txt", "2.txt", "3.txt", "4.txt", "5.txt", "6.txt", "7.txt", "8.txt", "9.txt", "f2"}
+        );
+    }
+
+    let response = pic
+        .query_call(
+            backend_canister,
+            Principal::anonymous(),
+            "list_files",
+            encode_one("files/f2").unwrap(),
+        )
+        .unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: Vec<String> = decode_one(&response).unwrap();
+
+        assert_eq!(
+            result,
+            vec! {"0.txt", "1.txt", "2.txt", "3.txt", "4.txt", "5.txt", "6.txt", "7.txt", "8.txt", "9.txt"}
+        );
+    }
+
+    // do upgrade
+    let wasm_upgraded =
+        fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'dfx build'.");
+
+    pic.upgrade_canister(backend_canister, wasm_upgraded, vec![], None)
+        .unwrap();
+
+    let response = pic
+        .query_call(
+            backend_canister,
+            Principal::anonymous(),
+            "list_files",
+            encode_one("files").unwrap(),
+        )
+        .unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: Vec<String> = decode_one(&response).unwrap();
+
+        assert_eq!(
+            result,
+            vec! {"0.txt", "1.txt", "2.txt", "3.txt", "4.txt", "5.txt", "6.txt", "7.txt", "8.txt", "9.txt", "f2"}
+        );
+    }
+
+    let response = pic
+        .query_call(
+            backend_canister,
+            Principal::anonymous(),
+            "list_files",
+            encode_one("files/f2").unwrap(),
+        )
+        .unwrap();
+
+    if let WasmResult::Reply(response) = response {
+        let result: Vec<String> = decode_one(&response).unwrap();
+
+        assert_eq!(
+            result,
+            vec! {"0.txt", "1.txt", "2.txt", "3.txt", "4.txt", "5.txt", "6.txt", "7.txt", "8.txt", "9.txt"}
+        );
+    }
 }
