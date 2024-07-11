@@ -1128,7 +1128,6 @@ mod tests {
         assert_eq!(buf_to_read1, "sample text.1234");
     }
 
-
     #[test]
     fn write_and_read_25_files() {
         let mut fs = test_fs();
@@ -1140,7 +1139,6 @@ mod tests {
         let file_count: u8 = 25;
 
         for i in 0..file_count {
-
             let filename = format!("{}/my_file_{}.txt", dir_name, i);
             let content = format!("{i}");
             let times = SIZE_OF_FILE / content.len();
@@ -1157,7 +1155,13 @@ mod tests {
 
             println!("Reading {}", filename);
 
-            let text_read = read_text_file(&mut fs, root_fd, filename.as_str(), 0, expected_content.len());
+            let text_read = read_text_file(
+                &mut fs,
+                root_fd,
+                filename.as_str(),
+                0,
+                expected_content.len(),
+            );
 
             assert_eq!(expected_content, text_read);
         }
@@ -1193,15 +1197,31 @@ mod tests {
         assert_eq!(content, "abcabc");
 
         // This test should not crash with an error
-    }    
+    }
 
     #[test]
     fn writing_from_different_file_descriptors() {
         let mut fs = test_fs();
         let root_fd = fs.root_fd();
 
-        let fd1 = fs.open_or_create(root_fd, "f1/f2/text.txt", FdStat::default(), OpenFlags::CREATE, 40).unwrap();
-        let fd2 = fs.open_or_create(root_fd, "f1//f2/text.txt", FdStat::default(), OpenFlags::CREATE, 44).unwrap();
+        let fd1 = fs
+            .open_or_create(
+                root_fd,
+                "f1/f2/text.txt",
+                FdStat::default(),
+                OpenFlags::CREATE,
+                40,
+            )
+            .unwrap();
+        let fd2 = fs
+            .open_or_create(
+                root_fd,
+                "f1//f2/text.txt",
+                FdStat::default(),
+                OpenFlags::CREATE,
+                44,
+            )
+            .unwrap();
 
         write_text_fd(&mut fs, fd1, "abc", 1).unwrap();
         write_text_fd(&mut fs, fd2, "123", 1).unwrap();
@@ -1220,6 +1240,5 @@ mod tests {
         let res = write_text_file(&mut fs, root_fd, "", "content123", 100);
 
         assert!(res.is_err());
-    }    
-
+    }
 }
