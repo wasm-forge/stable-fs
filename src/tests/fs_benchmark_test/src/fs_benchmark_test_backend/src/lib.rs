@@ -5,13 +5,10 @@ use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMem
 
 
 
-
 #[ic_cdk::query]
 fn greet(name: String) -> String {
     format!("Hello, {}!", name)
 }
-
-
 
 
 const PROFILING: MemoryId = MemoryId::new(100);
