@@ -5,7 +5,6 @@ use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMem
 
 
 
-
 #[ic_cdk::query]
 fn greet(name: String) -> String {
     format!("Greetings, {}!", name)
@@ -263,49 +262,6 @@ fn create_depth_folders(path: String, count: usize) -> String {
         format!("{}/{}", path, dir_name)
 
     })
-}
-
-#[ic_cdk::update]
-fn create_file(filename: String) -> u64 {
-    let stime = ic_cdk::api::instruction_counter();    
-
-    FS.with(|fs| {
-
-        let mut fs = fs.borrow_mut();
-
-        let dir = fs.root_fd();
-
-        for num in 0..count {
-
-            let filename = format!("{}/{}.txt", path, num);
-
-            let fd = fs
-                .open_or_create(dir, filename.as_str() , FdStat::default(), OpenFlags::CREATE, 0)
-                .unwrap();
-            
-            let _ = fs.seek(fd, 0, Whence::END);
-
-            // 64 byte block
-            let text = format!("0123456789012345678901234567890123456789012345678901234567890123:{}", filename);
-
-            let write_content = [
-                SrcBuf {
-                    buf: text.as_ptr(),
-                    len: text.len(),
-                },
-            ];
-            
-            fs.write_vec(fd, write_content.as_ref()).unwrap();
-        
-            let _ = fs.close(fd);
-
-        }
-    
-    });
-
-    let etime = ic_cdk::api::instruction_counter();    
-
-    etime - stime
 }
 
 #[ic_cdk::update]
