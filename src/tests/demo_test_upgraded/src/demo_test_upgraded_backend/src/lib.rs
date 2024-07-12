@@ -12,7 +12,6 @@ fn greet(name: String) -> String {
 }
 
 
-
 const PROFILING: MemoryId = MemoryId::new(100);
 const WASI_MEMORY_ID: MemoryId = MemoryId::new(1);
 
