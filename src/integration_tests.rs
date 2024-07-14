@@ -193,6 +193,7 @@ fn reading_file_after_upgrade() {
 
     let result = fns::read_text(&pic, "d1/d2/test2.txt", 40i64, 15u64);
     assert_eq!(result, "test2test2abcab");
+
 }
 
 #[test]

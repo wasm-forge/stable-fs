@@ -319,10 +319,16 @@ fn append_text(filename: String, text: String, times: usize) -> u64 {
 
         let dir = fs.root_fd();
 
+        let mut txt = String::with_capacity(text.len() * times);
+
+        for _ in 0..times {
+            txt.push_str(&text);
+        }
+
         let write_content = [
             SrcBuf {
-                buf: text.as_ptr(),
-                len: text.len(),
+                buf: txt.as_ptr(),
+                len: txt.len(),
             },
         ];
     
@@ -332,9 +338,7 @@ fn append_text(filename: String, text: String, times: usize) -> u64 {
         
         let _ = fs.seek(fd, 0, Whence::END);
 
-        for _ in 0..times {
-            fs.write_vec(fd, write_content.as_ref()).unwrap();
-        }
+        fs.write_vec(fd, write_content.as_ref()).unwrap();
     
         let _ = fs.close(fd);
 
