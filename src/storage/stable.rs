@@ -1,14 +1,12 @@
 use ic_stable_structures::{
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
-    BTreeMap, Memory,
+    memory_manager::{MemoryId, MemoryManager, VirtualMemory}, BTreeMap, Cell, Memory
 };
 
 use crate::error::Error;
 
 use super::{
     types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Metadata, Node,
-        Times,
+        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata, Node, Times
     },
     Storage,
 };
@@ -16,47 +14,79 @@ use super::{
 const ROOT_NODE: Node = 0;
 const FS_VERSION: u32 = 1;
 
-const METADATA_MEMORY_INDEX: MemoryId = MemoryId::new(230);
-const DIRENTRY_MEMORY_INDEX: MemoryId = MemoryId::new(231);
-const FILECHUNK_MEMORY_INDEX: MemoryId = MemoryId::new(232);
+const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
+const MAX_MEMORY_INDEX: u8 = 250;
 
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
-    version: u32,
+    header: Cell<Header, VirtualMemory<M>>,
     metadata: BTreeMap<Node, Metadata, VirtualMemory<M>>,
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
-    next_node: Node,
-    // It is not used, but is needed to keep other memories alive.
-    _memory_manager: MemoryManager<M>,
+
+    // It is not used, but is needed to keep memories alive.
+    _memory_manager: Option<MemoryManager<M>>,
 }
 
 impl<M: Memory> StableStorage<M> {
     pub fn new(memory: M) -> Self {
-        Self::new_with_memory_indices(
-            memory,
-            METADATA_MEMORY_INDEX,
-            DIRENTRY_MEMORY_INDEX,
-            FILECHUNK_MEMORY_INDEX,
-        )
-    }
-
-    pub fn new_with_memory_indices(
-        memory: M,
-        metadata_id: MemoryId,
-        direntry_id: MemoryId,
-        filechunk_id: MemoryId,
-    ) -> Self {
         let memory_manager = MemoryManager::init(memory);
 
-        let mut result = Self {
+        let mut storage = Self::new_with_memory_manager(&memory_manager, DEFAULT_FIRST_MEMORY_INDEX);
+
+        storage._memory_manager = Some(memory_manager);
+
+        storage
+    }
+
+    pub fn new_with_memory_manager(
+        memory_manager: &MemoryManager<M>,
+        first_memory_index: u8,
+    ) -> StableStorage<M> {
+        if first_memory_index > MAX_MEMORY_INDEX {
+            panic!("First memory index must be less than {}", MAX_MEMORY_INDEX);
+        }
+
+        let header_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX));
+        let metadata_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX + 1u8));
+        let direntry_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX + 2u8));
+        let filechunk_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX + 3u8));
+
+        let storage = Self::new_with_custom_memories(
+            header_memory,
+            metadata_memory,
+            direntry_memory,
+            filechunk_memory,
+        );
+
+        storage
+    }
+
+    pub fn new_with_custom_memories(
+        header: VirtualMemory<M>,
+        metadata: VirtualMemory<M>,
+        direntry: VirtualMemory<M>,
+        filechunk: VirtualMemory<M>,
+    ) -> Self {
+
+        let default_header_value = Header {
             version: FS_VERSION,
-            metadata: BTreeMap::init(memory_manager.get(metadata_id)),
-            direntry: BTreeMap::init(memory_manager.get(direntry_id)),
-            filechunk: BTreeMap::init(memory_manager.get(filechunk_id)),
             next_node: ROOT_NODE + 1,
-            _memory_manager: memory_manager,
         };
+
+        let mut result = Self {
+            header: Cell::init(header, default_header_value).unwrap(),
+            metadata: BTreeMap::init(metadata),
+            direntry: BTreeMap::init(direntry),
+            filechunk: BTreeMap::init(filechunk),
+            _memory_manager: None,
+        };
+
+        let version = result.header.get().version;
+        
+        if version != FS_VERSION {
+            panic!("Unsupported file system version");
+        }
 
         match result.get_metadata(ROOT_NODE) {
             Ok(_) => {}
@@ -89,13 +119,23 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Generate the next available node ID.
     fn new_node(&mut self) -> Node {
-        let result = self.next_node;
-        self.next_node += 1;
+
+        let mut header = self.header.get().clone();
+
+        self.metadata.last_key_value();
+
+        let result = header.next_node;
+
+        header.next_node += 1;
+
+        self.header.set(header).unwrap();
+
         result
     }
 
     fn get_version(&self) -> u32 {
-        self.version
+        let header = self.header.get();
+        header.version
     }
 
     // Get the metadata associated with the node.
@@ -105,7 +145,6 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Update the metadata associated with the node.
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        self.next_node = self.next_node.max(node + 1);
         self.metadata.insert(node, metadata);
     }
 

@@ -193,6 +193,39 @@ fn reading_file_after_upgrade() {
 
     let result = fns::read_text(&pic, "d1/d2/test2.txt", 40i64, 15u64);
     assert_eq!(result, "test2test2abcab");
+}
+
+#[test]
+fn writing_file_after_upgrade() {
+    let pic = setup_initial_canister();
+
+    fns::append_text(&pic, "test1.txt", "test1", 10u64);
+    fns::append_text(&pic, "test2.txt", "test2", 10u64);
+    fns::append_text(&pic, "test3.txt", "test3", 10u64);
+    fns::append_text(&pic, "test2.txt", "abc", 10u64);
+
+    let result = fns::read_text(&pic, "test2.txt", 45i64, 100u64);
+    assert_eq!(result, "test2abcabcabcabcabcabcabcabcabcabc");
+
+    // do upgrade
+    upgrade_canister(&pic);
+
+    fns::append_text(&pic, "test4.txt", "test4", 10u64);
+    fns::append_text(&pic, "test5.txt", "test5", 10u64);
+    fns::append_text(&pic, "test6.txt", "test6", 10u64);
+
+    let result = fns::read_text(&pic, "test1.txt", 10i64, 5u64);
+    assert_eq!(result, "test1");
+    let result = fns::read_text(&pic, "test2.txt", 40i64, 15u64);
+    assert_eq!(result, "test2test2abcab");
+    let result = fns::read_text(&pic, "test3.txt", 10i64, 5u64);
+    assert_eq!(result, "test3");
+    let result = fns::read_text(&pic, "test4.txt", 10i64, 5u64);
+    assert_eq!(result, "test4");
+    let result = fns::read_text(&pic, "test5.txt", 10i64, 5u64);
+    assert_eq!(result, "test5");
+    let result = fns::read_text(&pic, "test6.txt", 10i64, 5u64);
+    assert_eq!(result, "test6");
 
 }
 
