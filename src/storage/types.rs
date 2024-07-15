@@ -46,6 +46,26 @@ impl ic_stable_structures::Storable for FileChunk {
     };
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Header {
+    pub version: u32,
+    pub next_node: Node,
+}
+
+impl ic_stable_structures::Storable for Header {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(&self, &mut buf).unwrap();
+        std::borrow::Cow::Owned(buf)
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        ciborium::de::from_reader(bytes.as_ref()).unwrap()
+    }
+
+    const BOUND: Bound = Bound::Unbounded;
+}
+
 // Contains metadata of a node.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Metadata {

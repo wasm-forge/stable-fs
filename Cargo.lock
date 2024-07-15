@@ -605,9 +605,9 @@ dependencies = [
 
 [[package]]
 name = "ic-stable-structures"
-version = "0.6.2"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "774d7d26420c095f2b5f0f71f7b2ff4a5b58b87e0959dccc78b3d513a7db5112"
+checksum = "03f3044466a69802de74e710dc0300b706a05696a0531c942ca856751a13b0db"
 dependencies = [
  "ic_principal",
 ]
@@ -1291,7 +1291,7 @@ checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "stable-fs"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "bitflags 2.4.1",
  "candid",
