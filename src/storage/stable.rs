@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory}, BTreeMap, Cell, Memory
 };
@@ -14,8 +16,14 @@ use super::{
 const ROOT_NODE: Node = 0;
 const FS_VERSION: u32 = 1;
 
+
 const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
-const MAX_MEMORY_INDEX: u8 = 250;
+
+// the maximum index accepted as the end range
+const MAX_MEMORY_INDEX: u8 = 254;
+
+// the number of memory indices used by the file system (currently 4 plus some reserved ids)
+const MEMORY_INDEX_COUNT: u8 = 10;
 
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
@@ -32,7 +40,7 @@ impl<M: Memory> StableStorage<M> {
     pub fn new(memory: M) -> Self {
         let memory_manager = MemoryManager::init(memory);
 
-        let mut storage = Self::new_with_memory_manager(&memory_manager, DEFAULT_FIRST_MEMORY_INDEX);
+        let mut storage = Self::new_with_memory_manager(&memory_manager, DEFAULT_FIRST_MEMORY_INDEX..DEFAULT_FIRST_MEMORY_INDEX+MEMORY_INDEX_COUNT);
 
         storage._memory_manager = Some(memory_manager);
 
@@ -41,16 +49,21 @@ impl<M: Memory> StableStorage<M> {
 
     pub fn new_with_memory_manager(
         memory_manager: &MemoryManager<M>,
-        first_memory_index: u8,
+        memory_indices: Range<u8>,
     ) -> StableStorage<M> {
-        if first_memory_index > MAX_MEMORY_INDEX {
-            panic!("First memory index must be less than {}", MAX_MEMORY_INDEX);
+
+        if memory_indices.end - memory_indices.start < MEMORY_INDEX_COUNT {
+            panic!("The memory index range must include at least {} incides", MEMORY_INDEX_COUNT);
         }
 
-        let header_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX));
-        let metadata_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX + 1u8));
-        let direntry_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX + 2u8));
-        let filechunk_memory = memory_manager.get(MemoryId::new(DEFAULT_FIRST_MEMORY_INDEX + 3u8));
+        if memory_indices.end > MAX_MEMORY_INDEX {
+            panic!("Last memory index must be less than or equal to {}", MAX_MEMORY_INDEX);
+        }
+
+        let header_memory = memory_manager.get(MemoryId::new(memory_indices.start));
+        let metadata_memory = memory_manager.get(MemoryId::new(memory_indices.start + 1u8));
+        let direntry_memory = memory_manager.get(MemoryId::new(memory_indices.start + 2u8));
+        let filechunk_memory = memory_manager.get(MemoryId::new(memory_indices.start + 3u8));
 
         let storage = Self::new_with_custom_memories(
             header_memory,

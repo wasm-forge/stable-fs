@@ -10,19 +10,25 @@ fn greet(name: String) -> String {
     format!("Greetings, {}!", name)
 }
 
-
 const PROFILING: MemoryId = MemoryId::new(100);
-const WASI_MEMORY_ID: MemoryId = MemoryId::new(1);
 
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
-    static FS: RefCell<FileSystem> = RefCell::new(
-        FileSystem::new(Box::new(StableStorage::new(
-            MEMORY_MANAGER.with(|m| m.borrow().get(WASI_MEMORY_ID))
-        ))).unwrap()
-    );
+    static FS: RefCell<FileSystem> = {
+
+        MEMORY_MANAGER.with(|m| {
+            let memory = m.borrow();
+
+            let storage = StableStorage::new_with_memory_manager(&memory, 200..210u8);
+    
+            RefCell::new(
+                FileSystem::new(Box::new(storage)).unwrap()
+            )
+        })
+    };
+    
 }
 
 pub fn profiling_init() {
@@ -319,10 +325,16 @@ fn append_text(filename: String, text: String, times: usize) -> u64 {
 
         let dir = fs.root_fd();
 
+        let mut txt = String::with_capacity(text.len() * times);
+
+        for _ in 0..times {
+            txt.push_str(&text);
+        }
+
         let write_content = [
             SrcBuf {
-                buf: text.as_ptr(),
-                len: text.len(),
+                buf: txt.as_ptr(),
+                len: txt.len(),
             },
         ];
     
@@ -332,9 +344,7 @@ fn append_text(filename: String, text: String, times: usize) -> u64 {
         
         let _ = fs.seek(fd, 0, Whence::END);
 
-        for _ in 0..times {
-            fs.write_vec(fd, write_content.as_ref()).unwrap();
-        }
+        fs.write_vec(fd, write_content.as_ref()).unwrap();
     
         let _ = fs.close(fd);
 

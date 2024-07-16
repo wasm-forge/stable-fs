@@ -10,19 +10,24 @@ fn greet(name: String) -> String {
     format!("Hello, {}!", name)
 }
 
-
 const PROFILING: MemoryId = MemoryId::new(100);
-const WASI_MEMORY_ID: MemoryId = MemoryId::new(1);
 
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
-    static FS: RefCell<FileSystem> = RefCell::new(
-        FileSystem::new(Box::new(StableStorage::new(
-            MEMORY_MANAGER.with(|m| m.borrow().get(WASI_MEMORY_ID))
-        ))).unwrap()
-    );
+    static FS: RefCell<FileSystem> = {
+
+        MEMORY_MANAGER.with(|m| {
+            let memory_manager = m.borrow();
+
+            let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
+    
+            RefCell::new(
+                FileSystem::new(Box::new(storage)).unwrap()
+            )
+        })
+    };
 }
 
 pub fn profiling_init() {
