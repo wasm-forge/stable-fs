@@ -71,29 +71,35 @@ impl FileSystem {
 
     fn get_node(&self, fd: Fd) -> Result<Node, Error> {
         match self.fd_table.get(fd) {
-            Some(FdEntry::File(file)) => Ok(file.node),
-            Some(FdEntry::Dir(dir)) => Ok(dir.node),
+            Some(FdEntry::File {file, path: _}) => Ok(file.node),
+            Some(FdEntry::Dir {dir, path: _}) => Ok(dir.node),
+            Some(FdEntry::Symlink {link, path: _}) => Ok(link.node),
             None => Err(Error::NotFound),
         }
     }
 
-    fn get_file(&self, fd: Fd) -> Result<File, Error> {
-        match self.fd_table.get(fd) {
-            Some(FdEntry::File(file)) => Ok(file.clone()),
-            Some(FdEntry::Dir(_)) => Err(Error::InvalidFileType),
-            None => Err(Error::NotFound),
+    fn get_file(&self, fd: Fd) -> Result<FdEntry, Error> {
+        let entry = self.fd_table.get(fd);
+
+        if let Some(entry) = entry {
+            match entry {
+                FdEntry::File { file: _, path: _ } => Ok(entry.clone()),
+                _ => Err(Error::InvalidFileType),
+            }
+        } else {
+            Err(Error::NotFound)
         }
     }
 
-    fn put_file(&mut self, fd: Fd, file: File) {
-        self.fd_table.update(fd, FdEntry::File(file))
+    fn put_file(&mut self, fd: Fd, file: File, path: Vec<Node>) {
+        self.fd_table.update(fd, FdEntry::File {file, path})
     }
 
     fn get_dir(&self, fd: Fd) -> Result<Dir, Error> {
         match self.fd_table.get(fd) {
-            Some(FdEntry::Dir(dir)) => Ok(dir.clone()),
-            Some(FdEntry::File(_)) => Err(Error::InvalidFileType),
+            Some(FdEntry::Dir {dir, path: _}) => Ok(dir.clone()),
             None => Err(Error::NotFound),
+            _ => Err(Error::InvalidFileType),
         }
     }
 
@@ -102,8 +108,8 @@ impl FileSystem {
         self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
     }
 
-    fn put_dir(&mut self, fd: Fd, dir: Dir) {
-        self.fd_table.update(fd, FdEntry::Dir(dir))
+    fn put_dir(&mut self, fd: Fd, dir: Dir, path: Vec<Node>) {
+        self.fd_table.update(fd, FdEntry::Dir {dir, path})
     }
 
     // Read file's `fd` contents into `dst`.

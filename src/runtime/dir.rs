@@ -26,10 +26,9 @@ impl Dir {
         let file_type = storage.get_metadata(node)?.file_type;
         match file_type {
             FileType::Directory => {}
-            FileType::RegularFile => {
+            _ => {
                 unreachable!("Unexpected file type, expected directory.");
             }
-            FileType::SymbolicLink => unimplemented!("Symbolic links are not supported"),
         };
         Ok(Self { node, stat })
     }

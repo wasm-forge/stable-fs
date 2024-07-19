@@ -9,6 +9,8 @@ use crate::{
     storage::Storage,
 };
 
+use super::types::Header;
+
 // The root node ID.
 const ROOT_NODE: Node = 0;
 
@@ -17,14 +19,13 @@ const FS_TRANSIENT_VERSION: u32 = 1;
 // Transient storage representation.
 #[derive(Debug, Default)]
 pub struct TransientStorage {
+    header: Header,
     // Node metadata information.
     metadata: BTreeMap<Node, Metadata>,
     // Directory entries for each of the directory node.
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry>,
     // File contents for each of the file node.
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk>,
-    // Next node ID.
-    next_node: Node,
 }
 
 impl TransientStorage {
@@ -43,7 +44,10 @@ impl TransientStorage {
             metadata: Default::default(),
             direntry: Default::default(),
             filechunk: Default::default(),
-            next_node: ROOT_NODE + 1,
+            header: Header {
+                version: FS_TRANSIENT_VERSION,
+                next_node: ROOT_NODE + 1,
+            }
         };
         result.put_metadata(ROOT_NODE, metadata);
         result
@@ -63,8 +67,9 @@ impl Storage for TransientStorage {
 
     // Generate the next available node ID.
     fn new_node(&mut self) -> Node {
-        let result = self.next_node;
-        self.next_node += 1;
+
+        let result = self.header.next_node;
+        self.header.next_node += 1;
         result
     }
 
@@ -76,7 +81,6 @@ impl Storage for TransientStorage {
 
     // Update the metadata associated with the node.
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        self.next_node = self.next_node.max(node + 1);
         self.metadata.insert(node, metadata);
     }
 

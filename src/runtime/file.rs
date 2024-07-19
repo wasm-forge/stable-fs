@@ -24,7 +24,9 @@ impl File {
             FileType::Directory => {
                 unreachable!("Unexpected file type, expected a regular file.");
             }
-            FileType::SymbolicLink => unimplemented!("Symbolic links are not implemented yet"),
+            FileType::SymbolicLink => {
+                unreachable!("Unexpected file type, expected a regular file.");
+            } 
         };
         let cursor = if stat.flags.contains(FdFlags::APPEND) {
             metadata.size

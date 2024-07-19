@@ -6,13 +6,24 @@ use crate::{
     storage::types::Node,
 };
 
+use super::symlink::Symlink;
+
 const RESERVED_FD_COUNT: Fd = 3;
 
 pub type Fd = u32;
 
+#[derive(Clone, Debug)]
+
 pub enum FdEntry {
-    File(File),
-    Dir(Dir),
+    File {file: File, path: Vec<Node>},
+    Dir {dir: Dir, path: Vec<Node>},
+    Symlink {link: Symlink, path: Vec<Node>},
+}
+
+impl FdEntry {
+    pub fn new_file(file: File, path: Vec<Node>) -> FdEntry {
+        FdEntry::File {file, path}
+    }
 }
 
 //
@@ -110,17 +121,20 @@ impl FdTable {
 
     fn inc_node_refcount(&mut self, entry: &FdEntry) {
         let node = match entry {
-            FdEntry::File(file) => file.node,
-            FdEntry::Dir(dir) => dir.node,
+            FdEntry::File {file, path: _ } => file.node,
+            FdEntry::Dir {dir, path: _} => dir.node,
+            FdEntry::Symlink {link, path: _} => link.node,
         };
         let refcount = self.node_refcount.entry(node).or_default();
         *refcount += 1;
     }
 
     fn dec_node_refcount(&mut self, entry: &FdEntry) {
+
         let node = match entry {
-            FdEntry::File(file) => file.node,
-            FdEntry::Dir(dir) => dir.node,
+            FdEntry::File {file, path: _} => file.node,
+            FdEntry::Dir {dir, path: _} => dir.node,
+            FdEntry::Symlink {link, path: _} => link.node,
         };
 
         let refcount = self.node_refcount.remove(&node);
