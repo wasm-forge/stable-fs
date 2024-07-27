@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd src/tests/fs_benchmark_test
+cd tests/fs_benchmark_test
 
 cargo build --release --target wasm32-unknown-unknown
 
@@ -11,5 +11,4 @@ cd ../demo_test_upgraded
 cargo build --release --target wasm32-unknown-unknown
 
 wasi2ic target/wasm32-unknown-unknown/release/demo_test_upgraded_backend.wasm target/wasm32-unknown-unknown/release/demo_test_upgraded_backend_small.wasm
-
 
