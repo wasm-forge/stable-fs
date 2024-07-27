@@ -108,8 +108,30 @@ impl File {
         storage: &mut dyn Storage,
     ) -> Result<FileSize, Error> {
 
-        self.read_with_offset_range(offset, buf, storage)
-/* 
+        if buf.is_empty() {
+            return Ok(0 as FileSize);
+        }
+
+        let file_size = storage.get_metadata(self.node)?.size;
+        
+        let read_size = storage.read_range(
+            self.node,
+            offset,
+            file_size, 
+            buf,
+        )?;
+
+        Ok(read_size as FileSize)
+ 
+    }
+
+    // Read file by chunks at the current file cursor, the cursor position will NOT be updated after reading.
+    fn read_with_offset_chunk(
+        &self,
+        offset: FileSize,
+        buf: &mut [u8],
+        storage: &mut dyn Storage,
+    ) -> Result<FileSize, Error> {
         if buf.is_empty() {
             return Ok(0 as FileSize);
         }
@@ -129,31 +151,6 @@ impl File {
             )?;
             read_size += chunk.len as usize;
         }
-        Ok(read_size as FileSize)
-
-        */
-    }
-
-    // Read file at the current file cursor, the cursor position will NOT be updated after reading.
-    fn read_with_offset_range(
-        &self,
-        offset: FileSize,
-        buf: &mut [u8],
-        storage: &mut dyn Storage,
-    ) -> Result<FileSize, Error> {
-        if buf.is_empty() {
-            return Ok(0 as FileSize);
-        }
-
-        let file_size = storage.get_metadata(self.node)?.size;
-        
-        let read_size = storage.read_range(
-            self.node,
-            offset,
-            file_size, 
-            buf,
-        )?;
-
         Ok(read_size as FileSize)
     }
 
@@ -376,7 +373,38 @@ mod tests {
     }
 
     #[test]
-    fn read_and_write_offset_range() {
+    fn read_and_write_small_and_big_buffer() {
+        let mut fs = test_fs();
+        let fd = fs
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .unwrap();
+
+        let file = fs.get_test_file(fd);
+        let storage = fs.get_test_storage();
+        
+        for i in 0..1000 {
+            let buf = [(i % 256) as u8; 10];
+            file.write_with_offset(i * 16, &buf, storage).unwrap();
+        }
+
+        for i in 0..1000 {
+            let mut buf1 = [0; 13];
+            let mut buf2 = [0; 5000];
+            let mut buf3 = [0; 15000];
+            
+            let r1 = file.read_with_offset_chunk(i * 17, &mut buf1, storage).unwrap() as usize;
+            let r2 = file.read_with_offset_chunk(i * 17, &mut buf2, storage).unwrap() as usize;
+            let _r3 = file.read_with_offset_chunk(i * 17, &mut buf3, storage).unwrap() as usize;
+
+            assert_eq!(buf1[..r1], buf2[..r1]);
+            assert_eq!(buf2[..r2], buf3[..r2]);
+        }
+
+
+    }
+
+    #[test]
+    fn read_and_write_offset_chunk() {
         let mut fs = test_fs();
         let fd = fs
             .create_file(fs.root_fd(), "test", FdStat::default(), 0)
@@ -394,7 +422,7 @@ mod tests {
         
         for i in 0..1000 {
             let mut buf = [0; 16];
-            file.read_with_offset_range(i * 16, &mut buf, storage).unwrap();
+            file.read_with_offset_chunk(i * 16, &mut buf, storage).unwrap();
 
             let expected = [(i % 256) as u8; 16];
             assert_eq!(buf, expected);
@@ -418,7 +446,7 @@ mod tests {
         
         for i in 0..1000 {
             let mut buf1 = [0; 13];
-            let len1 = file.read_with_offset_range(i * 16, &mut buf1, storage).unwrap();
+            let len1 = file.read_with_offset_chunk(i * 16, &mut buf1, storage).unwrap();
 
             let mut buf2 = [0; 13];
             let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
@@ -429,7 +457,7 @@ mod tests {
         
         for i in 0..2050 {
             let mut buf1 = [0; 5003];
-            let len1 = file.read_with_offset_range(i * 13, &mut buf1, storage).unwrap();
+            let len1 = file.read_with_offset_chunk(i * 13, &mut buf1, storage).unwrap();
 
             let mut buf2 = [0; 5003];
             let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
@@ -457,7 +485,7 @@ mod tests {
         
         for i in 0..1000 {
             let mut buf1 = [0; 13];
-            let len1 = file.read_with_offset_range(i * 16, &mut buf1, storage).unwrap();
+            let len1 = file.read_with_offset_chunk(i * 16, &mut buf1, storage).unwrap();
 
             let mut buf2 = [0; 13];
             let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
@@ -468,7 +496,7 @@ mod tests {
         
         for i in 0..2050 {
             let mut buf1 = [0; 5003];
-            let len1 = file.read_with_offset_range(i * 13, &mut buf1, storage).unwrap();
+            let len1 = file.read_with_offset_chunk(i * 13, &mut buf1, storage).unwrap();
 
             let mut buf2 = [0; 5003];
             let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
