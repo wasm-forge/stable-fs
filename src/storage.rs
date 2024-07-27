@@ -41,6 +41,16 @@ pub trait Storage {
         offset: FileSize,
         buf: &mut [u8],
     ) -> Result<(), Error>;
+
+    // Fill the buffer contents with data of a selected file chunk.
+    fn read_range(
+        &self,
+        node: Node,
+        read_offset: FileSize,
+        file_size: FileSize,
+        buf: &mut [u8],
+    ) -> Result<FileSize, Error>;
+
     // Insert of update a selected file chunk with the data provided in buffer.
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]);
     // Remove file chunk from a given file node.

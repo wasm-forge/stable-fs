@@ -199,7 +199,7 @@ name = "fs_benchmark_test_backend"
 version = "0.1.0"
 dependencies = [
  "candid",
- "ic-cdk 0.13.2",
+ "ic-cdk 0.15.0",
  "ic-cdk-timers",
  "ic-stable-structures",
  "stable-fs",

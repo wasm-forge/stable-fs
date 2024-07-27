@@ -63,7 +63,7 @@ fn upgrade_canister(pic: &PocketIc) {
 
 mod fns {
 
-    use candid::{decode_one, encode_one, Principal};
+    use candid::{decode_args, decode_one, encode_one, Principal};
     use pocket_ic::{PocketIc, WasmResult};
 
     use super::active_canister;
@@ -104,6 +104,25 @@ mod fns {
 
         if let WasmResult::Reply(response) = response {
             let result: String = decode_one(&response).unwrap();
+
+            return result;
+        } else {
+            panic!("unintended call failure!");
+        }
+    }
+
+    pub(crate) fn read_bytes(pic: &PocketIc, filename: &str, offset: i64, size: u64) -> (u64, u64) {
+        let response = pic
+            .update_call(
+                active_canister(),
+                Principal::anonymous(),
+                "read_bytes",
+                candid::encode_args((filename, offset, size)).unwrap(),
+            )
+            .unwrap();
+
+        if let WasmResult::Reply(response) = response {
+            let result: (u64, u64) = decode_args(&response).unwrap();
 
             return result;
         } else {
@@ -347,5 +366,26 @@ fn long_paths_and_file_names() {
     let content = read_text(&pic, &format!("{path}/13.txt"), content_length as i64 - expected_content.len() as i64, 100);
 
     assert_eq!(expected_content, content);
+
+}
+
+
+#[test]
+fn large_file_read() {
+    let pic = setup_initial_canister();
+
+    let filename = "test.txt";
+
+    // create large file
+    fns::append_text(&pic, filename, "abcdef7890", 10_000_000);
+
+    let (instructions, size) = fns::read_bytes(&pic, filename, 13, 100_000_000);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(instructions < 4_000_000_000, "The call should take less than 8 billion instructions");
+
+    assert_eq!(size, 99_999_987);
+
 
 }

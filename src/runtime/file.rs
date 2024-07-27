@@ -107,6 +107,9 @@ impl File {
         buf: &mut [u8],
         storage: &mut dyn Storage,
     ) -> Result<FileSize, Error> {
+
+        self.read_with_offset_range(offset, buf, storage)
+/* 
         if buf.is_empty() {
             return Ok(0 as FileSize);
         }
@@ -127,6 +130,31 @@ impl File {
             read_size += chunk.len as usize;
         }
         Ok(read_size as FileSize)
+
+        */
+    }
+
+    // Read file at the current file cursor, the cursor position will NOT be updated after reading.
+    fn read_with_offset_range(
+        &self,
+        offset: FileSize,
+        buf: &mut [u8],
+        storage: &mut dyn Storage,
+    ) -> Result<FileSize, Error> {
+        if buf.is_empty() {
+            return Ok(0 as FileSize);
+        }
+
+        let file_size = storage.get_metadata(self.node)?.size;
+        
+        let read_size = storage.read_range(
+            self.node,
+            offset,
+            file_size, 
+            buf,
+        )?;
+
+        Ok(read_size as FileSize)
     }
 
     // Write file at the current file cursor, the cursor position will NOT be updated after reading.
@@ -136,6 +164,7 @@ impl File {
         buf: &[u8],
         storage: &mut dyn Storage,
     ) -> Result<FileSize, Error> {
+
         let mut metadata = storage.get_metadata(self.node)?;
         let end = offset + buf.len() as FileSize;
         let chunk_infos = get_chunk_infos(offset, end);
@@ -149,10 +178,12 @@ impl File {
             );
             written_size += chunk.len as usize;
         }
+
         if end > metadata.size {
             metadata.size = end;
             storage.put_metadata(self.node, metadata)
         }
+        
         Ok(written_size as FileSize)
     }
 
@@ -202,7 +233,7 @@ fn get_chunk_infos(start: FileSize, end: FileSize) -> Vec<ChunkHandle> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::test_fs;
+    use crate::test_utils::{test_fs, test_fs_transient};
 
     use super::*;
 
@@ -334,6 +365,7 @@ mod tests {
             let buf = [(i % 256) as u8; 16];
             file.write_with_offset(i * 16, &buf, storage).unwrap();
         }
+
         file.seek(-1000 * 16, Whence::END, storage).unwrap();
         for i in 0..1000 {
             let mut buf = [0; 16];
@@ -342,4 +374,107 @@ mod tests {
             assert_eq!(buf, expected);
         }
     }
+
+    #[test]
+    fn read_and_write_offset_range() {
+        let mut fs = test_fs();
+        let fd = fs
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .unwrap();
+
+        let mut file = fs.get_test_file(fd);
+        let storage = fs.get_test_storage();
+
+        for i in 0..1000 {
+            let buf = [(i % 256) as u8; 16];
+            file.write_with_offset(i * 16, &buf, storage).unwrap();
+        }
+        
+        file.seek(-1000 * 16, Whence::END, storage).unwrap();
+        
+        for i in 0..1000 {
+            let mut buf = [0; 16];
+            file.read_with_offset_range(i * 16, &mut buf, storage).unwrap();
+
+            let expected = [(i % 256) as u8; 16];
+            assert_eq!(buf, expected);
+        }
+    }
+
+    #[test]
+    fn read_and_write_offset_vs_range() {
+        let mut fs = test_fs();
+        let fd = fs
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .unwrap();
+
+        let file = fs.get_test_file(fd);
+        let storage = fs.get_test_storage();
+
+        for i in 0..1000 {
+            let buf = [(i % 256) as u8; 16];
+            file.write_with_offset(i * 16, &buf, storage).unwrap();
+        }
+        
+        for i in 0..1000 {
+            let mut buf1 = [0; 13];
+            let len1 = file.read_with_offset_range(i * 16, &mut buf1, storage).unwrap();
+
+            let mut buf2 = [0; 13];
+            let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
+
+            assert_eq!(buf1, buf2);
+            assert_eq!(len1, len2);
+        }
+        
+        for i in 0..2050 {
+            let mut buf1 = [0; 5003];
+            let len1 = file.read_with_offset_range(i * 13, &mut buf1, storage).unwrap();
+
+            let mut buf2 = [0; 5003];
+            let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
+
+            assert_eq!(buf1, buf2);
+            assert_eq!(len1, len2);
+        }
+    }    
+
+
+    #[test]
+    fn read_and_write_offset_vs_range_transient() {
+        let mut fs = test_fs_transient();
+        let fd = fs
+            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .unwrap();
+
+        let file = fs.get_test_file(fd);
+        let storage = fs.get_test_storage();
+
+        for i in 0..1000 {
+            let buf = [(i % 256) as u8; 16];
+            file.write_with_offset(i * 16, &buf, storage).unwrap();
+        }
+        
+        for i in 0..1000 {
+            let mut buf1 = [0; 13];
+            let len1 = file.read_with_offset_range(i * 16, &mut buf1, storage).unwrap();
+
+            let mut buf2 = [0; 13];
+            let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
+
+            assert_eq!(buf1, buf2);
+            assert_eq!(len1, len2);
+        }
+        
+        for i in 0..2050 {
+            let mut buf1 = [0; 5003];
+            let len1 = file.read_with_offset_range(i * 13, &mut buf1, storage).unwrap();
+
+            let mut buf2 = [0; 5003];
+            let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
+
+            assert_eq!(buf1, buf2);
+            assert_eq!(len1, len2);
+        }
+    }    
 }

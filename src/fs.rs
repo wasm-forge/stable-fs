@@ -180,7 +180,9 @@ impl FileSystem {
         let mut written_size = 0;
         for buf in src {
             let buf = unsafe { std::slice::from_raw_parts(buf.buf, buf.len) };
+
             let size = file.write_with_offset(written_size + offset, buf, self.storage.as_mut())?;
+            
             written_size += size;
         }
         self.put_file(fd, file);

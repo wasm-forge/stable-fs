@@ -70,13 +70,23 @@ impl Storage for DummyStorage {
         &mut self,
         _node: Node,
         _index: FileChunkIndex,
-        _offset: FileSize,
+        _offset_in_first_chunk: FileSize,
         _buf: &[u8],
     ) {
         panic!("Not supported")
     }
 
     fn rm_filechunk(&mut self, _node: Node, _index: FileChunkIndex) {
+        panic!("Not supported")
+    }
+    
+    fn read_range(
+        &self,
+        _node: Node,
+        _offset: FileSize,
+        _file_size: FileSize,
+        _buf: &mut [u8],
+    ) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
 }

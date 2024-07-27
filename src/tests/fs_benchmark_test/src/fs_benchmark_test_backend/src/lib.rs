@@ -44,13 +44,13 @@ thread_local! {
 }
 
 thread_local! {
-    static LARGE_CHUNK: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+    static BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
 }
 
 #[ic_cdk::update]
-pub fn append_chunk(text: String, times: usize, capa: usize) -> usize {
+pub fn append_buffer(text: String, times: usize, capa: usize) -> usize {
 
-    LARGE_CHUNK.with(|chunk| {
+    BUFFER.with(|chunk| {
         let mut chunk = chunk.borrow_mut();
 
         if chunk.is_none() {
@@ -68,9 +68,9 @@ pub fn append_chunk(text: String, times: usize, capa: usize) -> usize {
 }
 
 #[ic_cdk::update]
-pub fn clear_chunk() {
+pub fn clear_buffer() {
 
-    LARGE_CHUNK.with(|chunk| {
+    BUFFER.with(|chunk| {
         let mut chunk = chunk.borrow_mut();
 
         if chunk.is_none() {
@@ -89,9 +89,9 @@ pub fn clear_chunk() {
 }
 
 #[ic_cdk::update]
-pub fn read_chunk(offset: usize, size: usize) -> String {
+pub fn read_buffer(offset: usize, size: usize) -> String {
 
-    LARGE_CHUNK.with(|chunk| {
+    BUFFER.with(|chunk| {
         let mut chunk = chunk.borrow_mut();
 
         let chunk = chunk.as_mut().unwrap();
@@ -103,7 +103,7 @@ pub fn read_chunk(offset: usize, size: usize) -> String {
 #[ic_cdk::update]
 pub fn chunk_size() -> usize {
 
-    LARGE_CHUNK.with(|chunk| {
+    BUFFER.with(|chunk| {
         let mut chunk = chunk.borrow_mut();
 
         let chunk = chunk.as_mut().unwrap();
@@ -113,10 +113,10 @@ pub fn chunk_size() -> usize {
 }
 
 #[ic_cdk::update]
-pub fn store_chunk(filename: String) -> (u64, usize) {
+pub fn store_buffer(filename: String) -> (u64, usize) {
     let stime = ic_cdk::api::instruction_counter();    
 
-    let res = LARGE_CHUNK.with(|chunk| {
+    let res = BUFFER.with(|chunk| {
 
         let chunk = chunk.borrow_mut();
         
@@ -148,10 +148,10 @@ pub fn store_chunk(filename: String) -> (u64, usize) {
 }
 
 #[ic_cdk::update]
-pub fn load_chunk(filename: String) -> (u64, usize) {
+pub fn load_buffer(filename: String) -> (u64, usize) {
     let stime = ic_cdk::api::instruction_counter();    
 
-    let res = LARGE_CHUNK.with(|chunk| {
+    let res = BUFFER.with(|chunk| {
 
         let mut chunk = chunk.borrow_mut();
         
@@ -291,8 +291,10 @@ fn write_mib_text(filename: String, mib_size: usize) -> u64 {
 }
 
 #[ic_cdk::update]
-fn read_kb(filename: String, kb_size: usize, offset: i64) -> Vec<u8> {
-    let size = kb_size * 1024;
+fn read_bytes(filename: String, offset: i64, size: usize) -> (u64, usize) {
+
+    let stime = ic_cdk::api::instruction_counter();    
+
     let mut res = Vec::with_capacity(size);
 
     FS.with(|fs| {
@@ -312,13 +314,16 @@ fn read_kb(filename: String, kb_size: usize, offset: i64) -> Vec<u8> {
             },
         ];
         
-        fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
+        let len = fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
         
         let _ = fs.close(fd);
 
+        unsafe {res.set_len(len as usize)};
+        
     });
 
-    res
+    let etime = ic_cdk::api::instruction_counter();    
+    (etime - stime, res.len())
 }
 
 
