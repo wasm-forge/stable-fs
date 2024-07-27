@@ -86,11 +86,25 @@ function perf_delete_folders() {
   flamegraph(cid, "delete_folders", "svg/delete_folders.svg");
 };
 
-/// files
-perf_file_write_10mib();
 
-perf_append_text_10kib();
-perf_append_text_10kib_deep_folder_structure();
+function perf_file_write_100mib() {
+  // stop trace
+  call cid.__toggle_tracing();
+  
+  call cid.append_chunk("test.txt", "1234567890abcdefghij", (10: nat64) );
+
+  // start trace
+  call cid.__toggle_tracing();
+
+  flamegraph(cid, "perf_file_write_10mib", "svg/perf_file_write_10mib.svg");
+};
+
+
+/// files
+//perf_file_write_10mib();
+
+//perf_append_text_10kib();
+//perf_append_text_10kib_deep_folder_structure();
 
 
 //perf_create_files();

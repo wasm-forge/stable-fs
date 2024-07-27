@@ -8,7 +8,7 @@ use crate::error::Error;
 
 use super::{
     types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata, Node, Times
+        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata, Node, Times, FILE_CHUNK_SIZE
     },
     Storage,
 };
@@ -65,14 +65,12 @@ impl<M: Memory> StableStorage<M> {
         let direntry_memory = memory_manager.get(MemoryId::new(memory_indices.start + 2u8));
         let filechunk_memory = memory_manager.get(MemoryId::new(memory_indices.start + 3u8));
 
-        let storage = Self::new_with_custom_memories(
+        Self::new_with_custom_memories(
             header_memory,
             metadata_memory,
             direntry_memory,
             filechunk_memory,
-        );
-
-        storage
+        )
     }
 
     pub fn new_with_custom_memories(
@@ -192,6 +190,54 @@ impl<M: Memory> Storage for StableStorage<M> {
         let value = self.filechunk.get(&(node, index)).ok_or(Error::NotFound)?;
         buf.copy_from_slice(&value.bytes[offset as usize..offset as usize + buf.len()]);
         Ok(())
+    }
+
+    // Fill the buffer contents with data of a chosen range.
+    fn read_range(
+        &self,
+        node: Node,
+        offset: FileSize,
+        file_size: FileSize,
+        buf: &mut [u8],
+    ) -> Result<FileSize, Error> {
+
+        if offset >= file_size {
+            return Ok(0);
+        }
+
+        let start_index = (offset / FILE_CHUNK_SIZE as FileSize) as FileChunkIndex;
+
+        let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE as FileSize;
+
+        let range = (node, start_index)..(node + 1, 0);
+
+        let mut size_read: FileSize = 0;
+        let mut remainder = file_size - offset;
+
+        for ((nd, _idx), value) in self.filechunk.range(range) {
+
+            assert!(nd == node);
+
+            // finished reading, buffer full
+            if size_read == buf.len() as FileSize {
+                break;
+            }
+
+            let chunk_space = FILE_CHUNK_SIZE as FileSize - chunk_offset;
+
+            let to_read = remainder.min(chunk_space).min(buf.len() as FileSize - size_read);
+
+            let write_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+
+            write_buf.copy_from_slice(&value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize]);
+
+            chunk_offset = 0;
+
+            size_read += to_read;
+            remainder -= to_read;
+        }
+
+        Ok(size_read)
     }
 
     // Insert of update a selected file chunk with the data provided in buffer.

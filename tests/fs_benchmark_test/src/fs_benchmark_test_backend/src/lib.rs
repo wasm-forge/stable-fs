@@ -7,8 +7,21 @@ use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMem
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
-    format!("Greetings, {}!", name)
+    format!("Hello, {}!", name)
 }
+
+
+#[ic_cdk::query]
+fn greet_times(name: String, times: usize) -> Vec<String> {
+    let mut res = Vec::new();
+
+    for _ in 0..times {
+        res.push(greet(name.clone()));
+    }
+
+    res
+}
+
 
 const PROFILING: MemoryId = MemoryId::new(100);
 
@@ -19,17 +32,162 @@ thread_local! {
     static FS: RefCell<FileSystem> = {
 
         MEMORY_MANAGER.with(|m| {
-            let memory = m.borrow();
+            let memory_manager = m.borrow();
 
-            let storage = StableStorage::new_with_memory_manager(&memory, 200..210u8);
+            let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
     
             RefCell::new(
                 FileSystem::new(Box::new(storage)).unwrap()
             )
         })
     };
-    
 }
+
+thread_local! {
+    static BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+}
+
+#[ic_cdk::update]
+pub fn append_buffer(text: String, times: usize, capa: usize) -> usize {
+
+    BUFFER.with(|chunk| {
+        let mut chunk = chunk.borrow_mut();
+
+        if chunk.is_none() {
+            *chunk = Some(Vec::with_capacity(capa));
+        }
+
+        let chunk = chunk.as_mut().unwrap();
+
+        for _ in 0..times {
+            chunk.extend_from_slice(text.as_bytes());
+        }
+
+        chunk.len()
+    })
+}
+
+#[ic_cdk::update]
+pub fn clear_buffer() {
+
+    BUFFER.with(|chunk| {
+        let mut chunk = chunk.borrow_mut();
+
+        if chunk.is_none() {
+            return;
+        }
+
+        let chunk = chunk.as_mut().unwrap();
+
+        // explicitly destroy contents
+        for i in 0..chunk.len() {
+            chunk[i] = 0;
+        }
+
+        chunk.clear()
+    })
+}
+
+#[ic_cdk::update]
+pub fn read_buffer(offset: usize, size: usize) -> String {
+
+    BUFFER.with(|chunk| {
+        let mut chunk = chunk.borrow_mut();
+
+        let chunk = chunk.as_mut().unwrap();
+
+        std::str::from_utf8(&chunk[offset..offset+size]).unwrap().to_string()
+    })
+}
+
+#[ic_cdk::update]
+pub fn chunk_size() -> usize {
+
+    BUFFER.with(|chunk| {
+        let mut chunk = chunk.borrow_mut();
+
+        let chunk = chunk.as_mut().unwrap();
+
+        chunk.len()
+    })
+}
+
+#[ic_cdk::update]
+pub fn store_buffer(filename: String) -> (u64, usize) {
+    let stime = ic_cdk::api::instruction_counter();    
+
+    let res = BUFFER.with(|chunk| {
+
+        let chunk = chunk.borrow_mut();
+        
+        let chunk = chunk.as_ref().unwrap();
+
+        FS.with(|fs| {
+            let mut fs = fs.borrow_mut();
+
+            let root_fd = (*fs).root_fd();
+
+            let fd = (*fs).open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42).unwrap();
+
+            let write_content = [
+                SrcBuf {
+                    buf: chunk.as_ptr(),
+                    len: chunk.len(),
+                },
+            ];
+
+            let res = (*fs).write_vec(fd, write_content.as_ref()).unwrap();
+
+            res as usize
+        })
+    });
+
+    let etime = ic_cdk::api::instruction_counter();    
+
+    (etime - stime, res)
+}
+
+#[ic_cdk::update]
+pub fn load_buffer(filename: String) -> (u64, usize) {
+    let stime = ic_cdk::api::instruction_counter();    
+
+    let res = BUFFER.with(|chunk| {
+
+        let mut chunk = chunk.borrow_mut();
+        
+        let chunk = chunk.as_mut().unwrap();
+
+        FS.with(|fs| {
+            let mut fs = fs.borrow_mut();
+
+            let root_fd = (*fs).root_fd();
+
+            let fd = (*fs).open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42).unwrap();
+
+            let size = (*fs).seek(fd, 0, Whence::END).unwrap() as usize;
+
+            (*fs).seek(fd, 0, Whence::SET).unwrap();
+
+            let read_content = [
+                DstBuf {
+                    buf: chunk.as_mut_ptr(),
+                    len: size,
+                },
+            ];
+
+            unsafe {chunk.set_len(size)};
+
+            let res = (*fs).read_vec(fd, &read_content).unwrap();
+
+            res as usize
+        })
+    });
+
+    let etime = ic_cdk::api::instruction_counter();    
+
+    (etime - stime, res)
+}
+
 
 pub fn profiling_init() {
     let memory = MEMORY_MANAGER.with(|m| m.borrow().get(PROFILING));
@@ -133,8 +291,10 @@ fn write_mib_text(filename: String, mib_size: usize) -> u64 {
 }
 
 #[ic_cdk::update]
-fn read_kb(filename: String, kb_size: usize, offset: i64) -> Vec<u8> {
-    let size = kb_size * 1024;
+fn read_bytes(filename: String, offset: i64, size: usize) -> (u64, usize) {
+
+    let stime = ic_cdk::api::instruction_counter();    
+
     let mut res = Vec::with_capacity(size);
 
     FS.with(|fs| {
@@ -154,13 +314,16 @@ fn read_kb(filename: String, kb_size: usize, offset: i64) -> Vec<u8> {
             },
         ];
         
-        fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
+        let len = fs.read_vec_with_offset(fd, &read_content, offset as u64).unwrap();
         
         let _ = fs.close(fd);
 
+        unsafe {res.set_len(len as usize)};
+        
     });
 
-    res
+    let etime = ic_cdk::api::instruction_counter();    
+    (etime - stime, res.len())
 }
 
 
@@ -384,4 +547,23 @@ fn read_text(filename: String, offset: i64, size: usize) -> String {
         content[..min].to_string()
     })
 
+}
+
+#[ic_cdk::query]
+fn file_size(filename: String) -> usize {
+
+    FS.with(|fs| {
+
+        let mut fs = fs.borrow_mut();
+
+        let dir = fs.root_fd();
+
+        let fd = fs.open_or_create(dir, filename.as_str(), FdStat::default(), OpenFlags::empty(), 0).unwrap();        
+
+        let meta = fs.metadata(fd).unwrap();
+
+        let size = meta.size;
+
+        size as usize
+    })
 }

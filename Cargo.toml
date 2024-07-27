@@ -1,6 +1,6 @@
 [package]
 name = "stable-fs"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "A Simple File system implementing WASI endpoints and using the stable structures of the Internet Computer"
 keywords = ["ic", "internet-computer", "file-system"]
@@ -9,7 +9,7 @@ repository = "https://github.com/wasm-forge/stable-fs"
 
 [dependencies]
 bitflags = "2.3.1"
-ic-cdk = "0.13.1"
+ic-cdk = "0.15"
 ic-stable-structures = "0.6.5"
 serde = "1.0.164"
 serde_bytes = "0.11"
