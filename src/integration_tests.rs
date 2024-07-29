@@ -7,7 +7,7 @@ const BACKEND_WASM: &str = "tests/fs_benchmark_test/target/wasm32-unknown-unknow
 const BACKEND_WASM_UPGRADED: &str = "tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend_small.wasm";
 
 thread_local!(
-    static ACTIVE_CANISTER: RefCell<Option<Principal>> = RefCell::new(None);
+    static ACTIVE_CANISTER: RefCell<Option<Principal>> = const { RefCell::new(None) };
 );
 
 fn set_active_canister(new_canister: Principal) {
@@ -105,7 +105,7 @@ mod fns {
         if let WasmResult::Reply(response) = response {
             let result: String = decode_one(&response).unwrap();
 
-            return result;
+            result
         } else {
             panic!("unintended call failure!");
         }
@@ -124,7 +124,7 @@ mod fns {
         if let WasmResult::Reply(response) = response {
             let result: (u64, u64) = decode_args(&response).unwrap();
 
-            return result;
+            result
         } else {
             panic!("unintended call failure!");
         }
@@ -153,7 +153,7 @@ mod fns {
         if let WasmResult::Reply(response) = response {
             let result: Vec<String> = decode_one(&response).unwrap();
 
-            return result;
+            result
         } else {
             panic!("unintended call failure!");
         }

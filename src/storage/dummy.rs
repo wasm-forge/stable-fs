@@ -130,7 +130,7 @@ mod tests {
         let mut storage = DummyStorage::new();
         let node = storage.new_node();
 
-        let _ = storage.rm_metadata(node);
+        storage.rm_metadata(node);
     }
 
     #[test]

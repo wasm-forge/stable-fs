@@ -118,7 +118,8 @@ impl File {
         Ok(read_size as FileSize)
     }
 
-    // Read file by chunks at the current file cursor, the cursor position will NOT be updated after reading.
+    // Read file by chunks at the current file cursor, the cursor position will NOT be updated after reading. Used for testing
+    #[cfg(test)]
     fn read_with_offset_chunk(
         &self,
         offset: FileSize,
