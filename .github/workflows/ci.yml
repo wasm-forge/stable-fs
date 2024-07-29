@@ -1,10 +1,6 @@
 name: Tests
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,6 +23,12 @@ jobs:
 
     - name: Install wasi2ic
       run: cargo install wasi2ic
+
+    - name: Check Format
+      run: cargo fmt --all -- --check
+
+    - name: Clippy
+      run: cargo clippy --tests --benches -- -D clippy::all
 
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov

@@ -27,7 +27,7 @@ fn active_canister() -> Principal {
 fn setup_test_projects() {
     use std::process::Command;
     let _ = Command::new("bash")
-        .arg("build_tests.sh")
+        .arg("scripts/build_tests.sh")
         .output()
         .expect("Failed to execute command");
 }
@@ -245,7 +245,6 @@ fn writing_file_after_upgrade() {
     assert_eq!(result, "test5");
     let result = fns::read_text(&pic, "test6.txt", 10i64, 5u64);
     assert_eq!(result, "test6");
-
 }
 
 #[test]
@@ -357,18 +356,26 @@ fn long_paths_and_file_names() {
 
     let content = read_text(&pic, &format!("{path}/{file_name}"), 0, 100000);
     assert_eq!(expected_content, content);
-    
+
     let expected_content = "0123:123";
-    let content = read_text(&pic, &format!("{path}/3.txt"), 60, expected_content.len() as u64);
+    let content = read_text(
+        &pic,
+        &format!("{path}/3.txt"),
+        60,
+        expected_content.len() as u64,
+    );
     assert_eq!(expected_content, content);
 
     let expected_content = "A💖//13.txt";
-    let content = read_text(&pic, &format!("{path}/13.txt"), content_length as i64 - expected_content.len() as i64, 100);
+    let content = read_text(
+        &pic,
+        &format!("{path}/13.txt"),
+        content_length as i64 - expected_content.len() as i64,
+        100,
+    );
 
     assert_eq!(expected_content, content);
-
 }
-
 
 #[test]
 fn large_file_read() {
@@ -387,8 +394,10 @@ fn large_file_read() {
 
     println!("instructions {instructions}, size {size}");
 
-    assert!(instructions < 3_000_000_000, "The call should take less than 3 billion instructions");
+    assert!(
+        instructions < 3_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
 
     assert_eq!(size, 99_999_987);
-
 }
