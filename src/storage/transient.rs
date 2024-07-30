@@ -124,7 +124,6 @@ impl Storage for TransientStorage {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-
         if offset >= file_size {
             return Ok(0);
         }
@@ -139,7 +138,6 @@ impl Storage for TransientStorage {
         let mut remainder = file_size - offset;
 
         for ((nd, _idx), value) in self.filechunk.range(range) {
-
             assert!(*nd == node);
 
             // finished reading, buffer full
@@ -149,11 +147,15 @@ impl Storage for TransientStorage {
 
             let chunk_space = FILE_CHUNK_SIZE as FileSize - chunk_offset;
 
-            let to_read = remainder.min(chunk_space).min(buf.len() as FileSize - size_read);
+            let to_read = remainder
+                .min(chunk_space)
+                .min(buf.len() as FileSize - size_read);
 
             let write_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
 
-            write_buf.copy_from_slice(&value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize]);
+            write_buf.copy_from_slice(
+                &value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize],
+            );
 
             chunk_offset = 0;
 
@@ -162,7 +164,7 @@ impl Storage for TransientStorage {
         }
 
         Ok(size_read)
-    } 
+    }
 
     // Insert of update a selected file chunk with the data provided in buffer.
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {

@@ -79,7 +79,7 @@ impl Storage for DummyStorage {
     fn rm_filechunk(&mut self, _node: Node, _index: FileChunkIndex) {
         panic!("Not supported")
     }
-    
+
     fn read_range(
         &self,
         _node: Node,
@@ -130,7 +130,7 @@ mod tests {
         let mut storage = DummyStorage::new();
         let node = storage.new_node();
 
-        let _ = storage.rm_metadata(node);
+        storage.rm_metadata(node);
     }
 
     #[test]

@@ -1,21 +1,22 @@
 use std::ops::Range;
 
 use ic_stable_structures::{
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory}, BTreeMap, Cell, Memory
+    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
+    BTreeMap, Cell, Memory,
 };
 
 use crate::error::Error;
 
 use super::{
     types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata, Node, Times, FILE_CHUNK_SIZE
+        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata,
+        Node, Times, FILE_CHUNK_SIZE,
     },
     Storage,
 };
 
 const ROOT_NODE: Node = 0;
 const FS_VERSION: u32 = 1;
-
 
 const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
 
@@ -40,7 +41,10 @@ impl<M: Memory> StableStorage<M> {
     pub fn new(memory: M) -> Self {
         let memory_manager = MemoryManager::init(memory);
 
-        let mut storage = Self::new_with_memory_manager(&memory_manager, DEFAULT_FIRST_MEMORY_INDEX..DEFAULT_FIRST_MEMORY_INDEX+MEMORY_INDEX_COUNT);
+        let mut storage = Self::new_with_memory_manager(
+            &memory_manager,
+            DEFAULT_FIRST_MEMORY_INDEX..DEFAULT_FIRST_MEMORY_INDEX + MEMORY_INDEX_COUNT,
+        );
 
         storage._memory_manager = Some(memory_manager);
 
@@ -51,13 +55,18 @@ impl<M: Memory> StableStorage<M> {
         memory_manager: &MemoryManager<M>,
         memory_indices: Range<u8>,
     ) -> StableStorage<M> {
-
         if memory_indices.end - memory_indices.start < MEMORY_INDEX_COUNT {
-            panic!("The memory index range must include at least {} incides", MEMORY_INDEX_COUNT);
+            panic!(
+                "The memory index range must include at least {} incides",
+                MEMORY_INDEX_COUNT
+            );
         }
 
         if memory_indices.end > MAX_MEMORY_INDEX {
-            panic!("Last memory index must be less than or equal to {}", MAX_MEMORY_INDEX);
+            panic!(
+                "Last memory index must be less than or equal to {}",
+                MAX_MEMORY_INDEX
+            );
         }
 
         let header_memory = memory_manager.get(MemoryId::new(memory_indices.start));
@@ -79,7 +88,6 @@ impl<M: Memory> StableStorage<M> {
         direntry: VirtualMemory<M>,
         filechunk: VirtualMemory<M>,
     ) -> Self {
-
         let default_header_value = Header {
             version: FS_VERSION,
             next_node: ROOT_NODE + 1,
@@ -94,7 +102,7 @@ impl<M: Memory> StableStorage<M> {
         };
 
         let version = result.header.get().version;
-        
+
         if version != FS_VERSION {
             panic!("Unsupported file system version");
         }
@@ -130,7 +138,6 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Generate the next available node ID.
     fn new_node(&mut self) -> Node {
-
         let mut header = self.header.get().clone();
 
         self.metadata.last_key_value();
@@ -200,7 +207,6 @@ impl<M: Memory> Storage for StableStorage<M> {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-
         if offset >= file_size {
             return Ok(0);
         }
@@ -215,7 +221,6 @@ impl<M: Memory> Storage for StableStorage<M> {
         let mut remainder = file_size - offset;
 
         for ((nd, _idx), value) in self.filechunk.range(range) {
-
             assert!(nd == node);
 
             // finished reading, buffer full
@@ -225,11 +230,15 @@ impl<M: Memory> Storage for StableStorage<M> {
 
             let chunk_space = FILE_CHUNK_SIZE as FileSize - chunk_offset;
 
-            let to_read = remainder.min(chunk_space).min(buf.len() as FileSize - size_read);
+            let to_read = remainder
+                .min(chunk_space)
+                .min(buf.len() as FileSize - size_read);
 
             let write_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
 
-            write_buf.copy_from_slice(&value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize]);
+            write_buf.copy_from_slice(
+                &value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize],
+            );
 
             chunk_offset = 0;
 
