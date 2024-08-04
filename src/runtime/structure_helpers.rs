@@ -662,5 +662,4 @@ mod tests {
             find_node(root_node, "test1/test2/test4/test7.txt", storage).unwrap()
         );
     }
-
 }
