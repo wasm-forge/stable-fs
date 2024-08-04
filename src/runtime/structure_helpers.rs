@@ -15,27 +15,6 @@ struct EntryFindResult {
     next_entry: Option<DirEntryIndex>,
 }
 
-pub fn unify_name(filename: &str) -> String {
-    let parts = filename.split('/');
-
-    let mut name_parts = Vec::new();
-
-    for part in parts {
-        if part.is_empty() || part == "." {
-            continue;
-        }
-
-        if part == ".." {
-            name_parts.pop();
-            continue;
-        }
-
-        name_parts.push(part);
-    }
-
-    name_parts.join("/")
-}
-
 fn find_node_with_index(
     parent_dir_node: Node,
     path: &str,
@@ -412,7 +391,7 @@ mod tests {
 
     use crate::{
         error::Error,
-        runtime::structure_helpers::{create_path, find_node, unify_name},
+        runtime::structure_helpers::{create_path, find_node},
         storage::{stable::StableStorage, types::FileType, Storage},
     };
 
@@ -684,41 +663,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unify_name_correct() {
-        let name = "test/text.txt".to_string();
-
-        let name1 = unify_name("./test/.//text.txt");
-        let name2 = unify_name("/test//./text.txt");
-        let name3 = unify_name("test/text.txt");
-        let name4 = unify_name("test/a/s/../../text.txt");
-        let name5 = unify_name("../test/text.txt");
-        let name6 = unify_name("a/./s/../../test/text.txt");
-
-        assert_eq!(name1, name);
-        assert_eq!(name2, name);
-        assert_eq!(name3, name);
-        assert_eq!(name4, name);
-        assert_eq!(name5, name);
-        assert_eq!(name6, name);
-    }
-
-    #[test]
-    fn empty_path() {
-        let name = "".to_string();
-
-        let name1 = unify_name("././");
-        let name2 = unify_name("");
-        let name3 = unify_name(".");
-        let name4 = unify_name("../a/s/../..");
-        let name5 = unify_name("../test/text.txt/../..");
-        let name6 = unify_name("a/./s/../..///");
-
-        assert_eq!(name1, name);
-        assert_eq!(name2, name);
-        assert_eq!(name3, name);
-        assert_eq!(name4, name);
-        assert_eq!(name5, name);
-        assert_eq!(name6, name);
-    }
 }
