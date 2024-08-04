@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use ic_stable_structures::Memory;
 
 use crate::{
@@ -27,7 +25,6 @@ pub struct FileSystem {
     root_fd: Fd,
     fd_table: FdTable,
     pub storage: Box<dyn Storage>,
-    mounted_nodes: HashMap<Node, Box<dyn Memory>>,
 }
 
 impl FileSystem {
@@ -40,7 +37,6 @@ impl FileSystem {
                 root_fd: 0,
                 fd_table,
                 storage,
-                mounted_nodes: HashMap::new(),
             });
         }
 
@@ -52,10 +48,10 @@ impl FileSystem {
             root_fd,
             fd_table,
             storage,
-            mounted_nodes: HashMap::new(),
         })
     }
 
+    //
     pub fn get_storage_version(&self) -> u32 {
         self.storage.get_version()
     }
@@ -118,20 +114,10 @@ impl FileSystem {
             0,
         )?;
 
-        let mut meta = self.metadata(fd)?;
-
         let node = self.get_node(fd)?;
-
-        self.mounted_nodes.insert(node, memory);
-
-        if meta.mount_size.is_none() {
-            // init new memory with 0 if it was not known before
-            meta.mount_size = Some(0);
-        }
-
-        self.storage.put_metadata(node, meta);
-
         self.close(fd)?;
+
+        self.storage.mount_node(node, memory)?;
 
         Ok(())
     }
@@ -145,9 +131,13 @@ impl FileSystem {
 
         let node = find_node(root_node, filename, self.storage.as_ref())?;
 
+        if !self.storage.is_mounted(node) {
+            return Err(Error::FileIsNotMounted);
+        }
+
         let mut metadata = self.metadata_from_node(node)?;
 
-        metadata.mount_size = Some(new_size);
+        metadata.size = new_size;
 
         self.storage.put_metadata(node, metadata);
 
@@ -515,6 +505,8 @@ impl FileSystem {
 #[cfg(test)]
 mod tests {
 
+    use ic_stable_structures::{Memory, VectorMemory};
+
     use crate::{
         error::Error,
         fs::{DstBuf, FdFlags, SrcBuf},
@@ -523,7 +515,10 @@ mod tests {
             types::{FdStat, OpenFlags},
         },
         storage::types::FileType,
-        test_utils::{read_text_file, test_fs, test_fs_transient, write_text_fd, write_text_file},
+        test_utils::{
+            new_vector_memory, read_text_file, test_fs, test_fs_setups, test_fs_transient,
+            write_text_fd, write_text_file,
+        },
     };
 
     use super::{Fd, FileSystem};
@@ -1259,45 +1254,67 @@ mod tests {
     }
 
     #[test]
-    fn writing_from_different_file_descriptors() {
+    fn writing_into_mounted_memory() {
+        let memory: VectorMemory = new_vector_memory();
+
         let mut fs = test_fs();
+
         let root_fd = fs.root_fd();
 
-        let fd1 = fs
-            .open_or_create(
-                root_fd,
-                "f1/f2/text.txt",
-                FdStat::default(),
-                OpenFlags::CREATE,
-                40,
-            )
-            .unwrap();
-        let fd2 = fs
-            .open_or_create(
-                root_fd,
-                "f1//f2/text.txt",
-                FdStat::default(),
-                OpenFlags::CREATE,
-                44,
-            )
+        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
             .unwrap();
 
-        write_text_fd(&mut fs, fd1, "abc", 1).unwrap();
-        write_text_fd(&mut fs, fd2, "123", 1).unwrap();
-        write_text_fd(&mut fs, fd1, "xyz", 1).unwrap();
+        let content = "ABCDEFG123";
 
-        let content = read_text_file(&mut fs, root_fd, "/f1/f2/text.txt", 0, 9);
+        write_text_file(&mut fs, root_fd, "test.txt", content, 1).unwrap();
 
-        assert_eq!("123xyz", content);
+        let mut buf = [0u8; 100];
+
+        memory.read(0, &mut buf);
+
+        println!("{:?}", buf);
+    }
+
+    #[test]
+    fn writing_from_different_file_descriptors() {
+        for mut fs in test_fs_setups("f1/f2/text.txt") {
+            let root_fd = fs.root_fd();
+
+            let fd1 = fs
+                .open_or_create(
+                    root_fd,
+                    "f1/f2/text.txt",
+                    FdStat::default(),
+                    OpenFlags::CREATE,
+                    40,
+                )
+                .unwrap();
+            let fd2 = fs
+                .open_or_create(
+                    root_fd,
+                    "f1//f2/text.txt",
+                    FdStat::default(),
+                    OpenFlags::CREATE,
+                    44,
+                )
+                .unwrap();
+
+            write_text_fd(&mut fs, fd1, "abc", 1).unwrap();
+            write_text_fd(&mut fs, fd2, "123", 1).unwrap();
+            write_text_fd(&mut fs, fd1, "xyz", 1).unwrap();
+
+            let content = read_text_file(&mut fs, root_fd, "/f1/f2/text.txt", 0, 9);
+
+            assert_eq!("123xyz", content);
+        }
     }
 
     #[test]
     fn write_into_empty_filename_fails() {
-        let mut fs = test_fs();
-        let root_fd = fs.root_fd();
-
-        let res = write_text_file(&mut fs, root_fd, "", "content123", 100);
-
-        assert!(res.is_err());
+        for mut fs in test_fs_setups("") {
+            let root_fd = fs.root_fd();
+            let res = write_text_file(&mut fs, root_fd, "", "content123", 100);
+            assert!(res.is_err());
+        }
     }
 }

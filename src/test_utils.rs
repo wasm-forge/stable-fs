@@ -1,6 +1,13 @@
-use ic_stable_structures::DefaultMemoryImpl;
+use ic_stable_structures::{DefaultMemoryImpl, VectorMemory};
 
 use crate::{error::Error, fs::FileSystem, storage::stable::StableStorage};
+
+#[cfg(test)]
+pub fn new_vector_memory() -> VectorMemory {
+    use std::{cell::RefCell, rc::Rc};
+
+    Rc::new(RefCell::new(Vec::new()))
+}
 
 #[cfg(test)]
 pub fn test_fs() -> FileSystem {
@@ -16,6 +23,33 @@ pub fn test_fs_transient() -> FileSystem {
 
     let storage = TransientStorage::new();
     FileSystem::new(Box::new(storage)).unwrap()
+}
+
+#[cfg(test)]
+pub fn test_fs_setups(virtual_file_name: &str) -> Vec<FileSystem> {
+    let mut result = Vec::new();
+
+    result.push(test_fs());
+
+    result.push(test_fs_transient());
+
+    if !virtual_file_name.is_empty() {
+        let mut fs = test_fs();
+
+        fs.mount_memory_file(virtual_file_name, Box::new(new_vector_memory()))
+            .unwrap();
+
+        result.push(fs);
+
+        let mut fs = test_fs_transient();
+
+        fs.mount_memory_file(virtual_file_name, Box::new(new_vector_memory()))
+            .unwrap();
+
+        result.push(fs);
+    }
+
+    result
 }
 
 #[cfg(test)]

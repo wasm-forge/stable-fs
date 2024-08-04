@@ -126,7 +126,6 @@ pub fn create_dir_entry(
             },
             first_dir_entry: None,
             last_dir_entry: None,
-            mount_size: None,
         },
     );
 

@@ -56,6 +56,7 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
+    #[cfg(test)]
     fn read_filechunk(
         &self,
         _node: Node,
@@ -89,6 +90,29 @@ impl Storage for DummyStorage {
     ) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
+
+    fn mount_node(
+        &mut self,
+        _node: Node,
+        _memory: Box<dyn ic_stable_structures::Memory>,
+    ) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn unmount_node(
+        &mut self,
+        _node: Node,
+    ) -> Result<Box<dyn ic_stable_structures::Memory>, Error> {
+        panic!("Not supported")
+    }
+
+    fn is_mounted(&self, _node: Node) -> bool {
+        panic!("Not supported")
+    }
+
+    fn get_mounted_memory(&self, _node: Node) -> Option<&dyn ic_stable_structures::Memory> {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]
@@ -112,7 +136,6 @@ mod tests {
                 times: Times::default(),
                 first_dir_entry: Some(42),
                 last_dir_entry: Some(24),
-                mount_size: None,
             },
         )
     }
