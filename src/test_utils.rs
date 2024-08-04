@@ -7,10 +7,7 @@ pub fn test_fs() -> FileSystem {
     let memory = DefaultMemoryImpl::default();
 
     let storage = StableStorage::new(memory);
-
-    let fs = FileSystem::new(Box::new(storage)).unwrap();
-
-    fs
+    FileSystem::new(Box::new(storage)).unwrap()
 }
 
 #[cfg(test)]
