@@ -76,6 +76,7 @@ pub struct Metadata {
     pub times: Times,
     pub first_dir_entry: Option<DirEntryIndex>,
     pub last_dir_entry: Option<DirEntryIndex>,
+    pub mount_size: Option<FileSize>,
 }
 
 impl ic_stable_structures::Storable for Metadata {

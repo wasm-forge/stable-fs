@@ -82,7 +82,7 @@ impl<M: Memory> StableStorage<M> {
         )
     }
 
-    pub fn new_with_custom_memories(
+    fn new_with_custom_memories(
         header: VirtualMemory<M>,
         metadata: VirtualMemory<M>,
         direntry: VirtualMemory<M>,
@@ -118,6 +118,7 @@ impl<M: Memory> StableStorage<M> {
                     times: Times::default(),
                     first_dir_entry: None,
                     last_dir_entry: None,
+                    mount_size: None,
                 };
                 result.put_metadata(ROOT_NODE, metadata);
             }
@@ -285,6 +286,7 @@ mod tests {
                 times: Times::default(),
                 first_dir_entry: Some(42),
                 last_dir_entry: Some(24),
+                mount_size: None,
             },
         );
         let metadata = storage.get_metadata(node).unwrap();

@@ -112,6 +112,7 @@ mod tests {
                 times: Times::default(),
                 first_dir_entry: Some(42),
                 last_dir_entry: Some(24),
+                mount_size: None,
             },
         )
     }

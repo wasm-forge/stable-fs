@@ -1,3 +1,8 @@
+use std::collections::HashMap;
+
+use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
+use ic_stable_structures::Memory;
+
 use crate::{
     error::Error,
     runtime::{
@@ -23,6 +28,7 @@ pub struct FileSystem {
     root_fd: Fd,
     fd_table: FdTable,
     pub storage: Box<dyn Storage>,
+    mounted_nodes: HashMap<Node, Box<dyn Memory>>,
 }
 
 impl FileSystem {
@@ -35,6 +41,7 @@ impl FileSystem {
                 root_fd: 0,
                 fd_table,
                 storage,
+                mounted_nodes: HashMap::new(),
             });
         }
 
@@ -46,6 +53,7 @@ impl FileSystem {
             root_fd,
             fd_table,
             storage,
+            mounted_nodes: HashMap::new(),
         })
     }
 
@@ -95,6 +103,56 @@ impl FileSystem {
             Some(FdEntry::File(_)) => Err(Error::InvalidFileType),
             None => Err(Error::NotFound),
         }
+    }
+
+    pub fn mount_memory_file(
+        &mut self,
+        filename: &str,
+        memory: Box<dyn Memory>,
+    ) -> Result<(), Error> {
+        // create a file for the mount
+        let fd = self.open_or_create(
+            self.root_fd,
+            filename,
+            FdStat::default(),
+            OpenFlags::CREATE,
+            0,
+        )?;
+
+        let mut meta = self.metadata(fd)?;
+
+        let node = self.get_node(fd)?;
+
+        self.mounted_nodes.insert(node, memory);
+
+        if meta.mount_size.is_none() {
+            // init new memory with 0 if it was not known before
+            meta.mount_size = Some(0);
+        }
+
+        self.storage.put_metadata(node, meta);
+
+        self.close(fd)?;
+
+        Ok(())
+    }
+
+    pub fn set_memory_file_size(
+        &mut self,
+        filename: &str,
+        new_size: FileSize,
+    ) -> Result<(), Error> {
+        let root_node = self.get_node(self.root_fd())?;
+
+        let node = find_node(root_node, filename, self.storage.as_ref())?;
+
+        let mut metadata = self.metadata_from_node(node)?;
+
+        metadata.mount_size = Some(new_size);
+
+        self.storage.put_metadata(node, metadata);
+
+        Ok(())
     }
 
     // Get dir entry for a given directory and the directory index.

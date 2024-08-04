@@ -4,8 +4,13 @@ use crate::{error::Error, fs::FileSystem, storage::stable::StableStorage};
 
 #[cfg(test)]
 pub fn test_fs() -> FileSystem {
-    let storage = StableStorage::new(DefaultMemoryImpl::default());
-    FileSystem::new(Box::new(storage)).unwrap()
+    let memory = DefaultMemoryImpl::default();
+
+    let storage = StableStorage::new(memory);
+
+    let fs = FileSystem::new(Box::new(storage)).unwrap();
+
+    fs
 }
 
 #[cfg(test)]

@@ -40,6 +40,7 @@ impl TransientStorage {
             times: Times::default(),
             first_dir_entry: None,
             last_dir_entry: None,
+            mount_size: None,
         };
         let mut result = Self {
             metadata: Default::default(),
@@ -196,6 +197,7 @@ mod tests {
                 times: Times::default(),
                 first_dir_entry: None,
                 last_dir_entry: None,
+                mount_size: None,
             },
         );
         storage.write_filechunk(node, 0, 0, &[42; 10]);
