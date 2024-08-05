@@ -30,6 +30,11 @@ pub trait Storage {
     // return mounted memory related to the node, or None
     fn get_mounted_memory(&self, node: Node) -> Option<&dyn Memory>;
 
+    // initialize memory with the contents from file
+    fn init_mounted_memory(&mut self, node: Node) -> Result<(), Error>;
+    // store mounted memory state back to host file
+    fn store_mounted_memory(&mut self, node: Node) -> Result<(), Error>;
+
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error>;
     // Update the metadata associated with the node.
@@ -64,7 +69,15 @@ pub trait Storage {
     ) -> Result<FileSize, Error>;
 
     // Insert of update a selected file chunk with the data provided in buffer.
-    fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]);
+    //fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]);
+
+    // Write file at the current file cursor, the cursor position will NOT be updated after reading.
+    fn write_with_offset(
+        &mut self,
+        node: Node,
+        offset: FileSize,
+        buf: &[u8],
+    ) -> Result<FileSize, Error>;
 
     // Remove file chunk from a given file node.
     fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex);

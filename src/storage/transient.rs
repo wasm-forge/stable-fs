@@ -5,11 +5,14 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
-    storage::types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Metadata, Node,
-        Times,
+    runtime::structure_helpers::{get_chunk_infos, grow_memory},
+    storage::{
+        types::{
+            DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Metadata, Node,
+            Times,
+        },
+        Storage,
     },
-    storage::Storage,
 };
 
 use super::types::{Header, FILE_CHUNK_SIZE};
@@ -61,6 +64,25 @@ impl TransientStorage {
         };
         result.put_metadata(ROOT_NODE, metadata);
         result
+    }
+
+    // Insert of update a selected file chunk with the data provided in buffer.
+    fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
+        if let Some(memory) = self.get_mounted_memory(node) {
+            // grow memory if needed
+            let max_address = index as FileSize * FILE_CHUNK_SIZE as FileSize
+                + offset as FileSize
+                + buf.len() as FileSize;
+
+            grow_memory(memory, max_address);
+
+            // store data
+            let address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize;
+            memory.write(address, buf);
+        } else {
+            let entry = self.filechunk.entry((node, index)).or_default();
+            entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
+        }
     }
 }
 
@@ -208,31 +230,6 @@ impl Storage for TransientStorage {
         Ok(size_read)
     }
 
-    // Insert of update a selected file chunk with the data provided in buffer.
-    fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
-        if let Some(memory) = self.get_mounted_memory(node) {
-            // grow memory if needed
-            let max_address = index as FileSize * FILE_CHUNK_SIZE as FileSize
-                + offset as FileSize
-                + buf.len() as FileSize;
-            let pages_required =
-                (max_address + WASM_PAGE_SIZE_IN_BYTES - 1) / WASM_PAGE_SIZE_IN_BYTES;
-
-            let cur_pages = memory.size();
-
-            if cur_pages < pages_required {
-                memory.grow(pages_required - cur_pages);
-            }
-
-            // store data
-            let address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize;
-            memory.write(address, buf);
-        } else {
-            let entry = self.filechunk.entry((node, index)).or_default();
-            entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
-        }
-    }
-
     // Remove file chunk from a given file node.
     fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex) {
         self.filechunk.remove(&(node, index));
@@ -276,6 +273,103 @@ impl Storage for TransientStorage {
         let res = self.active_mounts.get(&node);
 
         res.map(|b| b.as_ref())
+    }
+
+    fn init_mounted_memory(&mut self, node: Node) -> Result<(), Error> {
+        // temporary disable mount to activate access to the original file
+        let memory = self.unmount_node(node)?;
+
+        let meta = self.get_metadata(node)?;
+        let file_size = meta.size;
+
+        // grow memory if needed
+        grow_memory(memory.as_ref(), file_size);
+
+        let mut remainder = file_size;
+
+        let mut buf = [0u8; WASM_PAGE_SIZE_IN_BYTES as usize];
+
+        let mut offset = 0;
+
+        while remainder > 0 {
+            let to_read = remainder.min(buf.len() as FileSize);
+
+            self.read_range(node, offset, file_size, &mut buf[..to_read as usize])?;
+
+            memory.write(offset, &buf[..to_read as usize]);
+
+            offset += to_read;
+            remainder -= to_read;
+        }
+
+        self.mount_node(node, memory)?;
+
+        self.put_metadata(node, meta);
+
+        Ok(())
+    }
+
+    fn store_mounted_memory(&mut self, node: Node) -> Result<(), Error> {
+        // get current size of the mounted memory
+        let meta = self.get_metadata(node)?;
+        let file_size = meta.size;
+
+        // temporary disable mount to activate access to the original file
+        let memory = self.unmount_node(node)?;
+
+        // grow memory if needed
+        grow_memory(memory.as_ref(), file_size);
+
+        let mut remainder = file_size;
+
+        let mut buf = [0u8; WASM_PAGE_SIZE_IN_BYTES as usize];
+
+        let mut offset = 0;
+
+        while remainder > 0 {
+            let to_read = remainder.min(buf.len() as FileSize);
+
+            memory.read(offset, &mut buf[..to_read as usize]);
+
+            self.write_with_offset(node, offset, &buf[..to_read as usize])?;
+
+            offset += to_read;
+            remainder -= to_read;
+        }
+
+        self.put_metadata(node, meta);
+
+        self.mount_node(node, memory)?;
+
+        Ok(())
+    }
+
+    fn write_with_offset(
+        &mut self,
+        node: Node,
+        offset: FileSize,
+        buf: &[u8],
+    ) -> Result<FileSize, Error> {
+        let mut metadata = self.get_metadata(node)?;
+        let end = offset + buf.len() as FileSize;
+        let chunk_infos = get_chunk_infos(offset, end);
+        let mut written_size = 0;
+        for chunk in chunk_infos.into_iter() {
+            self.write_filechunk(
+                node,
+                chunk.index,
+                chunk.offset,
+                &buf[written_size..written_size + chunk.len as usize],
+            );
+            written_size += chunk.len as usize;
+        }
+
+        if end > metadata.size {
+            metadata.size = end;
+            self.put_metadata(node, metadata)
+        }
+
+        Ok(written_size as FileSize)
     }
 }
 

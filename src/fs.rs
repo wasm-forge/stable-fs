@@ -100,6 +100,8 @@ impl FileSystem {
         }
     }
 
+    // mounte memory file on the top of the given file name, if the file does not exist, it will be created.
+    // The method fails if the file system couldn't create the file.
     pub fn mount_memory_file(
         &mut self,
         filename: &str,
@@ -122,6 +124,24 @@ impl FileSystem {
         Ok(())
     }
 
+    // initialize mounted memory with the data stored in the host file
+    pub fn init_memory_file(&mut self, filename: &str) -> Result<(), Error> {
+        // create a file for the mount
+        let fd = self.open_or_create(
+            self.root_fd,
+            filename,
+            FdStat::default(),
+            OpenFlags::empty(),
+            0,
+        )?;
+
+        let node = self.get_node(fd)?;
+        self.close(fd)?;
+
+        self.storage.init_mounted_memory(node)
+    }
+
+    // helper method to set the size of the mounted memory
     pub fn set_memory_file_size(
         &mut self,
         filename: &str,
@@ -142,6 +162,42 @@ impl FileSystem {
         self.storage.put_metadata(node, metadata);
 
         Ok(())
+    }
+
+    // store content of the currently active memory file to the file system
+    pub fn store_memory_file(&mut self, filename: &str) -> Result<(), Error> {
+        // create a file for the mount
+        let fd = self.open_or_create(
+            self.root_fd,
+            filename,
+            FdStat::default(),
+            OpenFlags::empty(),
+            0,
+        )?;
+
+        let node = self.get_node(fd)?;
+        self.close(fd)?;
+
+        self.storage.store_mounted_memory(node)
+    }
+
+    // Unmount memory file, the system will continue to work with its own memory
+    pub fn unmount_memory_file(&mut self, filename: &str) -> Result<Box<dyn Memory>, Error> {
+        // create a file for the mount
+        let fd = self.open_or_create(
+            self.root_fd,
+            filename,
+            FdStat::default(),
+            OpenFlags::empty(),
+            0,
+        )?;
+
+        let node = self.get_node(fd)?;
+        self.close(fd)?;
+
+        let memory = self.storage.unmount_node(node)?;
+
+        Ok(memory)
     }
 
     // Get dir entry for a given directory and the directory index.
@@ -514,7 +570,7 @@ mod tests {
             structure_helpers::find_node,
             types::{FdStat, OpenFlags},
         },
-        storage::types::FileType,
+        storage::types::{FileSize, FileType},
         test_utils::{
             new_vector_memory, read_text_file, test_fs, test_fs_setups, test_fs_transient,
             write_text_fd, write_text_file,
@@ -1275,6 +1331,54 @@ mod tests {
         memory.read(0, &mut buf);
 
         println!("{:?}", buf);
+    }
+
+    #[test]
+    fn mounted_memory_store_and_init_roundtrip() {
+        for mut fs in test_fs_setups("") {
+            let memory1: VectorMemory = new_vector_memory();
+            let memory2: VectorMemory = new_vector_memory();
+
+            let file_name = "test.txt";
+
+            fs.mount_memory_file(file_name, Box::new(memory1.clone()))
+                .unwrap();
+
+            let content = "ABCDEFG123";
+            let len = content.len();
+            let count = 1000;
+
+            memory1.grow(5);
+
+            // fill up memory with some data
+            for i in 0..count {
+                memory1.write(i as u64 * len as u64, content.as_bytes());
+            }
+
+            fs.set_memory_file_size(file_name, len as FileSize * count as FileSize)
+                .unwrap();
+
+            // store memory into a file
+            fs.store_memory_file(file_name).unwrap();
+
+            fs.unmount_memory_file(file_name).unwrap();
+
+            fs.mount_memory_file(file_name, Box::new(memory2.clone()))
+                .unwrap();
+
+            // init new memory into a file
+            fs.init_memory_file(file_name).unwrap();
+
+            let mut buf1 = [0u8; 10];
+            let mut buf2 = [0u8; 10];
+
+            for i in 0..count {
+                memory1.read(i as u64 * len as u64, &mut buf1);
+                memory2.read(i as u64 * len as u64, &mut buf2);
+
+                assert_eq!(buf1, buf2);
+            }
+        }
     }
 
     #[test]
