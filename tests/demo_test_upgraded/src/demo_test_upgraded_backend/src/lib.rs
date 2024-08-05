@@ -51,22 +51,22 @@ thread_local! {
 }
 
 #[ic_cdk::update]
-pub fn append_buffer(text: String, times: usize, capa: usize) -> usize {
+pub fn append_buffer(text: String, times: usize) -> usize {
 
-    BUFFER.with(|chunk| {
-        let mut chunk = chunk.borrow_mut();
+    BUFFER.with(|buffer| {
+        let mut buffer = buffer.borrow_mut();
 
-        if chunk.is_none() {
-            *chunk = Some(Vec::with_capacity(capa));
+        if buffer.is_none() {
+            *buffer = Some(Vec::new());
         }
 
-        let chunk = chunk.as_mut().unwrap();
+        let buffer = buffer.as_mut().unwrap();
 
         for _ in 0..times {
-            chunk.extend_from_slice(text.as_bytes());
+            buffer.extend_from_slice(text.as_bytes());
         }
 
-        chunk.len()
+        buffer.len()
     })
 }
 

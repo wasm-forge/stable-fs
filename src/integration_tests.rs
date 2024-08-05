@@ -442,6 +442,34 @@ fn large_file_read() {
 }
 
 #[test]
+fn large_file_read_after_upgrade() {
+    let pic = setup_initial_canister();
+
+    let filename = "stable_file.txt";
+
+    // create large file
+    fns::append_text(&pic, "t1.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, "t2.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, "t3.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, "t4.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, filename, "abcdef7890", 10_000_000);
+
+    // do upgrade
+    upgrade_canister(&pic);
+
+    let (instructions, size) = fns::read_bytes(&pic, filename, 13, 100_000_000);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 3_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 99_999_987);
+}
+
+#[test]
 fn large_file_write() {
     let pic = setup_initial_canister();
 
