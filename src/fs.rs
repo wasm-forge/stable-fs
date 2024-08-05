@@ -362,7 +362,7 @@ impl FileSystem {
         }
     }
 
-    // Opens a file and return its new file descriptor.
+    // Opens a file and returns its new file descriptor.
     pub fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
         if flags.contains(OpenFlags::EXCLUSIVE) {
             return Err(Error::FileAlreadyExists);
@@ -966,56 +966,58 @@ mod tests {
 
     #[test]
     fn renumber_when_the_alternative_file_doesnt_exist() {
-        let mut fs = test_fs();
-        let dir = fs.root_fd();
+        for mut fs in test_fs_setups("file1.txt") {
+            let dir = fs.root_fd();
 
-        let fd1 = fs
-            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            let fd1 = fs
+                .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+            fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
 
-        let pos1 = fs.tell(fd1).unwrap();
+            let pos1 = fs.tell(fd1).unwrap();
 
-        assert!(pos1 == 5);
+            assert!(pos1 == 5);
 
-        let fd2 = 100;
+            let fd2 = 100;
 
-        fs.renumber(fd1, fd2).unwrap();
+            fs.renumber(fd1, fd2).unwrap();
 
-        let pos2_renumbered = fs.tell(fd2).unwrap();
+            let pos2_renumbered = fs.tell(fd2).unwrap();
 
-        assert!(pos1 == pos2_renumbered);
+            assert!(pos1 == pos2_renumbered);
 
-        let res = fs.tell(fd1);
+            let res = fs.tell(fd1);
 
-        assert!(res.is_err());
+            assert!(res.is_err());
+        }
     }
 
     #[test]
     fn set_modified_set_accessed_time() {
-        let mut fs = test_fs();
-        let dir = fs.root_fd();
+        for mut fs in test_fs_setups("") {
+            let dir = fs.root_fd();
 
-        let fd1 = fs
-            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
-            .unwrap();
+            let fd1 = fs
+                .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
+                .unwrap();
 
-        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+            fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
 
-        fs.set_accessed_time(fd1, 333).unwrap();
-        fs.set_modified_time(fd1, 222).unwrap();
+            fs.set_accessed_time(fd1, 333).unwrap();
+            fs.set_modified_time(fd1, 222).unwrap();
 
-        let metadata = fs.metadata(fd1).unwrap();
+            let metadata = fs.metadata(fd1).unwrap();
 
-        let times = metadata.times;
+            let times = metadata.times;
 
-        assert_eq!(times.created, 111);
-        assert_eq!(times.accessed, 333);
-        assert_eq!(times.modified, 222);
+            assert_eq!(times.accessed, 333);
+            assert_eq!(times.modified, 222);
+            assert_eq!(times.created, 111);
 
-        assert_eq!(metadata.size, 5);
-        assert_eq!(metadata.file_type, FileType::RegularFile);
+            assert_eq!(metadata.size, 5);
+            assert_eq!(metadata.file_type, FileType::RegularFile);
+        }
     }
 
     #[test]

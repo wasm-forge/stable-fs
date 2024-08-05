@@ -223,7 +223,10 @@ fn get_chunk_infos(start: FileSize, end: FileSize) -> Vec<ChunkHandle> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::{test_fs, test_fs_transient};
+    use crate::{
+        fs::OpenFlags,
+        test_utils::{test_fs, test_fs_setups},
+    };
 
     use super::*;
 
@@ -402,112 +405,84 @@ mod tests {
 
     #[test]
     fn read_and_write_offset_chunk() {
-        let mut fs = test_fs();
-        let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
-            .unwrap();
-
-        let mut file = fs.get_test_file(fd);
-        let storage = fs.get_test_storage();
-
-        for i in 0..1000 {
-            let buf = [(i % 256) as u8; 16];
-            file.write_with_offset(i * 16, &buf, storage).unwrap();
-        }
-
-        file.seek(-1000 * 16, Whence::END, storage).unwrap();
-
-        for i in 0..1000 {
-            let mut buf = [0; 16];
-            file.read_with_offset_chunk(i * 16, &mut buf, storage)
+        for mut fs in test_fs_setups("test") {
+            let fd = fs
+                .open_or_create(
+                    fs.root_fd(),
+                    "test",
+                    FdStat::default(),
+                    OpenFlags::CREATE,
+                    0,
+                )
                 .unwrap();
 
-            let expected = [(i % 256) as u8; 16];
-            assert_eq!(buf, expected);
+            let mut file = fs.get_test_file(fd);
+            let storage = fs.get_test_storage();
+
+            for i in 0..1000 {
+                let buf = [(i % 256) as u8; 16];
+                file.write_with_offset(i * 16, &buf, storage).unwrap();
+            }
+
+            file.seek(-1000 * 16, Whence::END, storage).unwrap();
+
+            for i in 0..1000 {
+                let mut buf = [0; 16];
+                file.read_with_offset_chunk(i * 16, &mut buf, storage)
+                    .unwrap();
+
+                let expected = [(i % 256) as u8; 16];
+                assert_eq!(buf, expected);
+            }
         }
     }
 
     #[test]
     fn read_and_write_offset_vs_range() {
-        let mut fs = test_fs();
-        let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
-            .unwrap();
-
-        let file = fs.get_test_file(fd);
-        let storage = fs.get_test_storage();
-
-        for i in 0..1000 {
-            let buf = [(i % 256) as u8; 16];
-            file.write_with_offset(i * 16, &buf, storage).unwrap();
-        }
-
-        for i in 0..1000 {
-            let mut buf1 = [0; 13];
-            let len1 = file
-                .read_with_offset_chunk(i * 16, &mut buf1, storage)
+        for mut fs in test_fs_setups("test") {
+            let fd = fs
+                .open_or_create(
+                    fs.root_fd(),
+                    "test",
+                    FdStat::default(),
+                    OpenFlags::CREATE,
+                    0,
+                )
                 .unwrap();
 
-            let mut buf2 = [0; 13];
-            let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
+            let file = fs.get_test_file(fd);
+            let storage = fs.get_test_storage();
 
-            assert_eq!(buf1, buf2);
-            assert_eq!(len1, len2);
-        }
+            for i in 0..1000 {
+                let buf = [(i % 256) as u8; 16];
+                file.write_with_offset(i * 16, &buf, storage).unwrap();
+            }
 
-        for i in 0..2050 {
-            let mut buf1 = [0; 5003];
-            let len1 = file
-                .read_with_offset_chunk(i * 13, &mut buf1, storage)
-                .unwrap();
+            for i in 0..1000 {
+                let mut buf1 = [0; 13];
+                let len1 = file
+                    .read_with_offset_chunk(i * 16, &mut buf1, storage)
+                    .unwrap();
 
-            let mut buf2 = [0; 5003];
-            let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
+                let mut buf2 = [0; 13];
+                let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
 
-            assert_eq!(buf1, buf2);
-            assert_eq!(len1, len2);
-        }
-    }
+                assert_eq!(buf1, buf2);
+                assert_eq!(len1, len2);
+            }
 
-    #[test]
-    fn read_and_write_offset_vs_range_transient() {
-        let mut fs = test_fs_transient();
-        let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
-            .unwrap();
+            for i in 0..2050 {
+                let mut buf1 = [0; 5003];
+                let len1 = file
+                    .read_with_offset_chunk(i * 13, &mut buf1, storage)
+                    .unwrap();
 
-        let file = fs.get_test_file(fd);
-        let storage = fs.get_test_storage();
+                let mut buf2 = [0; 5003];
+                let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
 
-        for i in 0..1000 {
-            let buf = [(i % 256) as u8; 16];
-            file.write_with_offset(i * 16, &buf, storage).unwrap();
-        }
-
-        for i in 0..1000 {
-            let mut buf1 = [0; 13];
-            let len1 = file
-                .read_with_offset_chunk(i * 16, &mut buf1, storage)
-                .unwrap();
-
-            let mut buf2 = [0; 13];
-            let len2 = file.read_with_offset(i * 16, &mut buf2, storage).unwrap();
-
-            assert_eq!(buf1, buf2);
-            assert_eq!(len1, len2);
-        }
-
-        for i in 0..2050 {
-            let mut buf1 = [0; 5003];
-            let len1 = file
-                .read_with_offset_chunk(i * 13, &mut buf1, storage)
-                .unwrap();
-
-            let mut buf2 = [0; 5003];
-            let len2 = file.read_with_offset(i * 13, &mut buf2, storage).unwrap();
-
-            assert_eq!(buf1, buf2);
-            assert_eq!(len1, len2);
+                assert_eq!(buf1, buf2);
+                assert_eq!(len1, len2);
+            }
         }
     }
 }

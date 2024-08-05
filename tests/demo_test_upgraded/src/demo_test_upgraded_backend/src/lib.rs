@@ -4,7 +4,6 @@ use stable_fs::{fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence}, sto
 use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMemoryImpl, Memory};
 
 
-
 #[ic_cdk::query]
 fn greet(name: String) -> String {
     format!("Greetings, {}!", name)
@@ -36,9 +35,13 @@ thread_local! {
 
             let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
     
-            RefCell::new(
+            let fs = RefCell::new(
                 FileSystem::new(Box::new(storage)).unwrap()
-            )
+            );
+
+            fs.borrow_mut().mount_memory_file("stable_file.txt", Box::new(memory_manager.get(MemoryId::new(155)))).unwrap();
+
+            fs
         })
     };
 }

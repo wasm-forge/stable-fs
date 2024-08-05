@@ -92,6 +92,35 @@ mod fns {
         .unwrap();
     }
 
+    pub(crate) fn append_buffer(pic: &PocketIc, content: &str, count: u64) {
+        pic.update_call(
+            active_canister(),
+            Principal::anonymous(),
+            "append_buffer",
+            candid::encode_args((content, count)).unwrap(),
+        )
+        .unwrap();
+    }
+
+    pub(crate) fn store_buffer(pic: &PocketIc, filename: &str) -> (u64, u64) {
+        let response = pic
+            .update_call(
+                active_canister(),
+                Principal::anonymous(),
+                "store_buffer",
+                candid::encode_one(filename).unwrap(),
+            )
+            .unwrap();
+
+        if let WasmResult::Reply(response) = response {
+            let result: (u64, u64) = decode_args(&response).unwrap();
+
+            result
+        } else {
+            panic!("unintended call failure!");
+        }
+    }
+
     pub(crate) fn read_text(pic: &PocketIc, filename: &str, offset: i64, size: u64) -> String {
         let response = pic
             .query_call(
@@ -304,9 +333,17 @@ fn create_1000_files() {
 
     let result = fns::list_files(&pic, "");
 
-    let filenames = vec!["files1", "files2", "files3", "files4"];
+    let filenames = vec!["stable_file.txt", "files1", "files2", "files3", "files4"];
 
     assert_eq!(result, filenames);
+}
+
+fn no_virtual_names(vec: Vec<String>) -> Vec<String> {
+    let mut v = vec;
+
+    v.retain(|v| !(*v).eq("stable_file.txt"));
+
+    v
 }
 
 #[test]
@@ -345,6 +382,8 @@ fn long_paths_and_file_names() {
     let filenames = vec![long_name];
 
     let result = fns::list_files(&pic, "");
+    let result = no_virtual_names(result);
+
     assert_eq!(result, filenames);
 
     // try reading one of the files
@@ -400,4 +439,25 @@ fn large_file_read() {
     );
 
     assert_eq!(size, 99_999_987);
+}
+
+#[test]
+fn large_file_write() {
+    let pic = setup_initial_canister();
+
+    let filename = "stable_file1.txt";
+
+    // create large buffer
+    fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    let (instructions, size) = fns::store_buffer(&pic, filename);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 14_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 100_000_000);
 }

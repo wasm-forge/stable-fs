@@ -211,10 +211,12 @@ impl Storage for TransientStorage {
     // Insert of update a selected file chunk with the data provided in buffer.
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
         if let Some(memory) = self.get_mounted_memory(node) {
+
+            // work with memory diriectly
             // grow memory if needed
-            let pages_required =
-                (index as FileSize + buf.len() as FileSize + WASM_PAGE_SIZE_IN_BYTES - 1)
-                    / WASM_PAGE_SIZE_IN_BYTES;
+            let max_address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize + buf.len() as FileSize;
+            let pages_required = (max_address + WASM_PAGE_SIZE_IN_BYTES - 1) / WASM_PAGE_SIZE_IN_BYTES;
+
             let cur_pages = memory.size();
 
             if cur_pages < pages_required {
