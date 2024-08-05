@@ -290,7 +290,6 @@ impl<M: Memory> Storage for StableStorage<M> {
     // Insert of update a selected file chunk with the data provided in a buffer.
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
         if let Some(memory) = self.active_mounts.get(&node) {
-            // work with memory diriectly
             // grow memory if needed
             let max_address = index as FileSize * FILE_CHUNK_SIZE as FileSize
                 + offset as FileSize
@@ -309,7 +308,6 @@ impl<M: Memory> Storage for StableStorage<M> {
 
             memory.write(address, buf);
         } else {
-            // work with stable structure
             let mut entry = self.filechunk.get(&(node, index)).unwrap_or_default();
             entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf);
             self.filechunk.insert((node, index), entry);
