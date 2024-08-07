@@ -347,7 +347,7 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::IsMountedAlready);
+            return Err(Error::MemoryFileIsMountedAlready);
         }
 
         // do extra meta preparation
@@ -372,7 +372,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     fn unmount_node(&mut self, node: Node) -> Result<Box<dyn Memory>, Error> {
         let memory = self.active_mounts.remove(&node);
 
-        memory.ok_or(Error::FileIsNotMounted)
+        memory.ok_or(Error::MemoryFileIsNotMounted)
     }
 
     fn is_mounted(&self, node: Node) -> bool {

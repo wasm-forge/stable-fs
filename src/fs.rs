@@ -100,8 +100,8 @@ impl FileSystem {
         }
     }
 
-    // mounte memory file on the top of the given file name, if the file does not exist, it will be created.
-    // The method fails if the file system couldn't create the file.
+    // mount memory on the top of the given host file name, if the file does not exist, it will be created.
+    // The method fails if the file system could not open or create the file.
     pub fn mount_memory_file(
         &mut self,
         filename: &str,
@@ -141,29 +141,6 @@ impl FileSystem {
         self.storage.init_mounted_memory(node)
     }
 
-    // helper method to set the size of the mounted memory
-    pub fn set_memory_file_size(
-        &mut self,
-        filename: &str,
-        new_size: FileSize,
-    ) -> Result<(), Error> {
-        let root_node = self.get_node(self.root_fd())?;
-
-        let node = find_node(root_node, filename, self.storage.as_ref())?;
-
-        if !self.storage.is_mounted(node) {
-            return Err(Error::FileIsNotMounted);
-        }
-
-        let mut metadata = self.metadata_from_node(node)?;
-
-        metadata.size = new_size;
-
-        self.storage.put_metadata(node, metadata);
-
-        Ok(())
-    }
-
     // store content of the currently active memory file to the file system
     pub fn store_memory_file(&mut self, filename: &str) -> Result<(), Error> {
         // create a file for the mount
@@ -181,7 +158,7 @@ impl FileSystem {
         self.storage.store_mounted_memory(node)
     }
 
-    // Unmount memory file, the system will continue to work with its own memory
+    // Unmount memory, the system will continue to work with the file in normal mode.
     pub fn unmount_memory_file(&mut self, filename: &str) -> Result<Box<dyn Memory>, Error> {
         // create a file for the mount
         let fd = self.open_or_create(
@@ -200,7 +177,7 @@ impl FileSystem {
         Ok(memory)
     }
 
-    // Get dir entry for a given directory and the directory index.
+    // Get directory entry for a given directory file descriptor and the entry index.
     pub fn get_direntry(&self, fd: Fd, index: DirEntryIndex) -> Result<DirEntry, Error> {
         self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
     }
@@ -1355,8 +1332,11 @@ mod tests {
                 memory1.write(i as u64 * len as u64, content.as_bytes());
             }
 
-            fs.set_memory_file_size(file_name, len as FileSize * count as FileSize)
-                .unwrap();
+            let fd = fs.open_or_create(fs.root_fd, file_name, FdStat::default(), OpenFlags::empty(), 0).unwrap();
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.size = len as FileSize * count as FileSize;
+            fs.set_metadata(fd, metadata).unwrap();
+            fs.close(fd).unwrap();
 
             // store memory into a file
             fs.store_memory_file(file_name).unwrap();
