@@ -56,6 +56,7 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
+    #[cfg(test)]
     fn read_filechunk(
         &self,
         _node: Node,
@@ -63,16 +64,6 @@ impl Storage for DummyStorage {
         _offset: FileSize,
         _buf: &mut [u8],
     ) -> Result<(), Error> {
-        panic!("Not supported")
-    }
-
-    fn write_filechunk(
-        &mut self,
-        _node: Node,
-        _index: FileChunkIndex,
-        _offset_in_first_chunk: FileSize,
-        _buf: &[u8],
-    ) {
         panic!("Not supported")
     }
 
@@ -86,6 +77,46 @@ impl Storage for DummyStorage {
         _offset: FileSize,
         _file_size: FileSize,
         _buf: &mut [u8],
+    ) -> Result<FileSize, Error> {
+        panic!("Not supported")
+    }
+
+    fn mount_node(
+        &mut self,
+        _node: Node,
+        _memory: Box<dyn ic_stable_structures::Memory>,
+    ) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn unmount_node(
+        &mut self,
+        _node: Node,
+    ) -> Result<Box<dyn ic_stable_structures::Memory>, Error> {
+        panic!("Not supported")
+    }
+
+    fn is_mounted(&self, _node: Node) -> bool {
+        panic!("Not supported")
+    }
+
+    fn get_mounted_memory(&self, _node: Node) -> Option<&dyn ic_stable_structures::Memory> {
+        panic!("Not supported")
+    }
+
+    fn init_mounted_memory(&mut self, _node: Node) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn store_mounted_memory(&mut self, _node: Node) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn write_with_offset(
+        &mut self,
+        _node: Node,
+        _offset: FileSize,
+        _buf: &[u8],
     ) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
@@ -179,13 +210,6 @@ mod tests {
     fn read_filechunk_panic() {
         let storage = DummyStorage::new();
         let _ = storage.read_filechunk(0, 0, 0, &mut []);
-    }
-
-    #[test]
-    #[should_panic]
-    fn write_filechunk_panic() {
-        let mut storage = DummyStorage::new();
-        storage.write_filechunk(0, 0, 0, &[]);
     }
 
     #[test]

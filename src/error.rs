@@ -9,6 +9,8 @@ pub enum Error {
     InvalidOpenFlags,
     InvalidFdFlags,
     FileAlreadyExists,
+    MemoryFileIsNotMounted,
+    MemoryFileIsMountedAlready,
     NameTooLong,
     DirectoryNotEmpty,
     ExpectedToRemoveFile,

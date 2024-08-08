@@ -15,6 +15,14 @@ pub type FileSize = u64;
 // An index of a file chunk.
 pub type FileChunkIndex = u32;
 
+// A handle used for writing files in chunks
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ChunkHandle {
+    pub index: FileChunkIndex,
+    pub offset: FileSize,
+    pub len: FileSize,
+}
+
 // A file consists of multiple file chunks.
 #[derive(Clone, Debug)]
 pub struct FileChunk {

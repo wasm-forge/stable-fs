@@ -4,7 +4,6 @@ use stable_fs::{fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence}, sto
 use ic_stable_structures::{memory_manager::{MemoryId, MemoryManager}, DefaultMemoryImpl, Memory};
 
 
-
 #[ic_cdk::query]
 fn greet(name: String) -> String {
     format!("Hello, {}!", name)
@@ -36,9 +35,13 @@ thread_local! {
 
             let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
     
-            RefCell::new(
+            let fs = RefCell::new(
                 FileSystem::new(Box::new(storage)).unwrap()
-            )
+            );
+
+            fs.borrow_mut().mount_memory_file("stable_file.txt", Box::new(memory_manager.get(MemoryId::new(155)))).unwrap();
+
+            fs
         })
     };
 }
@@ -48,22 +51,22 @@ thread_local! {
 }
 
 #[ic_cdk::update]
-pub fn append_buffer(text: String, times: usize, capa: usize) -> usize {
+pub fn append_buffer(text: String, times: usize) -> usize {
 
-    BUFFER.with(|chunk| {
-        let mut chunk = chunk.borrow_mut();
+    BUFFER.with(|buffer| {
+        let mut buffer = buffer.borrow_mut();
 
-        if chunk.is_none() {
-            *chunk = Some(Vec::with_capacity(capa));
+        if buffer.is_none() {
+            *buffer = Some(Vec::new());
         }
 
-        let chunk = chunk.as_mut().unwrap();
+        let buffer = buffer.as_mut().unwrap();
 
         for _ in 0..times {
-            chunk.extend_from_slice(text.as_bytes());
+            buffer.extend_from_slice(text.as_bytes());
         }
 
-        chunk.len()
+        buffer.len()
     })
 }
 
