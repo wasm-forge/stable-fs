@@ -1332,7 +1332,15 @@ mod tests {
                 memory1.write(i as u64 * len as u64, content.as_bytes());
             }
 
-            let fd = fs.open_or_create(fs.root_fd, file_name, FdStat::default(), OpenFlags::empty(), 0).unwrap();
+            let fd = fs
+                .open_or_create(
+                    fs.root_fd,
+                    file_name,
+                    FdStat::default(),
+                    OpenFlags::empty(),
+                    0,
+                )
+                .unwrap();
             let mut metadata = fs.metadata(fd).unwrap();
             metadata.size = len as FileSize * count as FileSize;
             fs.set_metadata(fd, metadata).unwrap();
