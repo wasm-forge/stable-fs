@@ -56,28 +56,11 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    #[cfg(test)]
-    fn read_filechunk(
-        &self,
-        _node: Node,
-        _index: FileChunkIndex,
-        _offset: FileSize,
-        _buf: &mut [u8],
-    ) -> Result<(), Error> {
-        panic!("Not supported")
-    }
-
     fn rm_filechunk(&mut self, _node: Node, _index: FileChunkIndex) {
         panic!("Not supported")
     }
 
-    fn read_range(
-        &self,
-        _node: Node,
-        _offset: FileSize,
-        _file_size: FileSize,
-        _buf: &mut [u8],
-    ) -> Result<FileSize, Error> {
+    fn read(&self, _node: Node, _offset: FileSize, _buf: &mut [u8]) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
 
@@ -112,12 +95,7 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn write_with_offset(
-        &mut self,
-        _node: Node,
-        _offset: FileSize,
-        _buf: &[u8],
-    ) -> Result<FileSize, Error> {
+    fn write(&mut self, _node: Node, _offset: FileSize, _buf: &[u8]) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
 }
@@ -203,13 +181,6 @@ mod tests {
     fn rm_direntry_panic() {
         let mut storage = DummyStorage::new();
         storage.rm_direntry(0u64, 0u32);
-    }
-
-    #[test]
-    #[should_panic]
-    fn read_filechunk_panic() {
-        let storage = DummyStorage::new();
-        let _ = storage.read_filechunk(0, 0, 0, &mut []);
     }
 
     #[test]

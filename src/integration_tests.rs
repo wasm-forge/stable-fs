@@ -470,10 +470,10 @@ fn large_file_read_after_upgrade() {
 }
 
 #[test]
-fn large_file_write() {
+fn large_mounted_file_write() {
     let pic = setup_initial_canister();
 
-    let filename = "stable_file1.txt";
+    let filename = "stable_file.txt";
 
     // create large buffer
     fns::append_buffer(&pic, "abcdef7890", 10_000_000);
@@ -489,3 +489,26 @@ fn large_file_write() {
 
     assert_eq!(size, 100_000_000);
 }
+
+#[test]
+fn large_file_write() {
+    let pic = setup_initial_canister();
+
+    let filename = "some_file.txt";
+
+    // create large buffer
+    fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    let (instructions, size) = fns::store_buffer(&pic, filename);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 14_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 100_000_000);
+}
+
+

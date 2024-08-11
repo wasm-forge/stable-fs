@@ -1219,40 +1219,42 @@ mod tests {
 
     #[test]
     fn write_and_read_25_files() {
-        let mut fs = test_fs();
-        let root_fd = fs.root_fd();
-        const SIZE_OF_FILE: usize = 1_000_000;
+        for mut fs in test_fs_setups("auto/my_file_6.txt") {
+            let root_fd = fs.root_fd();
+            const SIZE_OF_FILE: usize = 1_000_000;
 
-        // write files
-        let dir_name = "auto";
-        let file_count: u8 = 25;
+            // write files
+            let dir_name = "auto";
+            let file_count: u8 = 25;
 
-        for i in 0..file_count {
-            let filename = format!("{}/my_file_{}.txt", dir_name, i);
-            let content = format!("{i}");
-            let times = SIZE_OF_FILE / content.len();
+            for i in 0..file_count {
+                let filename = format!("{}/my_file_{}.txt", dir_name, i);
+                let content = format!("{i}");
+                let times = SIZE_OF_FILE / content.len();
 
-            println!("Writing to {filename}");
+                println!("Writing to {filename}");
 
-            write_text_file(&mut fs, root_fd, filename.as_str(), content.as_str(), times).unwrap();
-        }
+                write_text_file(&mut fs, root_fd, filename.as_str(), content.as_str(), times)
+                    .unwrap();
+            }
 
-        // read files
-        for i in 0..file_count {
-            let filename = format!("{}/my_file_{}.txt", dir_name, i);
-            let expected_content = format!("{i}{i}{i}");
+            // read files
+            for i in 0..file_count {
+                let filename = format!("{}/my_file_{}.txt", dir_name, i);
+                let expected_content = format!("{i}{i}{i}");
 
-            println!("Reading {}", filename);
+                println!("Reading {}", filename);
 
-            let text_read = read_text_file(
-                &mut fs,
-                root_fd,
-                filename.as_str(),
-                0,
-                expected_content.len(),
-            );
+                let text_read = read_text_file(
+                    &mut fs,
+                    root_fd,
+                    filename.as_str(),
+                    0,
+                    expected_content.len(),
+                );
 
-            assert_eq!(expected_content, text_read);
+                assert_eq!(expected_content, text_read);
+            }
         }
 
         // This test should not crash with an error

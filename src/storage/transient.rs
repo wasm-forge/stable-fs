@@ -84,6 +84,27 @@ impl TransientStorage {
             entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
         }
     }
+
+    // Fill the buffer contents with data of a chosen file chunk.
+    #[cfg(test)]
+    fn read_filechunk(
+        &self,
+        node: Node,
+        index: FileChunkIndex,
+        offset: FileSize,
+        buf: &mut [u8],
+    ) -> Result<(), Error> {
+        if let Some(memory) = self.get_mounted_memory(node) {
+            // work with memory
+            let address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize;
+            memory.read(address, buf);
+        } else {
+            let value = self.filechunk.get(&(node, index)).ok_or(Error::NotFound)?;
+            buf.copy_from_slice(&value.bytes[offset as usize..offset as usize + buf.len()]);
+        }
+
+        Ok(())
+    }
 }
 
 impl Storage for TransientStorage {
@@ -149,35 +170,10 @@ impl Storage for TransientStorage {
         self.direntry.remove(&(node, index));
     }
 
-    // Fill the buffer contents with data of a chosen file chunk.
-    #[cfg(test)]
-    fn read_filechunk(
-        &self,
-        node: Node,
-        index: FileChunkIndex,
-        offset: FileSize,
-        buf: &mut [u8],
-    ) -> Result<(), Error> {
-        if let Some(memory) = self.get_mounted_memory(node) {
-            // work with memory
-            let address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize;
-            memory.read(address, buf);
-        } else {
-            let value = self.filechunk.get(&(node, index)).ok_or(Error::NotFound)?;
-            buf.copy_from_slice(&value.bytes[offset as usize..offset as usize + buf.len()]);
-        }
-
-        Ok(())
-    }
-
     // Fill the buffer contents with data
-    fn read_range(
-        &self,
-        node: Node,
-        offset: FileSize,
-        file_size: FileSize,
-        buf: &mut [u8],
-    ) -> Result<FileSize, Error> {
+    fn read(&self, node: Node, offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error> {
+        let file_size = self.get_metadata(node)?.size;
+
         if offset >= file_size {
             return Ok(0);
         }
@@ -294,7 +290,7 @@ impl Storage for TransientStorage {
         while remainder > 0 {
             let to_read = remainder.min(buf.len() as FileSize);
 
-            self.read_range(node, offset, file_size, &mut buf[..to_read as usize])?;
+            self.read(node, offset, &mut buf[..to_read as usize])?;
 
             memory.write(offset, &buf[..to_read as usize]);
 
@@ -331,7 +327,7 @@ impl Storage for TransientStorage {
 
             memory.read(offset, &mut buf[..to_read as usize]);
 
-            self.write_with_offset(node, offset, &buf[..to_read as usize])?;
+            self.write(node, offset, &buf[..to_read as usize])?;
 
             offset += to_read;
             remainder -= to_read;
@@ -344,12 +340,7 @@ impl Storage for TransientStorage {
         Ok(())
     }
 
-    fn write_with_offset(
-        &mut self,
-        node: Node,
-        offset: FileSize,
-        buf: &[u8],
-    ) -> Result<FileSize, Error> {
+    fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
         let end = offset + buf.len() as FileSize;
         let chunk_infos = get_chunk_infos(offset, end);
@@ -393,9 +384,9 @@ mod tests {
                 last_dir_entry: None,
             },
         );
-        storage.write_filechunk(node, 0, 0, &[42; 10]);
+        storage.write(node, 0, &[42; 10]).unwrap();
         let mut buf = [0; 10];
-        storage.read_filechunk(node, 0, 0, &mut buf).unwrap();
+        storage.read(node, 0, &mut buf).unwrap();
         assert_eq!(buf, [42; 10]);
     }
 }

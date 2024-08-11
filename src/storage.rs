@@ -49,35 +49,11 @@ pub trait Storage {
     // Remove the DirEntry instance given the Node and DirEntryIndex.
     fn rm_direntry(&mut self, node: Node, index: DirEntryIndex);
 
-    // Fill the buffer contents with data of a selected file chunk.
-    #[cfg(test)]
-    fn read_filechunk(
-        &self,
-        node: Node,
-        index: FileChunkIndex,
-        offset: FileSize,
-        buf: &mut [u8],
-    ) -> Result<(), Error>;
-
-    // Fill the buffer contents with data of a selected file chunk.
-    fn read_range(
-        &self,
-        node: Node,
-        read_offset: FileSize,
-        file_size: FileSize,
-        buf: &mut [u8],
-    ) -> Result<FileSize, Error>;
-
-    // Insert of update a selected file chunk with the data provided in buffer.
-    //fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]);
+    // read node data into buf
+    fn read(&self, node: Node, read_offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error>;
 
     // Write file at the current file cursor, the cursor position will NOT be updated after reading.
-    fn write_with_offset(
-        &mut self,
-        node: Node,
-        offset: FileSize,
-        buf: &[u8],
-    ) -> Result<FileSize, Error>;
+    fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error>;
 
     // Remove file chunk from a given file node.
     fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex);
