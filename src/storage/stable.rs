@@ -167,11 +167,24 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         #[cfg(test)]
         self.check_free(ptr);
 
-        println!("release: {}", ptr / FILE_CHUNK_SIZE as u64);
-
         self.push_ptr(ptr);
     }
 }
+
+
+struct StorageMemories<M: Memory> {
+    header_memory: VirtualMemory<M>,
+    metadata_memory: VirtualMemory<M>,
+    direntry_memory: VirtualMemory<M>,
+    filechunk_memory: VirtualMemory<M>,
+    mounted_meta_memory: VirtualMemory<M>,
+
+    v2_chunk_ptr_memory: VirtualMemory<M>,
+    v2_chunks_memory: VirtualMemory<M>,
+    v2_allocator_memory: VirtualMemory<M>,
+
+}
+
 
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
@@ -227,51 +240,48 @@ impl<M: Memory> StableStorage<M> {
         let metadata_memory = memory_manager.get(MemoryId::new(memory_indices.start + 1u8));
         let direntry_memory = memory_manager.get(MemoryId::new(memory_indices.start + 2u8));
         let filechunk_memory = memory_manager.get(MemoryId::new(memory_indices.start + 3u8));
-        let mounted_meta = memory_manager.get(MemoryId::new(memory_indices.start + 4u8));
+        let mounted_meta_memory = memory_manager.get(MemoryId::new(memory_indices.start + 4u8));
 
-        let v2_chunk_ptr = memory_manager.get(MemoryId::new(memory_indices.start + 5u8));
-        let v2_chunks = memory_manager.get(MemoryId::new(memory_indices.start + 7u8));
+        let v2_chunk_ptr_memory = memory_manager.get(MemoryId::new(memory_indices.start + 5u8));
+        let v2_chunks_memory = memory_manager.get(MemoryId::new(memory_indices.start + 7u8));
         let v2_allocator_memory = memory_manager.get(MemoryId::new(memory_indices.start + 6u8));
 
-        Self::new_with_custom_memories(
+        let memories = StorageMemories {
             header_memory,
             metadata_memory,
             direntry_memory,
             filechunk_memory,
-            mounted_meta,
-            v2_chunk_ptr,
-            v2_chunks,
+            mounted_meta_memory,
+            v2_chunk_ptr_memory,
+            v2_chunks_memory,
             v2_allocator_memory,
+        };
+
+        Self::new_with_custom_memories(
+            memories
         )
     }
 
     fn new_with_custom_memories(
-        header: VirtualMemory<M>,
-        metadata: VirtualMemory<M>,
-        direntry: VirtualMemory<M>,
-        filechunk: VirtualMemory<M>,
-        mounted_meta: VirtualMemory<M>,
+        memories: StorageMemories<M>
 
-        v2_chunk_ptr: VirtualMemory<M>,
-        v2_chunks: VirtualMemory<M>,
-        v2_allocator_memory: VirtualMemory<M>,
     ) -> Self {
         let default_header_value = Header {
             version: FS_VERSION,
             next_node: ROOT_NODE + 1,
         };
 
-        let v2_allocator = ChunkPtrAllocator::new(v2_allocator_memory);
+        let v2_allocator = ChunkPtrAllocator::new(memories.v2_allocator_memory);
 
         let mut result = Self {
-            header: Cell::init(header, default_header_value).unwrap(),
-            metadata: BTreeMap::init(metadata),
-            direntry: BTreeMap::init(direntry),
-            filechunk: BTreeMap::init(filechunk),
-            mounted_meta: BTreeMap::init(mounted_meta),
+            header: Cell::init(memories.header_memory, default_header_value).unwrap(),
+            metadata: BTreeMap::init(memories.metadata_memory),
+            direntry: BTreeMap::init(memories.direntry_memory),
+            filechunk: BTreeMap::init(memories.filechunk_memory),
+            mounted_meta: BTreeMap::init(memories.mounted_meta_memory),
 
-            v2_chunk_ptr: BTreeMap::init(v2_chunk_ptr),
-            v2_chunks,
+            v2_chunk_ptr: BTreeMap::init(memories.v2_chunk_ptr_memory),
+            v2_chunks: memories.v2_chunks_memory,
             v2_allocator,
 
             // runtime data

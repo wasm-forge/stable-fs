@@ -333,7 +333,7 @@ fn create_1000_files() {
 
     let result = fns::list_files(&pic, "");
 
-    let filenames = vec!["stable_file.txt", "files1", "files2", "files3", "files4"];
+    let filenames = vec!["mount_file.txt", "files1", "files2", "files3", "files4"];
 
     assert_eq!(result, filenames);
 }
@@ -341,7 +341,7 @@ fn create_1000_files() {
 fn no_virtual_names(vec: Vec<String>) -> Vec<String> {
     let mut v = vec;
 
-    v.retain(|v| !(*v).eq("stable_file.txt"));
+    v.retain(|v| !(*v).eq("mount_file.txt"));
 
     v
 }
@@ -445,7 +445,7 @@ fn large_file_read() {
 fn large_file_read_after_upgrade() {
     let pic = setup_initial_canister();
 
-    let filename = "stable_file.txt";
+    let filename = "mount_file.txt";
 
     // create large file
     fns::append_text(&pic, "t1.txt", "abcdef7890", 10_000_000);
@@ -473,7 +473,7 @@ fn large_file_read_after_upgrade() {
 fn large_mounted_file_write() {
     let pic = setup_initial_canister();
 
-    let filename = "stable_file.txt";
+    let filename = "mount_file.txt";
 
     // create large buffer
     fns::append_buffer(&pic, "abcdef7890", 10_000_000);
@@ -510,5 +510,3 @@ fn large_file_write() {
 
     assert_eq!(size, 100_000_000);
 }
-
-

@@ -34,7 +34,7 @@ pub struct TransientStorage {
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk>,
     // Mounted memory Node metadata information.
     mounted_meta: BTreeMap<Node, Metadata>,
-    // active mounts
+    // Active mounts.
     active_mounts: HashMap<Node, Box<dyn Memory>>,
 }
 
@@ -53,7 +53,7 @@ impl TransientStorage {
         let mut result = Self {
             header: Header {
                 version: 1,
-                next_node: ROOT_NODE + 1,
+                next_node: ROOT_NODE + 1
             },
             metadata: Default::default(),
             direntry: Default::default(),
@@ -83,27 +83,6 @@ impl TransientStorage {
             let entry = self.filechunk.entry((node, index)).or_default();
             entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
         }
-    }
-
-    // Fill the buffer contents with data of a chosen file chunk.
-    #[cfg(test)]
-    fn read_filechunk(
-        &self,
-        node: Node,
-        index: FileChunkIndex,
-        offset: FileSize,
-        buf: &mut [u8],
-    ) -> Result<(), Error> {
-        if let Some(memory) = self.get_mounted_memory(node) {
-            // work with memory
-            let address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize;
-            memory.read(address, buf);
-        } else {
-            let value = self.filechunk.get(&(node, index)).ok_or(Error::NotFound)?;
-            buf.copy_from_slice(&value.bytes[offset as usize..offset as usize + buf.len()]);
-        }
-
-        Ok(())
     }
 }
 

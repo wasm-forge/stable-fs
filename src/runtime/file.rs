@@ -139,7 +139,7 @@ impl File {
 mod tests {
     use crate::{
         fs::OpenFlags,
-        test_utils::{test_fs, test_fs_setups, test_fs_transient},
+        test_utils::{test_fs, test_fs_setups},
     };
 
     use super::*;

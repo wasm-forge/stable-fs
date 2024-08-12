@@ -39,7 +39,7 @@ thread_local! {
                 FileSystem::new(Box::new(storage)).unwrap()
             );
 
-            fs.borrow_mut().mount_memory_file("stable_file.txt", Box::new(memory_manager.get(MemoryId::new(155)))).unwrap();
+            fs.borrow_mut().mount_memory_file("mount_file.txt", Box::new(memory_manager.get(MemoryId::new(155)))).unwrap();
 
             fs
         })

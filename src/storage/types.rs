@@ -2,8 +2,13 @@ use crate::error::Error;
 use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
-//pub const FILE_CHUNK_SIZE: usize = 4096;
-pub const FILE_CHUNK_SIZE: usize = 8192;
+//pub const FILE_CHUNK_SIZE: usize = 1024;
+//pub const FILE_CHUNK_SIZE: usize = 2048;
+pub const FILE_CHUNK_SIZE: usize = 4096;
+//pub const FILE_CHUNK_SIZE: usize = 8192;
+//pub const FILE_CHUNK_SIZE: usize = 16384;
+//pub const FILE_CHUNK_SIZE: usize = 32768;
+
 pub const MAX_FILE_NAME: usize = 255;
 
 // The unique identifier of a node, which can be a file or a directory.
