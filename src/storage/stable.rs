@@ -767,9 +767,9 @@ mod tests {
 
         allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 2);
         allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 3);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 1);
+        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 1);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
         assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 3);
         assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
         assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 5);
@@ -782,18 +782,18 @@ mod tests {
         let allocator_memory = memory_manager.get(MemoryId::new(1));
         let mut allocator = ChunkPtrAllocator::new(allocator_memory);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 0);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 0);
+        assert_eq!(allocator.allocate(), 0);
+        allocator.free(0);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 1);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 1);
+        assert_eq!(allocator.allocate(), 0);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
+        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 1);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
         assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 1);
+        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 1);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
         assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 3);
     }
 
