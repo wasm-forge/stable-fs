@@ -2,6 +2,7 @@ use candid::Principal;
 use fns::read_text;
 use pocket_ic::PocketIc;
 use std::{cell::RefCell, fs};
+use std::sync::Once;
 
 const BACKEND_WASM: &str = "tests/canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend_small.wasm";
 const BACKEND_WASM_UPGRADED: &str = "tests/canister_upgraded/target/wasm32-unknown-unknown/release/canister_upgraded_backend_small.wasm";
