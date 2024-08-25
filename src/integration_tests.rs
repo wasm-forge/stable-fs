@@ -8,7 +8,6 @@ const BACKEND_WASM_UPGRADED: &str = "tests/canister_upgraded/target/wasm32-unkno
 
 thread_local!(
     static ACTIVE_CANISTER: RefCell<Option<Principal>> = const { RefCell::new(None) };
-    static BUILD_DONE: RefCell<bool> = const { RefCell::new(false) };
 );
 
 fn set_active_canister(new_canister: Principal) {
@@ -25,27 +24,18 @@ fn active_canister() -> Principal {
     })
 }
 
+static INIT: Once = Once::new();
+
 fn build_test_projects() {
 
-    BUILD_DONE.with(|is_built| {
-
-        let mut is_built = is_built.borrow_mut();
-
-        if *is_built {
-            return;
-        }
-
+    INIT.call_once( || {
         use std::process::Command;
         let _ = Command::new("bash")
             .arg("scripts/build_tests.sh")
             .output()
             .expect("Failed to execute command");
-        
-        *is_built = true;
-
+    
     });
-
-
 }
 
 fn setup_initial_canister() -> PocketIc {
