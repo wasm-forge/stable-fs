@@ -1,8 +1,8 @@
 use candid::Principal;
 use fns::read_text;
 use pocket_ic::PocketIc;
-use std::{cell::RefCell, fs};
 use std::sync::Once;
+use std::{cell::RefCell, fs};
 
 const BACKEND_WASM: &str = "tests/canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend_small.wasm";
 const BACKEND_WASM_UPGRADED: &str = "tests/canister_upgraded/target/wasm32-unknown-unknown/release/canister_upgraded_backend_small.wasm";
@@ -28,14 +28,12 @@ fn active_canister() -> Principal {
 static INIT: Once = Once::new();
 
 fn build_test_projects() {
-
-    INIT.call_once( || {
+    INIT.call_once(|| {
         use std::process::Command;
         let _ = Command::new("bash")
             .arg("scripts/build_tests.sh")
             .output()
             .expect("Failed to execute command");
-    
     });
 }
 
