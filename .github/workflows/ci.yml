@@ -12,6 +12,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    
     - name: Install Rust
       run: rustup update stable
 
@@ -29,9 +30,6 @@ jobs:
 
     - name: Install wasi2ic
       run: cargo install wasi2ic
-
-    - name: Install canbench
-      run: cargo install canbench
 
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
