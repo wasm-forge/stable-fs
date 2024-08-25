@@ -171,7 +171,6 @@ impl<M: Memory> ChunkPtrAllocator<M> {
     }
 }
 
-
 struct StorageMemories<M: Memory> {
     header_memory: VirtualMemory<M>,
     metadata_memory: VirtualMemory<M>,
@@ -182,9 +181,7 @@ struct StorageMemories<M: Memory> {
     v2_chunk_ptr_memory: VirtualMemory<M>,
     v2_chunks_memory: VirtualMemory<M>,
     v2_allocator_memory: VirtualMemory<M>,
-
 }
-
 
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
@@ -257,15 +254,10 @@ impl<M: Memory> StableStorage<M> {
             v2_allocator_memory,
         };
 
-        Self::new_with_custom_memories(
-            memories
-        )
+        Self::new_with_custom_memories(memories)
     }
 
-    fn new_with_custom_memories(
-        memories: StorageMemories<M>
-
-    ) -> Self {
+    fn new_with_custom_memories(memories: StorageMemories<M>) -> Self {
         let default_header_value = Header {
             version: FS_VERSION,
             next_node: ROOT_NODE + 1,

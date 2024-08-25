@@ -53,7 +53,7 @@ impl TransientStorage {
         let mut result = Self {
             header: Header {
                 version: 1,
-                next_node: ROOT_NODE + 1
+                next_node: ROOT_NODE + 1,
             },
             metadata: Default::default(),
             direntry: Default::default(),

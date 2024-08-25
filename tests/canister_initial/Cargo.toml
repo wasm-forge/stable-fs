@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "src/fs_benchmark_test_backend"
+    "src/canister_initial_backend"
 ]
 resolver = "2"
 

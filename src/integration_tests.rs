@@ -3,8 +3,8 @@ use fns::read_text;
 use pocket_ic::PocketIc;
 use std::{cell::RefCell, fs};
 
-const BACKEND_WASM: &str = "tests/fs_benchmark_test/target/wasm32-unknown-unknown/release/fs_benchmark_test_backend_small.wasm";
-const BACKEND_WASM_UPGRADED: &str = "tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend_small.wasm";
+const BACKEND_WASM: &str = "tests/canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend_small.wasm";
+const BACKEND_WASM_UPGRADED: &str = "tests/canister_upgraded/target/wasm32-unknown-unknown/release/canister_upgraded_backend_small.wasm";
 
 thread_local!(
     static ACTIVE_CANISTER: RefCell<Option<Principal>> = const { RefCell::new(None) };
@@ -498,6 +498,29 @@ fn large_file_write() {
 
     // create large buffer
     fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    let (instructions, size) = fns::store_buffer(&pic, filename);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 14_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 100_000_000);
+}
+
+#[test]
+fn large_file_second_write() {
+    let pic = setup_initial_canister();
+
+    let filename = "some_file.txt";
+
+    // create large buffer
+    fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    fns::store_buffer(&pic, filename);
 
     let (instructions, size) = fns::store_buffer(&pic, filename);
 
