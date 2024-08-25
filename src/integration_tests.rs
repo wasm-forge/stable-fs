@@ -8,6 +8,7 @@ const BACKEND_WASM_UPGRADED: &str = "tests/canister_upgraded/target/wasm32-unkno
 
 thread_local!(
     static ACTIVE_CANISTER: RefCell<Option<Principal>> = const { RefCell::new(None) };
+    static BUILD_DONE: RefCell<bool> = const { RefCell::new(false) };
 );
 
 fn set_active_canister(new_canister: Principal) {
@@ -24,16 +25,31 @@ fn active_canister() -> Principal {
     })
 }
 
-fn setup_test_projects() {
-    use std::process::Command;
-    let _ = Command::new("bash")
-        .arg("scripts/build_tests.sh")
-        .output()
-        .expect("Failed to execute command");
+fn build_test_projects() {
+
+    BUILD_DONE.with(|is_built| {
+
+        let mut is_built = is_built.borrow_mut();
+
+        if *is_built {
+            return;
+        }
+
+        use std::process::Command;
+        let _ = Command::new("bash")
+            .arg("scripts/build_tests.sh")
+            .output()
+            .expect("Failed to execute command");
+        
+        *is_built = true;
+
+    });
+
+
 }
 
 fn setup_initial_canister() -> PocketIc {
-    setup_test_projects();
+    build_test_projects();
     let pic = PocketIc::new();
 
     let wasm = fs::read(BACKEND_WASM).expect("Wasm file not found, run 'dfx build'.");
@@ -52,7 +68,7 @@ fn setup_initial_canister() -> PocketIc {
 }
 
 fn upgrade_canister(pic: &PocketIc) {
-    setup_test_projects();
+    build_test_projects();
 
     let wasm_upgraded =
         fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'dfx build'.");
