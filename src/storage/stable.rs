@@ -14,7 +14,7 @@ use crate::{
 use super::{
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
-        Header, Metadata, Node, Times, FILE_CHUNK_SIZE,
+        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, FILE_CHUNK_SIZE_V2,
     },
     Storage,
 };
@@ -37,7 +37,7 @@ const AVAILABLE_CHUNKS_LEN_IDX: u64 = 0;
 // index containing the next address to use, when there are no reusable indices available
 const MAX_PTR_IDX: u64 = 1;
 
-const ZEROES: [u8; FILE_CHUNK_SIZE] = [0u8; FILE_CHUNK_SIZE];
+const ZEROES: [u8; FILE_CHUNK_SIZE_V2] = [0u8; FILE_CHUNK_SIZE_V2];
 
 struct ChunkPtrAllocator<M: Memory> {
     v2_available_chunks: VirtualMemory<M>,
@@ -85,7 +85,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         let ret = self.read_u64(MAX_PTR_IDX);
 
         // store the next max pointer
-        self.write_u64(MAX_PTR_IDX, ret + FILE_CHUNK_SIZE as u64);
+        self.write_u64(MAX_PTR_IDX, ret + FILE_CHUNK_SIZE_V2 as u64);
 
         ret
     }
@@ -145,7 +145,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
 
     #[cfg(test)]
     fn check_free(&self, ptr: FileChunkPtr) {
-        if ptr % FILE_CHUNK_SIZE as u64 != 0 {
+        if ptr % FILE_CHUNK_SIZE_V2 as u64 != 0 {
             panic!(
                 "Pointer released {} must be a multiple of FILE_CHUNK_SIZE!",
                 ptr
@@ -346,16 +346,16 @@ impl<M: Memory> StableStorage<M> {
     ) {
         let len = buf.len();
 
-        assert!(len <= FILE_CHUNK_SIZE);
+        assert!(len <= FILE_CHUNK_SIZE_V2);
 
         let chunk_ptr = if let Some(ptr) = self.v2_chunk_ptr.get(&(node, index)) {
             ptr
         } else {
             let ptr = self.v2_allocator.allocate();
             // init with 0
-            let remainder = FILE_CHUNK_SIZE as FileSize - (offset as FileSize + len as FileSize);
+            let remainder = FILE_CHUNK_SIZE_V2 as FileSize - (offset as FileSize + len as FileSize);
 
-            grow_memory(&self.v2_chunks, ptr + FILE_CHUNK_SIZE as FileSize);
+            grow_memory(&self.v2_chunks, ptr + FILE_CHUNK_SIZE_V2 as FileSize);
 
             self.v2_chunks.write(
                 ptr + offset + len as FileSize,
@@ -377,9 +377,9 @@ impl<M: Memory> StableStorage<M> {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-        let start_index = (offset / FILE_CHUNK_SIZE as FileSize) as FileChunkIndex;
+        let start_index = (offset / FILE_CHUNK_SIZE_V1 as FileSize) as FileChunkIndex;
 
-        let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE as FileSize;
+        let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize;
 
         let range = (node, start_index)..(node + 1, 0);
 
@@ -394,7 +394,7 @@ impl<M: Memory> StableStorage<M> {
                 break;
             }
 
-            let chunk_space = FILE_CHUNK_SIZE as FileSize - chunk_offset;
+            let chunk_space = FILE_CHUNK_SIZE_V1 as FileSize - chunk_offset;
 
             let to_read = remainder
                 .min(chunk_space)
@@ -422,11 +422,14 @@ impl<M: Memory> StableStorage<M> {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-        let start_index = (offset / FILE_CHUNK_SIZE as FileSize) as FileChunkIndex;
+        let start_index = (offset / FILE_CHUNK_SIZE_V2 as FileSize) as FileChunkIndex;
+        let end_index =
+            ((offset + buf.len() as FileSize) / FILE_CHUNK_SIZE_V2 as FileSize + 1) as FileChunkIndex;
 
-        let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE as FileSize;
+        let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE_V2 as FileSize;
 
-        let range = (node, start_index)..(node + 1, 0);
+        let range = (node, start_index)..(node, end_index);
+        //let range = (node, start_index)..(node + 1, 0);
 
         let mut size_read: FileSize = 0;
         let mut remainder = file_size - offset;
@@ -439,7 +442,7 @@ impl<M: Memory> StableStorage<M> {
                 break;
             }
 
-            let chunk_space = FILE_CHUNK_SIZE as FileSize - chunk_offset;
+            let chunk_space = FILE_CHUNK_SIZE_V2 as FileSize - chunk_offset;
 
             let to_read = remainder
                 .min(chunk_space)
@@ -571,7 +574,6 @@ impl<M: Memory> Storage for StableStorage<M> {
             buf.len() as FileSize
         } else {
             let end = offset + buf.len() as FileSize;
-            let chunk_infos = get_chunk_infos(offset, end);
             let mut written_size = 0;
 
             // decide if we use v2
@@ -584,24 +586,32 @@ impl<M: Memory> Storage for StableStorage<M> {
                 }
             }
 
-            for chunk in chunk_infos.into_iter() {
-                if use_v2 {
+            if use_v2 {
+                let chunk_infos = get_chunk_infos(offset, end, FILE_CHUNK_SIZE_V2);
+
+                for chunk in chunk_infos.into_iter() {
                     self.write_filechunk_v2(
                         node,
                         chunk.index,
                         chunk.offset,
                         &buf[written_size..written_size + chunk.len as usize],
                     );
-                } else {
+
+                    written_size += chunk.len as usize;
+                }
+            } else {
+                let chunk_infos = get_chunk_infos(offset, end, FILE_CHUNK_SIZE_V1);
+
+                for chunk in chunk_infos.into_iter() {
                     self.write_filechunk_v1(
                         node,
                         chunk.index,
                         chunk.offset,
                         &buf[written_size..written_size + chunk.len as usize],
                     );
-                }
 
-                written_size += chunk.len as usize;
+                    written_size += chunk.len as usize;
+                }
             }
 
             written_size as FileSize
@@ -614,6 +624,38 @@ impl<M: Memory> Storage for StableStorage<M> {
         }
 
         Ok(written_size)
+    }
+
+    //
+    fn rm_file(&mut self, node: Node) {
+        // delete v1 chunks
+        let range = (node, 0) .. (node + 1, 0);
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new(); 
+        for (k, _v) in self.filechunk.range(range) {
+            chunks.push(k);
+        };
+
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+            self.filechunk.remove(&(node, idx));
+        }
+
+        // delete v2 chunks
+        let range = (node, 0) .. (node + 1, 0);
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new(); 
+        for (k, _v) in self.v2_chunk_ptr.range(range) {
+            chunks.push(k);
+        };
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+            let removed = self.v2_chunk_ptr.remove(&(node, idx));
+
+            if let Some(removed) = removed {
+                self.v2_allocator.free(removed);
+            }
+        }
+
+        self.rm_metadata(node);
     }
 
     // Remove file chunk from a given file node.
@@ -754,25 +796,25 @@ mod tests {
         let mut allocator = ChunkPtrAllocator::new(allocator_memory);
 
         assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 3);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
 
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 2);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 4);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 4);
 
         assert!(allocator.available_ptrs().is_empty());
 
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 3);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 3);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 5);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 5);
     }
 
     #[test]
@@ -786,15 +828,15 @@ mod tests {
         allocator.free(0);
 
         assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 3);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
     }
 
     #[test]
@@ -806,13 +848,13 @@ mod tests {
         let mut allocator = ChunkPtrAllocator::new(allocator_memory);
 
         assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE as FileChunkPtr * 3);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
 
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 3);
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr * 2);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
     }
 
     #[test]
@@ -826,7 +868,7 @@ mod tests {
         allocator.allocate();
         allocator.free(0);
         allocator.allocate();
-        allocator.free(FILE_CHUNK_SIZE as FileChunkPtr);
+        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
     }
 
     #[test]
@@ -857,12 +899,12 @@ mod tests {
         }
 
         for i in 0..(65536 / 8) - 16 {
-            allocator.free(i * FILE_CHUNK_SIZE as FileSize);
+            allocator.free(i * FILE_CHUNK_SIZE_V2 as FileSize);
         }
 
         assert_eq!(mem.size(), 1);
 
-        allocator.free(9999 * FILE_CHUNK_SIZE as FileSize);
+        allocator.free(9999 * FILE_CHUNK_SIZE_V2 as FileSize);
 
         assert_eq!(mem.size(), 2);
     }

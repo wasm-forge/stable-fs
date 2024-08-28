@@ -2,12 +2,12 @@ use crate::error::Error;
 use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
-//pub const FILE_CHUNK_SIZE: usize = 1024;
-//pub const FILE_CHUNK_SIZE: usize = 2048;
-pub const FILE_CHUNK_SIZE: usize = 4096;
-//pub const FILE_CHUNK_SIZE: usize = 8192;
+//pub const FILE_CHUNK_SIZE: usize = 4096;
 //pub const FILE_CHUNK_SIZE: usize = 16384;
-//pub const FILE_CHUNK_SIZE: usize = 32768;
+//pub const FILE_CHUNK_SIZE: usize = 262144;
+
+pub const FILE_CHUNK_SIZE_V1: usize = 4096;
+pub const FILE_CHUNK_SIZE_V2: usize = 16384;
 
 pub const MAX_FILE_NAME: usize = 255;
 
@@ -35,13 +35,13 @@ pub(crate) struct ChunkHandle {
 // A file consists of multiple file chunks.
 #[derive(Clone, Debug)]
 pub struct FileChunk {
-    pub bytes: [u8; FILE_CHUNK_SIZE],
+    pub bytes: [u8; FILE_CHUNK_SIZE_V1],
 }
 
 impl Default for FileChunk {
     fn default() -> Self {
         Self {
-            bytes: [0; FILE_CHUNK_SIZE],
+            bytes: [0; FILE_CHUNK_SIZE_V1],
         }
     }
 }
@@ -58,7 +58,7 @@ impl ic_stable_structures::Storable for FileChunk {
     }
 
     const BOUND: Bound = Bound::Bounded {
-        max_size: FILE_CHUNK_SIZE as u32,
+        max_size: FILE_CHUNK_SIZE_V1 as u32,
         is_fixed_size: true,
     };
 }

@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-use super::types::{Header, FILE_CHUNK_SIZE};
+use super::types::{Header, FILE_CHUNK_SIZE_V1};
 
 // The root node ID.
 const ROOT_NODE: Node = 0;
@@ -70,14 +70,14 @@ impl TransientStorage {
     fn write_filechunk(&mut self, node: Node, index: FileChunkIndex, offset: FileSize, buf: &[u8]) {
         if let Some(memory) = self.get_mounted_memory(node) {
             // grow memory if needed
-            let max_address = index as FileSize * FILE_CHUNK_SIZE as FileSize
+            let max_address = index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize
                 + offset as FileSize
                 + buf.len() as FileSize;
 
             grow_memory(memory, max_address);
 
             // store data
-            let address = index as FileSize * FILE_CHUNK_SIZE as FileSize + offset as FileSize;
+            let address = index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize + offset as FileSize;
             memory.write(address, buf);
         } else {
             let entry = self.filechunk.entry((node, index)).or_default();
@@ -164,9 +164,10 @@ impl Storage for TransientStorage {
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
-            let start_index = (offset / FILE_CHUNK_SIZE as FileSize) as FileChunkIndex;
+            let start_index = (offset / FILE_CHUNK_SIZE_V1 as FileSize) as FileChunkIndex;
 
-            let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE as FileSize;
+            let mut chunk_offset =
+                offset - start_index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize;
 
             let range = (node, start_index)..(node + 1, 0);
 
@@ -181,7 +182,7 @@ impl Storage for TransientStorage {
                     break;
                 }
 
-                let chunk_space = FILE_CHUNK_SIZE as FileSize - chunk_offset;
+                let chunk_space = FILE_CHUNK_SIZE_V1 as FileSize - chunk_offset;
 
                 let to_read = remainder
                     .min(chunk_space)
@@ -203,6 +204,25 @@ impl Storage for TransientStorage {
         };
 
         Ok(size_read)
+    }
+
+    //
+    fn rm_file(&mut self, node: Node) {
+        
+        let range = (node, 0) .. (node + 1, 0);
+        
+        // delete v1 chunks
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new(); 
+        for (k, _v) in self.filechunk.range(range) {
+            chunks.push((k.0, k.1));
+        };
+
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+            self.filechunk.remove(&(node, idx));
+        }
+
+        self.rm_metadata(node);
     }
 
     // Remove file chunk from a given file node.
@@ -322,7 +342,7 @@ impl Storage for TransientStorage {
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
         let end = offset + buf.len() as FileSize;
-        let chunk_infos = get_chunk_infos(offset, end);
+        let chunk_infos = get_chunk_infos(offset, end, FILE_CHUNK_SIZE_V1);
         let mut written_size = 0;
         for chunk in chunk_infos.into_iter() {
             self.write_filechunk(

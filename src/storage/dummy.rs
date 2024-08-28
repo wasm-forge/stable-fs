@@ -98,6 +98,10 @@ impl Storage for DummyStorage {
     fn write(&mut self, _node: Node, _offset: FileSize, _buf: &[u8]) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
+
+    fn rm_file(&mut self, _node: Node) {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]

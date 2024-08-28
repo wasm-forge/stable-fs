@@ -4,7 +4,7 @@ use crate::{
     error::Error,
     runtime::file::File,
     storage::{
-        types::{DirEntry, DirEntryIndex, FileType, Node, FILE_CHUNK_SIZE},
+        types::{DirEntry, DirEntryIndex, FileType, Node},
         Storage,
     },
 };
@@ -65,10 +65,7 @@ impl Dir {
         let (node, metadata) = rm_dir_entry(self.node, path, Some(true), node_refcount, storage)?;
 
         if metadata.link_count == 0 {
-            let chunk_cnt = (metadata.size + FILE_CHUNK_SIZE as u64 - 1) / FILE_CHUNK_SIZE as u64;
-            for index in 0..chunk_cnt {
-                storage.rm_filechunk(node, index as u32);
-            }
+            storage.rm_file(node);
             storage.rm_metadata(node);
         }
 
@@ -106,11 +103,7 @@ impl Dir {
         let (node, metadata) = rm_dir_entry(self.node, path, Some(false), node_refcount, storage)?;
 
         if metadata.link_count == 0 {
-            let chunk_cnt = (metadata.size + FILE_CHUNK_SIZE as u64 - 1) / FILE_CHUNK_SIZE as u64;
-            for index in 0..chunk_cnt {
-                storage.rm_filechunk(node, index as u32);
-            }
-            storage.rm_metadata(node);
+            storage.rm_file(node);
         }
 
         Ok(())
