@@ -423,8 +423,8 @@ impl<M: Memory> StableStorage<M> {
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
         let start_index = (offset / FILE_CHUNK_SIZE_V2 as FileSize) as FileChunkIndex;
-        let end_index =
-            ((offset + buf.len() as FileSize) / FILE_CHUNK_SIZE_V2 as FileSize + 1) as FileChunkIndex;
+        let end_index = ((offset + buf.len() as FileSize) / FILE_CHUNK_SIZE_V2 as FileSize + 1)
+            as FileChunkIndex;
 
         let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE_V2 as FileSize;
 
@@ -629,11 +629,11 @@ impl<M: Memory> Storage for StableStorage<M> {
     //
     fn rm_file(&mut self, node: Node) {
         // delete v1 chunks
-        let range = (node, 0) .. (node + 1, 0);
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new(); 
+        let range = (node, 0)..(node + 1, 0);
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
         for (k, _v) in self.filechunk.range(range) {
             chunks.push(k);
-        };
+        }
 
         for (nd, idx) in chunks.into_iter() {
             assert!(nd == node);
@@ -641,11 +641,11 @@ impl<M: Memory> Storage for StableStorage<M> {
         }
 
         // delete v2 chunks
-        let range = (node, 0) .. (node + 1, 0);
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new(); 
+        let range = (node, 0)..(node + 1, 0);
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
         for (k, _v) in self.v2_chunk_ptr.range(range) {
             chunks.push(k);
-        };
+        }
         for (nd, idx) in chunks.into_iter() {
             assert!(nd == node);
             let removed = self.v2_chunk_ptr.remove(&(node, idx));

@@ -447,7 +447,7 @@ mod tests {
         let chunks = get_chunk_infos(
             FILE_CHUNK_SIZE_V1 as FileSize - 1,
             2 * FILE_CHUNK_SIZE_V1 as FileSize + 1,
-            FILE_CHUNK_SIZE_V1
+            FILE_CHUNK_SIZE_V1,
         );
         assert_eq!(
             chunks[0],

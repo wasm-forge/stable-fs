@@ -208,14 +208,13 @@ impl Storage for TransientStorage {
 
     //
     fn rm_file(&mut self, node: Node) {
-        
-        let range = (node, 0) .. (node + 1, 0);
-        
+        let range = (node, 0)..(node + 1, 0);
+
         // delete v1 chunks
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new(); 
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
         for (k, _v) in self.filechunk.range(range) {
             chunks.push((k.0, k.1));
-        };
+        }
 
         for (nd, idx) in chunks.into_iter() {
             assert!(nd == node);
