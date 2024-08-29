@@ -302,12 +302,11 @@ pub fn add_dir_entry(
 
 /// Remove the directory entry from the current directory by entry name.
 ///
+/// parent_dir_node Parent directory
 /// path            The name of the entry to delete
 /// expect_dir      If true, the directory is deleted. If false - the file is deleted. If the expected entry type does not match with the actual entry - an error is returned.
 /// node_refcount   A map of nodes to check if the file being deleted is opened by multiple file descriptors. Deleting an entry referenced by multiple file descriptors is not allowed and will result in an error.
 /// storage         The reference to the actual storage implementation
-/// is_renaming     true if renaming is in progress, this allows to "delete" a non-empty folder
-
 pub fn rm_dir_entry(
     parent_dir_node: Node,
     path: &str,
@@ -318,6 +317,11 @@ pub fn rm_dir_entry(
     let find_result = find_node_with_index(parent_dir_node, path, storage)?;
 
     let removed_dir_entry_node = find_result.node;
+
+    if storage.is_mounted(removed_dir_entry_node) {
+        return Err(Error::CannotRemoveMountedMemoryFile);
+    }
+
     let parent_dir_node = find_result.parent_dir;
     let removed_entry_index = find_result.entry_index;
     let removed_dir_entry_prev_entry = find_result.prev_entry;

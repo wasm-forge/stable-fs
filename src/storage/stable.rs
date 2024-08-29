@@ -8,14 +8,14 @@ use ic_stable_structures::{
 
 use crate::{
     error::Error,
-    runtime::structure_helpers::{get_chunk_infos, grow_memory},
+    runtime::{structure_helpers::{get_chunk_infos, grow_memory}, types::ChunkSize},
 };
 
 use super::{
     types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
-        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, FILE_CHUNK_SIZE_V2,
+        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType, Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2
     },
+    allocator::ChunkPtrAllocator,
     Storage,
 };
 
@@ -30,145 +30,11 @@ const MAX_MEMORY_INDEX: u8 = 254;
 // the number of memory indices used by the file system (currently 8 plus some reserved ids)
 const MEMORY_INDEX_COUNT: u8 = 10;
 
-// index for the first u64 containing chunk pointers
-const FIRST_PTR_IDX: u64 = 16; // lower numbers are reserved
-                               // index containing the total number of
-const AVAILABLE_CHUNKS_LEN_IDX: u64 = 0;
-// index containing the next address to use, when there are no reusable indices available
-const MAX_PTR_IDX: u64 = 1;
+const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
-const ZEROES: [u8; FILE_CHUNK_SIZE_V2] = [0u8; FILE_CHUNK_SIZE_V2];
-
-struct ChunkPtrAllocator<M: Memory> {
-    v2_available_chunks: VirtualMemory<M>,
-}
-
-impl<M: Memory> ChunkPtrAllocator<M> {
-    pub fn new(v2_available_chunks: VirtualMemory<M>) -> ChunkPtrAllocator<M> {
-        // init avaiable chunks
-        if v2_available_chunks.size() == 0 {
-            v2_available_chunks.grow(1);
-            v2_available_chunks.write(0, &0u64.to_le_bytes());
-        }
-
-        ChunkPtrAllocator {
-            v2_available_chunks,
-        }
-    }
-
-    fn read_u64(&self, index: u64) -> u64 {
-        let mut b = [0u8; 8];
-        self.v2_available_chunks.read(index * 8, &mut b);
-
-        u64::from_le_bytes(b)
-    }
-
-    fn write_u64(&self, index: u64, value: u64) {
-        // we only need to start checking the size at certain index
-        if index + 8 >= WASM_PAGE_SIZE_IN_BYTES / 8 {
-            grow_memory(&self.v2_available_chunks, index * 8 + 8);
-        }
-
-        self.v2_available_chunks
-            .write(index * 8, &value.to_le_bytes());
-    }
-
-    fn get_len(&self) -> u64 {
-        self.read_u64(AVAILABLE_CHUNKS_LEN_IDX)
-    }
-
-    fn set_len(&self, new_len: u64) {
-        self.write_u64(AVAILABLE_CHUNKS_LEN_IDX, new_len);
-    }
-
-    fn get_next_max_ptr(&self) -> u64 {
-        let ret = self.read_u64(MAX_PTR_IDX);
-
-        // store the next max pointer
-        self.write_u64(MAX_PTR_IDX, ret + FILE_CHUNK_SIZE_V2 as u64);
-
-        ret
-    }
-
-    fn get_ptr(&self, index: u64) -> u64 {
-        self.read_u64(FIRST_PTR_IDX + index)
-    }
-
-    fn set_ptr(&self, index: u64, value: u64) {
-        self.write_u64(FIRST_PTR_IDX + index, value);
-    }
-
-    #[cfg(test)]
-    pub fn available_ptrs(&self) -> Vec<u64> {
-        let mut res = Vec::new();
-
-        for i in 0..self.get_len() {
-            res.push(self.get_ptr(i));
-        }
-
-        res
-    }
-
-    fn push_ptr(&self, chunk_ptr: FileChunkPtr) {
-        let len = self.get_len();
-
-        self.set_ptr(len, chunk_ptr);
-
-        self.set_len(len + 1);
-    }
-
-    fn pop_ptr(&self) -> Option<FileChunkPtr> {
-        let mut len = self.get_len();
-
-        if len == 0 {
-            return None;
-        }
-
-        len -= 1;
-
-        let ptr = self.get_ptr(len);
-
-        self.set_len(len);
-
-        Some(ptr)
-    }
-
-    pub fn allocate(&mut self) -> FileChunkPtr {
-        // try to take from the available chunks
-        if let Some(ptr) = self.pop_ptr() {
-            return ptr;
-        }
-
-        // if there are no available chunks, take the next max known pointer
-        self.get_next_max_ptr()
-    }
-
-    #[cfg(test)]
-    fn check_free(&self, ptr: FileChunkPtr) {
-        if ptr % FILE_CHUNK_SIZE_V2 as u64 != 0 {
-            panic!(
-                "Pointer released {} must be a multiple of FILE_CHUNK_SIZE!",
-                ptr
-            );
-        }
-
-        if self.read_u64(MAX_PTR_IDX) <= ptr {
-            panic!("Address {} was never allocated!", ptr);
-        }
-
-        for p in self.available_ptrs() {
-            if p == ptr {
-                panic!("Second free of address {}", ptr);
-            }
-        }
-    }
-
-    pub fn free(&mut self, ptr: FileChunkPtr) {
-        #[cfg(test)]
-        self.check_free(ptr);
-
-        self.push_ptr(ptr);
-    }
+#[derive(Clone, Copy, Debug)]
+pub enum ChunkType {
+    V1, V2
 }
 
 struct StorageMemories<M: Memory> {
@@ -199,6 +65,9 @@ pub struct StableStorage<M: Memory> {
     _memory_manager: Option<MemoryManager<M>>,
     // active mounts
     active_mounts: HashMap<Node, Box<dyn Memory>>,
+
+    // chunk type when creating new files
+    chunk_type: ChunkType,
 }
 
 impl<M: Memory> StableStorage<M> {
@@ -263,7 +132,7 @@ impl<M: Memory> StableStorage<M> {
             next_node: ROOT_NODE + 1,
         };
 
-        let v2_allocator = ChunkPtrAllocator::new(memories.v2_allocator_memory);
+        let v2_allocator = ChunkPtrAllocator::new(memories.v2_allocator_memory).unwrap();
 
         let mut result = Self {
             header: Cell::init(memories.header_memory, default_header_value).unwrap(),
@@ -276,9 +145,11 @@ impl<M: Memory> StableStorage<M> {
             v2_chunks: memories.v2_chunks_memory,
             v2_allocator,
 
-            // runtime data
+            // transient runtime data
             _memory_manager: None,
             active_mounts: HashMap::new(),
+            // default chunk type is V2
+            chunk_type: ChunkType::V2,
         };
 
         let version = result.header.get().version;
@@ -346,16 +217,16 @@ impl<M: Memory> StableStorage<M> {
     ) {
         let len = buf.len();
 
-        assert!(len <= FILE_CHUNK_SIZE_V2);
+        assert!(len <= self.v2_allocator.chunk_size());
 
         let chunk_ptr = if let Some(ptr) = self.v2_chunk_ptr.get(&(node, index)) {
             ptr
         } else {
             let ptr = self.v2_allocator.allocate();
             // init with 0
-            let remainder = FILE_CHUNK_SIZE_V2 as FileSize - (offset as FileSize + len as FileSize);
+            let remainder = self.chunk_size() as FileSize - (offset as FileSize + len as FileSize);
 
-            grow_memory(&self.v2_chunks, ptr + FILE_CHUNK_SIZE_V2 as FileSize);
+            grow_memory(&self.v2_chunks, ptr + self.chunk_size() as FileSize);
 
             self.v2_chunks.write(
                 ptr + offset + len as FileSize,
@@ -422,11 +293,13 @@ impl<M: Memory> StableStorage<M> {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-        let start_index = (offset / FILE_CHUNK_SIZE_V2 as FileSize) as FileChunkIndex;
-        let end_index = ((offset + buf.len() as FileSize) / FILE_CHUNK_SIZE_V2 as FileSize + 1)
+        let chunk_size = self.chunk_size();
+
+        let start_index = (offset / chunk_size as FileSize) as FileChunkIndex;
+        let end_index = ((offset + buf.len() as FileSize) / chunk_size as FileSize + 1)
             as FileChunkIndex;
 
-        let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE_V2 as FileSize;
+        let mut chunk_offset = offset - start_index as FileSize * chunk_size as FileSize;
 
         let range = (node, start_index)..(node, end_index);
         //let range = (node, start_index)..(node + 1, 0);
@@ -442,7 +315,7 @@ impl<M: Memory> StableStorage<M> {
                 break;
             }
 
-            let chunk_space = FILE_CHUNK_SIZE_V2 as FileSize - chunk_offset;
+            let chunk_space = chunk_size as FileSize - chunk_offset;
 
             let to_read = remainder
                 .min(chunk_space)
@@ -460,6 +333,23 @@ impl<M: Memory> StableStorage<M> {
 
         Ok(size_read)
     }
+
+    pub fn set_chunk_size(&mut self, chunk_size: ChunkSize) -> Result<(), Error> {
+        self.v2_allocator.set_chunk_size(chunk_size as usize)
+    }
+
+    pub fn chunk_size(&self) -> usize {
+        self.v2_allocator.chunk_size()
+    }
+
+    pub fn set_chunk_type(&mut self, chunk_type: ChunkType) {
+        self.chunk_type = chunk_type;
+    }
+
+    pub fn chunk_type(&self) -> ChunkType {
+        self.chunk_type
+    }
+
 }
 
 impl<M: Memory> Storage for StableStorage<M> {
@@ -497,19 +387,12 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Update the metadata associated with the node.
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
+        assert_eq!(node, metadata.node, "Node does not match medatada.node!");
+
         if self.is_mounted(node) {
             self.mounted_meta.insert(node, metadata);
         } else {
             self.metadata.insert(node, metadata);
-        }
-    }
-
-    // Remove the metadata associated with the node.
-    fn rm_metadata(&mut self, node: Node) {
-        if self.is_mounted(node) {
-            self.mounted_meta.remove(&node);
-        } else {
-            self.metadata.remove(&node);
         }
     }
 
@@ -576,18 +459,22 @@ impl<M: Memory> Storage for StableStorage<M> {
             let end = offset + buf.len() as FileSize;
             let mut written_size = 0;
 
-            // decide if we use v2
-            let mut use_v2 = true;
+            // decide if we use v2, first based on configuration, second: based on actual content
+            let mut use_v2 = self.chunk_type == ChunkType::V2;
+
             if metadata.size > 0 {
-                // try to find the first v2 node, othersize use v1
+                // try to find any v2 node, othersize use v1
+
+                // TODO: make this work with the iterator to support sparse files
                 let ptr = self.v2_chunk_ptr.get(&(node, 0));
+
                 if ptr.is_none() {
                     use_v2 = false;
                 }
             }
 
             if use_v2 {
-                let chunk_infos = get_chunk_infos(offset, end, FILE_CHUNK_SIZE_V2);
+                let chunk_infos = get_chunk_infos(offset, end, self.chunk_size());
 
                 for chunk in chunk_infos.into_iter() {
                     self.write_filechunk_v2(
@@ -627,7 +514,11 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     //
-    fn rm_file(&mut self, node: Node) {
+    fn rm_file(&mut self, node: Node) -> Result<(), Error> {
+        if self.is_mounted(node) {
+            return Err(Error::CannotRemoveMountedMemoryFile);
+        }
+
         // delete v1 chunks
         let range = (node, 0)..(node + 1, 0);
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
@@ -655,18 +546,11 @@ impl<M: Memory> Storage for StableStorage<M> {
             }
         }
 
-        self.rm_metadata(node);
-    }
+        // remove metadata
+        self.mounted_meta.remove(&node);
+        self.metadata.remove(&node);
 
-    // Remove file chunk from a given file node.
-    fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex) {
-        let removed = self.v2_chunk_ptr.remove(&(node, index));
-
-        if let Some(removed) = removed {
-            self.v2_allocator.free(removed);
-        } else {
-            self.filechunk.remove(&(node, index));
-        }
+        Ok(())
     }
 
     fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error> {
@@ -784,130 +668,10 @@ mod tests {
 
     use ic_stable_structures::DefaultMemoryImpl;
 
-    use crate::{storage::types::FileName, test_utils::new_vector_memory};
+    use crate::storage::types::FileName;
 
     use super::*;
 
-    #[test]
-    fn chunk_allocator_allocations() {
-        let mem = new_vector_memory();
-        let memory_manager = MemoryManager::init(mem);
-        let allocator_memory = memory_manager.get(MemoryId::new(1));
-        let mut allocator = ChunkPtrAllocator::new(allocator_memory);
-
-        assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
-
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 4);
-
-        assert!(allocator.available_ptrs().is_empty());
-
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 5);
-    }
-
-    #[test]
-    fn chunk_allocator_allocations2() {
-        let mem = new_vector_memory();
-        let memory_manager = MemoryManager::init(mem);
-        let allocator_memory = memory_manager.get(MemoryId::new(1));
-        let mut allocator = ChunkPtrAllocator::new(allocator_memory);
-
-        assert_eq!(allocator.allocate(), 0);
-        allocator.free(0);
-
-        assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
-    }
-
-    #[test]
-    #[should_panic]
-    fn double_release_fails() {
-        let mem = new_vector_memory();
-        let memory_manager = MemoryManager::init(mem);
-        let allocator_memory = memory_manager.get(MemoryId::new(1));
-        let mut allocator = ChunkPtrAllocator::new(allocator_memory);
-
-        assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
-
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-    }
-
-    #[test]
-    #[should_panic]
-    fn unallocated_release_fails() {
-        let mem = new_vector_memory();
-        let memory_manager = MemoryManager::init(mem);
-        let allocator_memory = memory_manager.get(MemoryId::new(1));
-        let mut allocator = ChunkPtrAllocator::new(allocator_memory);
-
-        allocator.allocate();
-        allocator.free(0);
-        allocator.allocate();
-        allocator.free(FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-    }
-
-    #[test]
-    #[should_panic]
-    fn impossible_address_fails() {
-        let mem = new_vector_memory();
-        let memory_manager = MemoryManager::init(mem);
-        let allocator_memory = memory_manager.get(MemoryId::new(1));
-        let mut allocator = ChunkPtrAllocator::new(allocator_memory);
-
-        allocator.allocate();
-        allocator.free(120);
-    }
-
-    #[test]
-    fn chunk_allocator_allocations_check_memory_grow() {
-        let mem = new_vector_memory();
-        let memory_manager = MemoryManager::init(mem);
-        let allocator_memory = memory_manager.get(MemoryId::new(1));
-        let mem = allocator_memory.clone();
-
-        assert_eq!(mem.size(), 0);
-        let mut allocator = ChunkPtrAllocator::new(allocator_memory);
-        assert_eq!(mem.size(), 1);
-
-        for _ in 0..10000 {
-            allocator.allocate();
-        }
-
-        for i in 0..(65536 / 8) - 16 {
-            allocator.free(i * FILE_CHUNK_SIZE_V2 as FileSize);
-        }
-
-        assert_eq!(mem.size(), 1);
-
-        allocator.free(9999 * FILE_CHUNK_SIZE_V2 as FileSize);
-
-        assert_eq!(mem.size(), 2);
-    }
 
     #[test]
     fn read_and_write_filechunk() {

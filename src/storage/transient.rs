@@ -124,15 +124,6 @@ impl Storage for TransientStorage {
         }
     }
 
-    // Remove the metadata associated with the node.
-    fn rm_metadata(&mut self, node: Node) {
-        if self.is_mounted(node) {
-            self.mounted_meta.remove(&node);
-        } else {
-            self.metadata.remove(&node);
-        }
-    }
-
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
         let value = self.direntry.get(&(node, index)).ok_or(Error::NotFound)?;
@@ -207,7 +198,11 @@ impl Storage for TransientStorage {
     }
 
     //
-    fn rm_file(&mut self, node: Node) {
+    fn rm_file(&mut self, node: Node) -> Result<(), Error> {
+        if self.is_mounted(node) {
+            return Err(Error::CannotRemoveMountedMemoryFile);
+        }
+
         let range = (node, 0)..(node + 1, 0);
 
         // delete v1 chunks
@@ -221,12 +216,11 @@ impl Storage for TransientStorage {
             self.filechunk.remove(&(node, idx));
         }
 
-        self.rm_metadata(node);
-    }
+        // remove metadata
+        self.mounted_meta.remove(&node);
+        self.metadata.remove(&node);
 
-    // Remove file chunk from a given file node.
-    fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex) {
-        self.filechunk.remove(&(node, index));
+        Ok(())
     }
 
     fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error> {

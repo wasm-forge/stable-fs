@@ -1,6 +1,7 @@
 use ic_stable_structures::{DefaultMemoryImpl, VectorMemory};
 
 use crate::{error::Error, fs::FileSystem, storage::stable::StableStorage};
+use crate::runtime::types::ChunkSize;
 
 #[cfg(test)]
 pub fn new_vector_memory() -> VectorMemory {
@@ -17,6 +18,29 @@ pub fn test_fs() -> FileSystem {
     FileSystem::new(Box::new(storage)).unwrap()
 }
 
+
+#[cfg(test)]
+pub fn test_fs_v1() -> FileSystem {
+    use crate::storage::stable::ChunkType;
+
+    let memory = DefaultMemoryImpl::default();
+
+    let mut storage = StableStorage::new(memory);
+    storage.set_chunk_type(ChunkType::V1);
+    FileSystem::new(Box::new(storage)).unwrap()
+}
+
+#[cfg(test)]
+pub fn test_fs_custom_chunk_size(chunk_size: ChunkSize) -> FileSystem {
+
+    let memory = DefaultMemoryImpl::default();
+
+    let mut storage = StableStorage::new(memory);
+    storage.set_chunk_size(chunk_size).unwrap();
+
+    FileSystem::new(Box::new(storage)).unwrap()
+}
+
 #[cfg(test)]
 pub fn test_fs_transient() -> FileSystem {
     use crate::storage::transient::TransientStorage;
@@ -27,9 +51,14 @@ pub fn test_fs_transient() -> FileSystem {
 
 #[cfg(test)]
 pub fn test_fs_setups(virtual_file_name: &str) -> Vec<FileSystem> {
+    use crate::runtime::types::ChunkSize;
+
     let mut result = Vec::new();
 
     result.push(test_fs());
+    result.push(test_fs_v1());
+    result.push(test_fs_custom_chunk_size(ChunkSize::CHUNK4K));
+    result.push(test_fs_custom_chunk_size(ChunkSize::CHUNK64K));
 
     result.push(test_fs_transient());
 

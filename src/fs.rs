@@ -297,11 +297,6 @@ impl FileSystem {
         self.storage.get_metadata(node)
     }
 
-    // find metadata for a given file descriptor.
-    pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
-        self.storage.get_metadata(node)
-    }
-
     // update metadata of a given file descriptor
     pub fn set_metadata(&mut self, fd: Fd, metadata: Metadata) -> Result<(), Error> {
         let node = self.get_node(fd)?;
@@ -396,7 +391,7 @@ impl FileSystem {
     }
 
     // Opens a file and returns its new file descriptor.
-    pub fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
+    fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
         if flags.contains(OpenFlags::EXCLUSIVE) {
             return Err(Error::FileAlreadyExists);
         }
@@ -555,6 +550,37 @@ mod tests {
     };
 
     use super::{Fd, FileSystem};
+
+    pub fn list_files(fs: &mut FileSystem, path: &str) -> Vec<String> {
+        use std::str::FromStr;
+
+        let mut res = vec![];
+
+        let dir = fs.root_fd();
+
+        let fd = fs
+            .open_or_create(dir, path, FdStat::default(), OpenFlags::DIRECTORY, 0)
+            .unwrap();
+
+        let meta = fs.metadata(fd).unwrap();
+
+        let mut entry_index = meta.first_dir_entry;
+
+        while let Some(index) = entry_index {
+            let entry = fs.get_direntry(fd, index).unwrap();
+
+            let filename_str: &str =
+                std::str::from_utf8(&entry.name.bytes[0..(entry.name.length as usize)]).unwrap();
+
+            let st = String::from_str(filename_str).unwrap();
+
+            res.push(st);
+
+            entry_index = entry.next_entry;
+        }
+
+        res
+    }
 
     #[test]
     fn get_root_info() {
@@ -1310,6 +1336,30 @@ mod tests {
         memory.read(0, &mut buf);
 
         println!("{:?}", buf);
+    }
+
+    #[test]
+    fn deleting_mounted_file_fails() {
+        let memory: VectorMemory = new_vector_memory();
+
+        let mut fs = test_fs();
+
+        let root_fd = fs.root_fd();
+
+        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
+            .unwrap();
+
+        let res = fs.remove_file(root_fd, "test.txt");
+
+        assert!(
+            res.is_err(),
+            "Deleting a mounted file should not be allowed!"
+        );
+
+        // check the dir entry still exists after deletion
+        let files = list_files(&mut fs, "");
+
+        assert_eq!(files[0], "test.txt".to_string());
     }
 
     #[test]

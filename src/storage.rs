@@ -2,9 +2,10 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
-    storage::types::{DirEntry, DirEntryIndex, FileChunkIndex, FileSize, Metadata, Node},
+    storage::types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
 };
 
+pub mod allocator;
 pub mod dummy;
 pub mod stable;
 pub mod transient;
@@ -53,10 +54,6 @@ pub trait Storage {
     // Write file at the current file cursor, the cursor position will NOT be updated after reading.
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error>;
 
-    // remove all files and
-    fn rm_file(&mut self, node: Node);
-    // Remove file chunk from a given file node.
-    fn rm_filechunk(&mut self, node: Node, index: FileChunkIndex);
-    // Remove the metadata associated with the node.
-    fn rm_metadata(&mut self, node: Node);
+    // remove all file chunks
+    fn rm_file(&mut self, node: Node) -> Result<(), Error>;
 }

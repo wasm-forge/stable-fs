@@ -65,8 +65,7 @@ impl Dir {
         let (node, metadata) = rm_dir_entry(self.node, path, Some(true), node_refcount, storage)?;
 
         if metadata.link_count == 0 {
-            storage.rm_file(node);
-            storage.rm_metadata(node);
+            storage.rm_file(node)?;
         }
 
         Ok(())
@@ -103,7 +102,7 @@ impl Dir {
         let (node, metadata) = rm_dir_entry(self.node, path, Some(false), node_refcount, storage)?;
 
         if metadata.link_count == 0 {
-            storage.rm_file(node);
+            storage.rm_file(node)?;
         }
 
         Ok(())

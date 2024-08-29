@@ -24,6 +24,20 @@ pub enum Whence {
     END,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum ChunkSize {
+    CHUNK4K = 4096,
+    CHUNK8K = 8192,
+    CHUNK16K = 16384,
+    CHUNK32K = 32768,
+    CHUNK64K = 65536,
+}
+
+impl ChunkSize {
+    pub const VALUES: [Self; 5] = [Self::CHUNK4K, Self::CHUNK8K, Self::CHUNK16K, Self::CHUNK32K, Self::CHUNK64K];
+}
+
+
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub struct FdFlags: u16 {
@@ -47,6 +61,8 @@ bitflags! {
         const TRUNCATE = 8;
     }
 }
+
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

@@ -2,12 +2,11 @@ use crate::error::Error;
 use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
-//pub const FILE_CHUNK_SIZE: usize = 4096;
-//pub const FILE_CHUNK_SIZE: usize = 16384;
-//pub const FILE_CHUNK_SIZE: usize = 262144;
 
 pub const FILE_CHUNK_SIZE_V1: usize = 4096;
-pub const FILE_CHUNK_SIZE_V2: usize = 16384;
+
+pub const DEFAULT_FILE_CHUNK_SIZE_V2: usize = 16384;
+pub const MAX_FILE_CHUNK_SIZE_V2: usize = 65536;
 
 pub const MAX_FILE_NAME: usize = 255;
 
@@ -21,7 +20,7 @@ pub type FileSize = u64;
 // An index of a file chunk.
 pub type FileChunkIndex = u32;
 
-// The address in memory where the chunk is stored.
+// The address in memory where the V2 chunk is stored.
 pub type FileChunkPtr = u64;
 
 // A handle used for writing files in chunks

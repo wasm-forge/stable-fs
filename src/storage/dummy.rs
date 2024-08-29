@@ -1,7 +1,7 @@
 use crate::error::Error;
 
 use super::{
-    types::{DirEntry, DirEntryIndex, FileChunkIndex, FileSize, Metadata, Node},
+    types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
     Storage,
 };
 
@@ -40,10 +40,6 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn rm_metadata(&mut self, _node: Node) {
-        panic!("Not supported")
-    }
-
     fn get_direntry(&self, _node: Node, _index: DirEntryIndex) -> Result<DirEntry, Error> {
         panic!("Not supported")
     }
@@ -53,10 +49,6 @@ impl Storage for DummyStorage {
     }
 
     fn rm_direntry(&mut self, _node: Node, _index: DirEntryIndex) {
-        panic!("Not supported")
-    }
-
-    fn rm_filechunk(&mut self, _node: Node, _index: FileChunkIndex) {
         panic!("Not supported")
     }
 
@@ -99,7 +91,7 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn rm_file(&mut self, _node: Node) {
+    fn rm_file(&mut self, _node: Node) -> Result<(), Error> {
         panic!("Not supported")
     }
 }
@@ -135,15 +127,6 @@ mod tests {
         let storage = DummyStorage::new();
 
         let _ = storage.get_metadata(0u64);
-    }
-
-    #[test]
-    #[should_panic]
-    fn rm_metadata_panic() {
-        let mut storage = DummyStorage::new();
-        let node = storage.new_node();
-
-        storage.rm_metadata(node);
     }
 
     #[test]
@@ -185,12 +168,5 @@ mod tests {
     fn rm_direntry_panic() {
         let mut storage = DummyStorage::new();
         storage.rm_direntry(0u64, 0u32);
-    }
-
-    #[test]
-    #[should_panic]
-    fn rm_filechunk_panic() {
-        let mut storage = DummyStorage::new();
-        storage.rm_filechunk(0, 0);
     }
 }
