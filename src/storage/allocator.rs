@@ -45,7 +45,6 @@ impl<M: Memory> ChunkPtrAllocator<M> {
 
         // init chunk size
         let mut chunk_size = allocator.read_u64(CHUNK_SIZE_IDX) as usize;
-        println!("chunk_size stored: {chunk_size}");
 
         if chunk_size == 0 {
             chunk_size = DEFAULT_FILE_CHUNK_SIZE_V2;
@@ -138,8 +137,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         // new size must be one of the available values
 
         if !ChunkSize::VALUES
-            .iter()
-            .any(|size| *size as usize == new_size)
+            .iter().any(|size| *size as usize == new_size)
         {
             return Err(Error::IncompatibleChunkSize);
         }
