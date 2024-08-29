@@ -1,7 +1,7 @@
 use ic_stable_structures::{DefaultMemoryImpl, VectorMemory};
 
-use crate::{error::Error, fs::FileSystem, storage::stable::StableStorage};
 use crate::runtime::types::ChunkSize;
+use crate::{error::Error, fs::FileSystem, storage::stable::StableStorage};
 
 #[cfg(test)]
 pub fn new_vector_memory() -> VectorMemory {
@@ -18,7 +18,6 @@ pub fn test_fs() -> FileSystem {
     FileSystem::new(Box::new(storage)).unwrap()
 }
 
-
 #[cfg(test)]
 pub fn test_fs_v1() -> FileSystem {
     use crate::storage::stable::ChunkType;
@@ -32,7 +31,6 @@ pub fn test_fs_v1() -> FileSystem {
 
 #[cfg(test)]
 pub fn test_fs_custom_chunk_size(chunk_size: ChunkSize) -> FileSystem {
-
     let memory = DefaultMemoryImpl::default();
 
     let mut storage = StableStorage::new(memory);

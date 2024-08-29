@@ -1,7 +1,4 @@
-use ic_stable_structures::{
-    memory_manager::VirtualMemory,
-    Memory,
-};
+use ic_stable_structures::{memory_manager::VirtualMemory, Memory};
 
 use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
 
@@ -10,13 +7,10 @@ use crate::{
     runtime::{structure_helpers::grow_memory, types::ChunkSize},
 };
 
-use super::types::{
-        FileChunkPtr, DEFAULT_FILE_CHUNK_SIZE_V2
-    };
+use super::types::{FileChunkPtr, DEFAULT_FILE_CHUNK_SIZE_V2};
 
 // index for the first u64 containing chunk pointers
 const FIRST_PTR_IDX: u64 = 16; // lower numbers are reserved
-
 
 // index containing the chunk size used
 const CHUNK_SIZE_IDX: u64 = 1;
@@ -25,20 +19,17 @@ const AVAILABLE_CHUNKS_LEN_IDX: u64 = 2;
 // index containing the next address to use, when there are no reusable indices available
 const MAX_PTR_IDX: u64 = 3;
 
-
 pub struct ChunkPtrAllocator<M: Memory> {
     v2_available_chunks: VirtualMemory<M>,
     v2_chunk_size: usize,
 }
 
-
 impl<M: Memory> ChunkPtrAllocator<M> {
     pub fn new(v2_available_chunks: VirtualMemory<M>) -> Result<ChunkPtrAllocator<M>, Error> {
-
         // init avaiable chunks
         if v2_available_chunks.size() == 0 {
             v2_available_chunks.grow(1);
-            
+
             // TODO: here write the allocator marker
             v2_available_chunks.write(0, &0u64.to_le_bytes());
 
@@ -54,7 +45,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
 
         // init chunk size
         let mut chunk_size = allocator.read_u64(CHUNK_SIZE_IDX) as usize;
-println!("chunk_size stored: {chunk_size}");
+        println!("chunk_size stored: {chunk_size}");
 
         if chunk_size == 0 {
             chunk_size = DEFAULT_FILE_CHUNK_SIZE_V2;
@@ -146,7 +137,11 @@ println!("chunk_size stored: {chunk_size}");
     pub fn set_chunk_size(&mut self, new_size: usize) -> Result<(), Error> {
         // new size must be one of the available values
 
-        if ChunkSize::VALUES.iter().find(|size| **size as usize == new_size).is_none() {
+        if ChunkSize::VALUES
+            .iter()
+            .find(|size| **size as usize == new_size)
+            .is_none()
+        {
             return Err(Error::IncompatibleChunkSize);
         }
 
@@ -210,16 +205,15 @@ println!("chunk_size stored: {chunk_size}");
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use ic_stable_structures::{
         memory_manager::{MemoryId, MemoryManager},
         Memory,
     };
-    
+
     use crate::storage::types::FileSize;
-    
+
     use crate::test_utils::new_vector_memory;
 
     use super::*;
@@ -269,17 +263,31 @@ mod tests {
         allocator.free(0);
 
         assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr);
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr
+        );
         allocator.free(DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr
+        );
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2
+        );
         allocator.free(DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr);
 
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr
+        );
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3
+        );
     }
-
 
     #[test]
     fn chunk_allocator_allocations_custom_chunk_size() {
@@ -317,7 +325,6 @@ mod tests {
         assert_eq!(allocator.allocate(), chunk_size as FileChunkPtr * 5);
     }
 
-
     #[test]
     #[should_panic]
     fn double_release_fails() {
@@ -327,9 +334,18 @@ mod tests {
         let mut allocator = ChunkPtrAllocator::new(allocator_memory).unwrap();
 
         assert_eq!(allocator.allocate(), 0);
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr);
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
-        assert_eq!(allocator.allocate(), DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr
+        );
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2
+        );
+        assert_eq!(
+            allocator.allocate(),
+            DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3
+        );
 
         allocator.free(DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 2);
         allocator.free(DEFAULT_FILE_CHUNK_SIZE_V2 as FileChunkPtr * 3);
@@ -388,7 +404,6 @@ mod tests {
         assert_eq!(mem.size(), 2);
     }
 
-
     #[test]
     fn wrong_custom_chunk_size_fails() {
         let mem = new_vector_memory();
@@ -408,7 +423,6 @@ mod tests {
         assert_eq!(allocator.chunk_size(), chunk_size);
     }
 
-
     #[test]
     fn same_custom_chunk_size_succeeds() {
         let mem = new_vector_memory();
@@ -422,7 +436,7 @@ mod tests {
 
         let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();
         assert_eq!(allocator.chunk_size(), chunk_size);
-        
+
         allocator.set_chunk_size(chunk_size).unwrap();
 
         assert_eq!(allocator.chunk_size(), chunk_size);
@@ -440,9 +454,11 @@ mod tests {
 
         assert!(allocator.set_chunk_size(0).is_err());
         assert!(allocator.set_chunk_size(1).is_err());
-        assert!(allocator.set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 + 1).is_err());
-        assert!(allocator.set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 * 3).is_err());
+        assert!(allocator
+            .set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 + 1)
+            .is_err());
+        assert!(allocator
+            .set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 * 3)
+            .is_err());
     }
-
-
 }

@@ -2,7 +2,6 @@ use crate::error::Error;
 use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
-
 pub const FILE_CHUNK_SIZE_V1: usize = 4096;
 
 pub const DEFAULT_FILE_CHUNK_SIZE_V2: usize = 16384;

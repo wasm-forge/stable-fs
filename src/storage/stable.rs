@@ -8,14 +8,18 @@ use ic_stable_structures::{
 
 use crate::{
     error::Error,
-    runtime::{structure_helpers::{get_chunk_infos, grow_memory}, types::ChunkSize},
+    runtime::{
+        structure_helpers::{get_chunk_infos, grow_memory},
+        types::ChunkSize,
+    },
 };
 
 use super::{
-    types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType, Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2
-    },
     allocator::ChunkPtrAllocator,
+    types::{
+        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
+        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2,
+    },
     Storage,
 };
 
@@ -34,7 +38,8 @@ const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChunkType {
-    V1, V2
+    V1,
+    V2,
 }
 
 struct StorageMemories<M: Memory> {
@@ -296,8 +301,8 @@ impl<M: Memory> StableStorage<M> {
         let chunk_size = self.chunk_size();
 
         let start_index = (offset / chunk_size as FileSize) as FileChunkIndex;
-        let end_index = ((offset + buf.len() as FileSize) / chunk_size as FileSize + 1)
-            as FileChunkIndex;
+        let end_index =
+            ((offset + buf.len() as FileSize) / chunk_size as FileSize + 1) as FileChunkIndex;
 
         let mut chunk_offset = offset - start_index as FileSize * chunk_size as FileSize;
 
@@ -349,7 +354,6 @@ impl<M: Memory> StableStorage<M> {
     pub fn chunk_type(&self) -> ChunkType {
         self.chunk_type
     }
-
 }
 
 impl<M: Memory> Storage for StableStorage<M> {
@@ -671,7 +675,6 @@ mod tests {
     use crate::storage::types::FileName;
 
     use super::*;
-
 
     #[test]
     fn read_and_write_filechunk() {

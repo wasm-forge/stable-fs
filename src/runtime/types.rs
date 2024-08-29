@@ -34,9 +34,14 @@ pub enum ChunkSize {
 }
 
 impl ChunkSize {
-    pub const VALUES: [Self; 5] = [Self::CHUNK4K, Self::CHUNK8K, Self::CHUNK16K, Self::CHUNK32K, Self::CHUNK64K];
+    pub const VALUES: [Self; 5] = [
+        Self::CHUNK4K,
+        Self::CHUNK8K,
+        Self::CHUNK16K,
+        Self::CHUNK32K,
+        Self::CHUNK64K,
+    ];
 }
-
 
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq)]
@@ -61,8 +66,6 @@ bitflags! {
         const TRUNCATE = 8;
     }
 }
-
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
