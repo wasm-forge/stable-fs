@@ -32,7 +32,7 @@ const MEMORY_INDEX_COUNT: u8 = 10;
 
 const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChunkType {
     V1, V2
 }
