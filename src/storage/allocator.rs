@@ -137,10 +137,9 @@ impl<M: Memory> ChunkPtrAllocator<M> {
     pub fn set_chunk_size(&mut self, new_size: usize) -> Result<(), Error> {
         // new size must be one of the available values
 
-        if ChunkSize::VALUES
+        if !ChunkSize::VALUES
             .iter()
-            .find(|size| **size as usize == new_size)
-            .is_none()
+            .any(|size| *size as usize == new_size)
         {
             return Err(Error::IncompatibleChunkSize);
         }

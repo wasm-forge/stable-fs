@@ -51,14 +51,13 @@ pub fn test_fs_transient() -> FileSystem {
 pub fn test_fs_setups(virtual_file_name: &str) -> Vec<FileSystem> {
     use crate::runtime::types::ChunkSize;
 
-    let mut result = Vec::new();
-
-    result.push(test_fs());
-    result.push(test_fs_v1());
-    result.push(test_fs_custom_chunk_size(ChunkSize::CHUNK4K));
-    result.push(test_fs_custom_chunk_size(ChunkSize::CHUNK64K));
-
-    result.push(test_fs_transient());
+    let mut result = vec![
+        test_fs(),
+        test_fs_v1(),
+        test_fs_custom_chunk_size(ChunkSize::CHUNK4K),
+        test_fs_custom_chunk_size(ChunkSize::CHUNK64K),
+        test_fs_transient(),
+    ];
 
     if !virtual_file_name.is_empty() {
         let mut fs = test_fs();
