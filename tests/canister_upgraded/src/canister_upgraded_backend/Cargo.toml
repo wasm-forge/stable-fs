@@ -1,5 +1,5 @@
 [package]
-name = "demo_test_upgraded_backend"
+name = "canister_upgraded_backend"
 version = "0.1.0"
 edition = "2021"
 

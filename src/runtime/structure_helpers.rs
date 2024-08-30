@@ -1,7 +1,13 @@
+use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
+use ic_stable_structures::Memory;
+
 use crate::{
     error::Error,
     storage::{
-        types::{DirEntry, DirEntryIndex, FileName, FileType, Metadata, Node, Times},
+        types::{
+            ChunkHandle, DirEntry, DirEntryIndex, FileChunkIndex, FileName, FileSize, FileType,
+            Metadata, Node, Times,
+        },
         Storage,
     },
 };
@@ -296,12 +302,11 @@ pub fn add_dir_entry(
 
 /// Remove the directory entry from the current directory by entry name.
 ///
+/// parent_dir_node Parent directory
 /// path            The name of the entry to delete
 /// expect_dir      If true, the directory is deleted. If false - the file is deleted. If the expected entry type does not match with the actual entry - an error is returned.
 /// node_refcount   A map of nodes to check if the file being deleted is opened by multiple file descriptors. Deleting an entry referenced by multiple file descriptors is not allowed and will result in an error.
 /// storage         The reference to the actual storage implementation
-/// is_renaming     true if renaming is in progress, this allows to "delete" a non-empty folder
-
 pub fn rm_dir_entry(
     parent_dir_node: Node,
     path: &str,
@@ -312,6 +317,11 @@ pub fn rm_dir_entry(
     let find_result = find_node_with_index(parent_dir_node, path, storage)?;
 
     let removed_dir_entry_node = find_result.node;
+
+    if storage.is_mounted(removed_dir_entry_node) {
+        return Err(Error::CannotRemoveMountedMemoryFile);
+    }
+
     let parent_dir_node = find_result.parent_dir;
     let removed_entry_index = find_result.entry_index;
     let removed_dir_entry_prev_entry = find_result.prev_entry;
@@ -383,6 +393,44 @@ pub fn rm_dir_entry(
     Ok((removed_dir_entry_node, removed_metadata))
 }
 
+pub fn grow_memory(memory: &dyn Memory, max_address: FileSize) {
+    let pages_required = (max_address + WASM_PAGE_SIZE_IN_BYTES - 1) / WASM_PAGE_SIZE_IN_BYTES;
+
+    let cur_pages = memory.size();
+
+    if cur_pages < pages_required {
+        memory.grow(pages_required - cur_pages);
+    }
+}
+
+pub fn offset_to_file_chunk_index(offset: FileSize, chunk_size: usize) -> FileChunkIndex {
+    (offset / chunk_size as FileSize) as FileChunkIndex
+}
+
+pub fn file_chunk_index_to_offset(index: FileChunkIndex, chunk_size: usize) -> FileSize {
+    index as FileSize * chunk_size as FileSize
+}
+
+pub fn get_chunk_infos(start: FileSize, end: FileSize, chunk_size: usize) -> Vec<ChunkHandle> {
+    let mut result = vec![];
+    let start_index = offset_to_file_chunk_index(start, chunk_size);
+    let end_index = offset_to_file_chunk_index(end, chunk_size);
+    for index in start_index..=end_index {
+        let start_of_chunk = file_chunk_index_to_offset(index, chunk_size);
+        assert!(start_of_chunk <= end);
+        let start_in_chunk = start_of_chunk.max(start) - start_of_chunk;
+        let end_in_chunk = (start_of_chunk + chunk_size as FileSize).min(end) - start_of_chunk;
+        if start_in_chunk < end_in_chunk {
+            result.push(ChunkHandle {
+                index,
+                offset: start_in_chunk,
+                len: end_in_chunk - start_in_chunk,
+            });
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -390,9 +438,63 @@ mod tests {
 
     use crate::{
         error::Error,
-        runtime::structure_helpers::{create_path, find_node},
-        storage::{stable::StableStorage, types::FileType, Storage},
+        runtime::structure_helpers::{create_path, find_node, get_chunk_infos},
+        storage::{
+            stable::StableStorage,
+            types::{ChunkHandle, FileChunkIndex, FileSize, FileType, FILE_CHUNK_SIZE_V1},
+            Storage,
+        },
     };
+
+    #[test]
+    fn get_chunk_infos_parital() {
+        let chunks = get_chunk_infos(
+            FILE_CHUNK_SIZE_V1 as FileSize - 1,
+            2 * FILE_CHUNK_SIZE_V1 as FileSize + 1,
+            FILE_CHUNK_SIZE_V1,
+        );
+        assert_eq!(
+            chunks[0],
+            ChunkHandle {
+                index: 0,
+                offset: FILE_CHUNK_SIZE_V1 as FileSize - 1,
+                len: 1
+            }
+        );
+        assert_eq!(
+            chunks[1],
+            ChunkHandle {
+                index: 1,
+                offset: 0,
+                len: FILE_CHUNK_SIZE_V1 as FileSize,
+            }
+        );
+
+        assert_eq!(
+            chunks[2],
+            ChunkHandle {
+                index: 2,
+                offset: 0,
+                len: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn get_chunk_infos_full() {
+        let chunks = get_chunk_infos(0, 10 * FILE_CHUNK_SIZE_V1 as FileSize, FILE_CHUNK_SIZE_V1);
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..10 {
+            assert_eq!(
+                chunks[i],
+                ChunkHandle {
+                    index: i as FileChunkIndex,
+                    offset: 0,
+                    len: FILE_CHUNK_SIZE_V1 as FileSize,
+                }
+            );
+        }
+    }
 
     #[test]
     fn create_path_with_subfolders() {

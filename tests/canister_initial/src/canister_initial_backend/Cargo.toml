@@ -1,5 +1,5 @@
 [package]
-name = "fs_benchmark_test_backend"
+name = "canister_initial_backend"
 version = "0.1.0"
 edition = "2021"
 

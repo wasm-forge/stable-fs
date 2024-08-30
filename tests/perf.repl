@@ -39,7 +39,7 @@ let file = "README.md";
 
 let rs_config = record { start_page = 1; page_limit = 1128};
 
-let wasm_name = "fs_benchmark_test/target/wasm32-unknown-unknown/release/fs_benchmark_test_backend_small.wasm";
+let wasm_name = "canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend_small.wasm";
 
 function perf_file_write_10mib() {
   let cid = install(wasm_profiling(wasm_name, rs_config), encode (), null);

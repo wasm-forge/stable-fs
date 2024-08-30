@@ -2,7 +2,11 @@ use crate::error::Error;
 use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
-pub const FILE_CHUNK_SIZE: usize = 4096;
+pub const FILE_CHUNK_SIZE_V1: usize = 4096;
+
+pub const DEFAULT_FILE_CHUNK_SIZE_V2: usize = 16384;
+pub const MAX_FILE_CHUNK_SIZE_V2: usize = 65536;
+
 pub const MAX_FILE_NAME: usize = 255;
 
 // The unique identifier of a node, which can be a file or a directory.
@@ -15,16 +19,27 @@ pub type FileSize = u64;
 // An index of a file chunk.
 pub type FileChunkIndex = u32;
 
+// The address in memory where the V2 chunk is stored.
+pub type FileChunkPtr = u64;
+
+// A handle used for writing files in chunks
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ChunkHandle {
+    pub index: FileChunkIndex,
+    pub offset: FileSize,
+    pub len: FileSize,
+}
+
 // A file consists of multiple file chunks.
 #[derive(Clone, Debug)]
 pub struct FileChunk {
-    pub bytes: [u8; FILE_CHUNK_SIZE],
+    pub bytes: [u8; FILE_CHUNK_SIZE_V1],
 }
 
 impl Default for FileChunk {
     fn default() -> Self {
         Self {
-            bytes: [0; FILE_CHUNK_SIZE],
+            bytes: [0; FILE_CHUNK_SIZE_V1],
         }
     }
 }
@@ -41,7 +56,7 @@ impl ic_stable_structures::Storable for FileChunk {
     }
 
     const BOUND: Bound = Bound::Bounded {
-        max_size: FILE_CHUNK_SIZE as u32,
+        max_size: FILE_CHUNK_SIZE_V1 as u32,
         is_fixed_size: true,
     };
 }

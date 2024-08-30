@@ -1,7 +1,7 @@
 use crate::error::Error;
 
 use super::{
-    types::{DirEntry, DirEntryIndex, FileChunkIndex, FileSize, Metadata, Node},
+    types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
     Storage,
 };
 
@@ -40,10 +40,6 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn rm_metadata(&mut self, _node: Node) {
-        panic!("Not supported")
-    }
-
     fn get_direntry(&self, _node: Node, _index: DirEntryIndex) -> Result<DirEntry, Error> {
         panic!("Not supported")
     }
@@ -56,37 +52,46 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn read_filechunk(
-        &self,
+    fn read(&self, _node: Node, _offset: FileSize, _buf: &mut [u8]) -> Result<FileSize, Error> {
+        panic!("Not supported")
+    }
+
+    fn mount_node(
+        &mut self,
         _node: Node,
-        _index: FileChunkIndex,
-        _offset: FileSize,
-        _buf: &mut [u8],
+        _memory: Box<dyn ic_stable_structures::Memory>,
     ) -> Result<(), Error> {
         panic!("Not supported")
     }
 
-    fn write_filechunk(
+    fn unmount_node(
         &mut self,
         _node: Node,
-        _index: FileChunkIndex,
-        _offset_in_first_chunk: FileSize,
-        _buf: &[u8],
-    ) {
+    ) -> Result<Box<dyn ic_stable_structures::Memory>, Error> {
         panic!("Not supported")
     }
 
-    fn rm_filechunk(&mut self, _node: Node, _index: FileChunkIndex) {
+    fn is_mounted(&self, _node: Node) -> bool {
         panic!("Not supported")
     }
 
-    fn read_range(
-        &self,
-        _node: Node,
-        _offset: FileSize,
-        _file_size: FileSize,
-        _buf: &mut [u8],
-    ) -> Result<FileSize, Error> {
+    fn get_mounted_memory(&self, _node: Node) -> Option<&dyn ic_stable_structures::Memory> {
+        panic!("Not supported")
+    }
+
+    fn init_mounted_memory(&mut self, _node: Node) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn store_mounted_memory(&mut self, _node: Node) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn write(&mut self, _node: Node, _offset: FileSize, _buf: &[u8]) -> Result<FileSize, Error> {
+        panic!("Not supported")
+    }
+
+    fn rm_file(&mut self, _node: Node) -> Result<(), Error> {
         panic!("Not supported")
     }
 }
@@ -122,15 +127,6 @@ mod tests {
         let storage = DummyStorage::new();
 
         let _ = storage.get_metadata(0u64);
-    }
-
-    #[test]
-    #[should_panic]
-    fn rm_metadata_panic() {
-        let mut storage = DummyStorage::new();
-        let node = storage.new_node();
-
-        storage.rm_metadata(node);
     }
 
     #[test]
@@ -172,26 +168,5 @@ mod tests {
     fn rm_direntry_panic() {
         let mut storage = DummyStorage::new();
         storage.rm_direntry(0u64, 0u32);
-    }
-
-    #[test]
-    #[should_panic]
-    fn read_filechunk_panic() {
-        let storage = DummyStorage::new();
-        let _ = storage.read_filechunk(0, 0, 0, &mut []);
-    }
-
-    #[test]
-    #[should_panic]
-    fn write_filechunk_panic() {
-        let mut storage = DummyStorage::new();
-        storage.write_filechunk(0, 0, 0, &[]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn rm_filechunk_panic() {
-        let mut storage = DummyStorage::new();
-        storage.rm_filechunk(0, 0);
     }
 }

@@ -17,7 +17,7 @@ pub enum FdEntry {
 
 //
 pub struct FdTable {
-    // currentlty open file descriptors.
+    // currently open file descriptors.
     table: BTreeMap<Fd, FdEntry>,
     // backward links to see how many file descriptors are currently pointing to any particular node.
     node_refcount: BTreeMap<Node, usize>,
@@ -51,10 +51,12 @@ impl FdTable {
     // Update a file descriptor entry, it returns the old entry if existed.
     pub fn insert(&mut self, fd: Fd, entry: FdEntry) -> Option<FdEntry> {
         self.inc_node_refcount(&entry);
+
         let prev_entry = self.table.insert(fd, entry);
         if let Some(prev_entry) = prev_entry.as_ref() {
             self.dec_node_refcount(prev_entry);
         }
+
         prev_entry
     }
 
@@ -73,6 +75,7 @@ impl FdTable {
                 fd
             }
         };
+
         let prev = self.insert(fd, entry);
         assert!(prev.is_none());
         fd

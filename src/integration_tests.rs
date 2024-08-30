@@ -1,10 +1,11 @@
 use candid::Principal;
 use fns::read_text;
 use pocket_ic::PocketIc;
+use std::sync::Once;
 use std::{cell::RefCell, fs};
 
-const BACKEND_WASM: &str = "tests/fs_benchmark_test/target/wasm32-unknown-unknown/release/fs_benchmark_test_backend_small.wasm";
-const BACKEND_WASM_UPGRADED: &str = "tests/demo_test_upgraded/target/wasm32-unknown-unknown/release/demo_test_upgraded_backend_small.wasm";
+const BACKEND_WASM: &str = "tests/canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend_small.wasm";
+const BACKEND_WASM_UPGRADED: &str = "tests/canister_upgraded/target/wasm32-unknown-unknown/release/canister_upgraded_backend_small.wasm";
 
 thread_local!(
     static ACTIVE_CANISTER: RefCell<Option<Principal>> = const { RefCell::new(None) };
@@ -24,16 +25,20 @@ fn active_canister() -> Principal {
     })
 }
 
-fn setup_test_projects() {
-    use std::process::Command;
-    let _ = Command::new("bash")
-        .arg("scripts/build_tests.sh")
-        .output()
-        .expect("Failed to execute command");
+static INIT: Once = Once::new();
+
+fn build_test_projects() {
+    INIT.call_once(|| {
+        use std::process::Command;
+        let _ = Command::new("bash")
+            .arg("scripts/build_tests.sh")
+            .output()
+            .expect("Failed to execute command");
+    });
 }
 
 fn setup_initial_canister() -> PocketIc {
-    setup_test_projects();
+    build_test_projects();
     let pic = PocketIc::new();
 
     let wasm = fs::read(BACKEND_WASM).expect("Wasm file not found, run 'dfx build'.");
@@ -52,7 +57,7 @@ fn setup_initial_canister() -> PocketIc {
 }
 
 fn upgrade_canister(pic: &PocketIc) {
-    setup_test_projects();
+    build_test_projects();
 
     let wasm_upgraded =
         fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'dfx build'.");
@@ -90,6 +95,35 @@ mod fns {
             candid::encode_args((filename, content, count)).unwrap(),
         )
         .unwrap();
+    }
+
+    pub(crate) fn append_buffer(pic: &PocketIc, content: &str, count: u64) {
+        pic.update_call(
+            active_canister(),
+            Principal::anonymous(),
+            "append_buffer",
+            candid::encode_args((content, count)).unwrap(),
+        )
+        .unwrap();
+    }
+
+    pub(crate) fn store_buffer(pic: &PocketIc, filename: &str) -> (u64, u64) {
+        let response = pic
+            .update_call(
+                active_canister(),
+                Principal::anonymous(),
+                "store_buffer",
+                candid::encode_one(filename).unwrap(),
+            )
+            .unwrap();
+
+        if let WasmResult::Reply(response) = response {
+            let result: (u64, u64) = decode_args(&response).unwrap();
+
+            result
+        } else {
+            panic!("unintended call failure!");
+        }
     }
 
     pub(crate) fn read_text(pic: &PocketIc, filename: &str, offset: i64, size: u64) -> String {
@@ -304,9 +338,17 @@ fn create_1000_files() {
 
     let result = fns::list_files(&pic, "");
 
-    let filenames = vec!["files1", "files2", "files3", "files4"];
+    let filenames = vec!["mount_file.txt", "files1", "files2", "files3", "files4"];
 
     assert_eq!(result, filenames);
+}
+
+fn no_virtual_names(vec: Vec<String>) -> Vec<String> {
+    let mut v = vec;
+
+    v.retain(|v| !(*v).eq("mount_file.txt"));
+
+    v
 }
 
 #[test]
@@ -345,6 +387,8 @@ fn long_paths_and_file_names() {
     let filenames = vec![long_name];
 
     let result = fns::list_files(&pic, "");
+    let result = no_virtual_names(result);
+
     assert_eq!(result, filenames);
 
     // try reading one of the files
@@ -400,4 +444,97 @@ fn large_file_read() {
     );
 
     assert_eq!(size, 99_999_987);
+}
+
+#[test]
+fn large_file_read_after_upgrade() {
+    let pic = setup_initial_canister();
+
+    let filename = "mount_file.txt";
+
+    // create large file
+    fns::append_text(&pic, "t1.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, "t2.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, "t3.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, "t4.txt", "abcdef7890", 10_000_000);
+    fns::append_text(&pic, filename, "abcdef7890", 10_000_000);
+
+    // do upgrade
+    upgrade_canister(&pic);
+
+    let (instructions, size) = fns::read_bytes(&pic, filename, 13, 100_000_000);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 3_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 99_999_987);
+}
+
+#[test]
+fn large_mounted_file_write() {
+    let pic = setup_initial_canister();
+
+    let filename = "mount_file.txt";
+
+    // create large buffer
+    fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    let (instructions, size) = fns::store_buffer(&pic, filename);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 14_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 100_000_000);
+}
+
+#[test]
+fn large_file_write() {
+    let pic = setup_initial_canister();
+
+    let filename = "some_file.txt";
+
+    // create large buffer
+    fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    let (instructions, size) = fns::store_buffer(&pic, filename);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 14_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 100_000_000);
+}
+
+#[test]
+fn large_file_second_write() {
+    let pic = setup_initial_canister();
+
+    let filename = "some_file.txt";
+
+    // create large buffer
+    fns::append_buffer(&pic, "abcdef7890", 10_000_000);
+
+    fns::store_buffer(&pic, filename);
+
+    let (instructions, size) = fns::store_buffer(&pic, filename);
+
+    println!("instructions {instructions}, size {size}");
+
+    assert!(
+        instructions < 14_000_000_000,
+        "The call should take less than 3 billion instructions"
+    );
+
+    assert_eq!(size, 100_000_000);
 }
