@@ -30,12 +30,21 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         if v2_available_chunks.size() == 0 {
             v2_available_chunks.grow(1);
 
-            // TODO: here write the allocator marker
-            v2_available_chunks.write(0, &0u64.to_le_bytes());
+            // write the magic marker
+            let b = [b'A', b'L', b'O', b'1', 0, 0, 0, 0];
+            v2_available_chunks.write(0, &b);
 
             v2_available_chunks.write(8, &0u64.to_le_bytes());
             v2_available_chunks.write(16, &0u64.to_le_bytes());
             v2_available_chunks.write(24, &0u64.to_le_bytes());
+        } else {
+            // check the marker
+            let mut b = [0u8; 4];
+            v2_available_chunks.read(0, &mut b);
+
+            if b != *b"ALO1" {
+                return Err(Error::InvalidMagicMarker);
+            }
         }
 
         let mut allocator = ChunkPtrAllocator {
@@ -137,7 +146,8 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         // new size must be one of the available values
 
         if !ChunkSize::VALUES
-            .iter().any(|size| *size as usize == new_size)
+            .iter()
+            .any(|size| *size as usize == new_size)
         {
             return Err(Error::IncompatibleChunkSize);
         }
@@ -418,6 +428,55 @@ mod tests {
         assert!(res.is_err());
 
         assert_eq!(allocator.chunk_size(), chunk_size);
+    }
+
+    #[test]
+    fn alo1_marker_is_written() {
+        let mem = new_vector_memory();
+        let memory_manager = MemoryManager::init(mem);
+        let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();
+
+        assert_eq!(allocator.allocate(), 0);
+        allocator.free(0);
+
+        let memory = memory_manager.get(MemoryId::new(1));
+        let mut b = [0u8; 4];
+
+        memory.read(0, &mut b);
+        assert_eq!(&b[0..4], b"ALO1");
+    }
+
+    #[test]
+    fn correct_alo1_marker_is_accepted() {
+        let mem = new_vector_memory();
+        let memory_manager = MemoryManager::init(mem);
+        let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();
+
+        assert_eq!(allocator.allocate(), 0);
+        allocator.free(0);
+
+        let res = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1)));
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn wrong_alo1_marker_is_rejected() {
+        let mem = new_vector_memory();
+        let memory_manager = MemoryManager::init(mem);
+        let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();
+
+        assert_eq!(allocator.allocate(), 0);
+        allocator.free(0);
+
+        let memory = memory_manager.get(MemoryId::new(1));
+        let b = [0u8; 1];
+
+        memory.write(0, &b);
+
+        let res = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1)));
+
+        assert!(res.is_err());
     }
 
     #[test]

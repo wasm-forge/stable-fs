@@ -17,7 +17,7 @@ use crate::{
 pub use crate::runtime::fd::Fd;
 
 pub use crate::runtime::types::{
-    DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence, ChunkSize
+    ChunkSize, DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
 };
 
 // The main class implementing the API to work with the file system.
@@ -290,7 +290,7 @@ impl FileSystem {
 
         Ok(())
     }
-   
+
     // Get the metadata for a given file descriptor
     pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
         self.storage.get_metadata(node)

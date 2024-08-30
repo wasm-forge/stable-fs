@@ -17,5 +17,6 @@ pub enum Error {
     ExpectedToRemoveDirectory,
     CannotRemoveOpenedNode,
     CannotRemoveMountedMemoryFile,
-    IncompatibleChunkSize,    
+    IncompatibleChunkSize,
+    InvalidMagicMarker,
 }
