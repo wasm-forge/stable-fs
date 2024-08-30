@@ -925,107 +925,108 @@ mod tests {
 
     #[test]
     fn create_and_remove_file() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+            fs.close(fd).unwrap();
 
-        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
-        fs.close(fd).unwrap();
+            fs.remove_file(dir, "test.txt").unwrap();
 
-        fs.remove_file(dir, "test.txt").unwrap();
-
-        let err = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
-            .unwrap_err();
-        assert_eq!(err, Error::NotFound);
+            let err = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
+                .unwrap_err();
+            assert_eq!(err, Error::NotFound);
+        }
     }
 
     #[test]
     fn cannot_remove_opened_file() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
 
-        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+            let err = fs.remove_file(dir, "test.txt").unwrap_err();
+            assert_eq!(err, Error::CannotRemoveOpenedNode);
 
-        let err = fs.remove_file(dir, "test.txt").unwrap_err();
-        assert_eq!(err, Error::CannotRemoveOpenedNode);
-
-        fs.close(fd).unwrap();
-        fs.remove_file(dir, "test.txt").unwrap();
+            fs.close(fd).unwrap();
+            fs.remove_file(dir, "test.txt").unwrap();
+        }
     }
 
     #[test]
     fn cannot_remove_directory_as_file() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let fd = fs.create_dir(dir, "test", FdStat::default(), 0).unwrap();
+            fs.close(fd).unwrap();
 
-        let fd = fs.create_dir(dir, "test", FdStat::default(), 0).unwrap();
-        fs.close(fd).unwrap();
+            let err = fs.remove_file(dir, "test").unwrap_err();
+            assert_eq!(err, Error::ExpectedToRemoveFile);
 
-        let err = fs.remove_file(dir, "test").unwrap_err();
-        assert_eq!(err, Error::ExpectedToRemoveFile);
-
-        fs.remove_dir(dir, "test").unwrap();
+            fs.remove_dir(dir, "test").unwrap();
+        }
     }
 
     #[test]
     fn cannot_remove_file_as_directory() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+            fs.close(fd).unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
-        fs.close(fd).unwrap();
+            let err = fs.remove_dir(dir, "test.txt").unwrap_err();
+            assert_eq!(err, Error::ExpectedToRemoveDirectory);
 
-        let err = fs.remove_dir(dir, "test.txt").unwrap_err();
-        assert_eq!(err, Error::ExpectedToRemoveDirectory);
-
-        fs.remove_file(dir, "test.txt").unwrap();
+            fs.remove_file(dir, "test.txt").unwrap();
+        }
     }
 
     #[test]
     fn renumber_when_the_alternative_file_exists() {
-        let mut fs = test_fs();
-        let dir = fs.root_fd();
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let dir = fs.root_fd();
 
-        let fd1 = fs
-            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            let fd1 = fs
+                .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
+            fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
 
-        let pos1 = fs.tell(fd1).unwrap();
+            let pos1 = fs.tell(fd1).unwrap();
 
-        let fd2 = fs
-            .open_or_create(dir, "file2.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            let fd2 = fs
+                .open_or_create(dir, "file2.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let pos2 = fs.tell(fd2).unwrap();
+            let pos2 = fs.tell(fd2).unwrap();
 
-        assert!(pos1 == 5);
-        assert!(pos2 == 0);
+            assert!(pos1 == 5);
+            assert!(pos2 == 0);
 
-        fs.renumber(fd1, fd2).unwrap();
+            fs.renumber(fd1, fd2).unwrap();
 
-        let pos2_renumbered = fs.tell(fd2).unwrap();
+            let pos2_renumbered = fs.tell(fd2).unwrap();
 
-        assert!(pos1 == pos2_renumbered);
+            assert!(pos1 == pos2_renumbered);
 
-        let res = fs.tell(fd1);
+            let res = fs.tell(fd1);
 
-        assert!(res.is_err());
+            assert!(res.is_err());
+        }
     }
 
     #[test]
