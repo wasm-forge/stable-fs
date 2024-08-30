@@ -290,6 +290,11 @@ impl FileSystem {
 
         Ok(())
     }
+   
+    // Get the metadata for a given file descriptor
+    pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
+        self.storage.get_metadata(node)
+    }
 
     // Get the metadata for a given file descriptor
     pub fn metadata(&self, fd: Fd) -> Result<Metadata, Error> {
