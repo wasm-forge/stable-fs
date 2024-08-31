@@ -54,8 +54,6 @@ struct StorageMemories<M: Memory> {
     v2_allocator_memory: VirtualMemory<M>,
 }
 
-
-
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
     header: Cell<Header, VirtualMemory<M>>,
@@ -254,7 +252,6 @@ impl<M: Memory> StableStorage<M> {
         self.last_index = (node, index, chunk_ptr);
 
         self.v2_chunks.write(chunk_ptr + offset, buf);
-
     }
 
     fn read_chunks_v1(
@@ -302,7 +299,6 @@ impl<M: Memory> StableStorage<M> {
         Ok(size_read)
     }
 
-    
     fn read_chunks_v2(
         &mut self,
         node: Node,
@@ -310,7 +306,6 @@ impl<M: Memory> StableStorage<M> {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-
         // compute remainder to read
         let mut remainder = file_size - offset;
 
@@ -332,7 +327,7 @@ impl<M: Memory> StableStorage<M> {
         let mut size_read: FileSize = 0;
 
         if self.last_index.0 == node && self.last_index.1 == start_index {
-            // 
+            //
             let chunk_ptr = self.last_index.2;
 
             let chunk_space = chunk_size as FileSize - chunk_offset;
@@ -350,8 +345,7 @@ impl<M: Memory> StableStorage<M> {
             size_read += to_read;
             remainder -= to_read;
 
-            range = (node, start_index+1)..(node, end_index);
-
+            range = (node, start_index + 1)..(node, end_index);
         }
 
         // early exit, if managed to completely read from the cached ptr
@@ -481,7 +475,6 @@ impl<M: Memory> Storage for StableStorage<M> {
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
-
             let mut use_v2 = true;
 
             if metadata.size > 0 {
