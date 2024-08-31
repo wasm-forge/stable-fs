@@ -141,7 +141,7 @@ impl Storage for TransientStorage {
     }
 
     // Fill the buffer contents with data
-    fn read(&self, node: Node, offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error> {
+    fn read(&mut self, node: Node, offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error> {
         let file_size = self.get_metadata(node)?.size;
 
         if offset >= file_size {

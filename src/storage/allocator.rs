@@ -31,7 +31,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
             v2_available_chunks.grow(1);
 
             // write the magic marker
-            let b = [b'A', b'L', b'O', b'1', 0, 0, 0, 0];
+            let b = [b'F', b'S', b'A', b'1', 0, 0, 0, 0];
             v2_available_chunks.write(0, &b);
 
             v2_available_chunks.write(8, &0u64.to_le_bytes());
@@ -42,8 +42,15 @@ impl<M: Memory> ChunkPtrAllocator<M> {
             let mut b = [0u8; 4];
             v2_available_chunks.read(0, &mut b);
 
-            if b != *b"ALO1" {
+            // possible accepted markers
+            if b != *b"ALO1" && b != *b"FSA1" {
                 return Err(Error::InvalidMagicMarker);
+            }
+
+            if b == *b"ALO1" {
+                // overwrite the marker
+                let b = [b'F', b'S', b'A', b'1', 0, 0, 0, 0];
+                v2_available_chunks.write(0, &b);
             }
         }
 
@@ -170,6 +177,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         Err(Error::IncompatibleChunkSize)
     }
 
+    #[inline]
     pub fn chunk_size(&self) -> usize {
         self.v2_chunk_size
     }
@@ -443,7 +451,7 @@ mod tests {
         let mut b = [0u8; 4];
 
         memory.read(0, &mut b);
-        assert_eq!(&b[0..4], b"ALO1");
+        assert_eq!(&b[0..4], b"FSA1");
     }
 
     #[test]

@@ -52,7 +52,7 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn read(&self, _node: Node, _offset: FileSize, _buf: &mut [u8]) -> Result<FileSize, Error> {
+    fn read(&mut self, _node: Node, _offset: FileSize, _buf: &mut [u8]) -> Result<FileSize, Error> {
         panic!("Not supported")
     }
 

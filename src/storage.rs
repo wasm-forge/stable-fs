@@ -49,7 +49,7 @@ pub trait Storage {
     fn rm_direntry(&mut self, node: Node, index: DirEntryIndex);
 
     // read node data into buf
-    fn read(&self, node: Node, read_offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error>;
+    fn read(&mut self, node: Node, read_offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error>;
 
     // Write file at the current file cursor, the cursor position will NOT be updated after reading.
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error>;

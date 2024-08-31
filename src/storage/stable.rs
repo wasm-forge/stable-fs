@@ -54,6 +54,8 @@ struct StorageMemories<M: Memory> {
     v2_allocator_memory: VirtualMemory<M>,
 }
 
+
+
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
     header: Cell<Header, VirtualMemory<M>>,
@@ -73,6 +75,9 @@ pub struct StableStorage<M: Memory> {
 
     // chunk type when creating new files
     chunk_type: ChunkType,
+
+    // primitive cache
+    last_index: (Node, FileChunkIndex, FileChunkPtr),
 }
 
 impl<M: Memory> StableStorage<M> {
@@ -155,6 +160,7 @@ impl<M: Memory> StableStorage<M> {
             active_mounts: HashMap::new(),
             // default chunk type is V2
             chunk_type: ChunkType::V2,
+            last_index: (0, 0, 0),
         };
 
         let version = result.header.get().version;
@@ -224,7 +230,9 @@ impl<M: Memory> StableStorage<M> {
 
         assert!(len <= self.v2_allocator.chunk_size());
 
-        let chunk_ptr = if let Some(ptr) = self.v2_chunk_ptr.get(&(node, index)) {
+        let chunk_ptr = if self.last_index.0 == node && self.last_index.1 == index {
+            self.last_index.2
+        } else if let Some(ptr) = self.v2_chunk_ptr.get(&(node, index)) {
             ptr
         } else {
             let ptr = self.v2_allocator.allocate();
@@ -238,12 +246,15 @@ impl<M: Memory> StableStorage<M> {
                 &ZEROES[0..remainder as usize],
             );
 
+            self.v2_chunk_ptr.insert((node, index), ptr);
+
             ptr
         };
 
+        self.last_index = (node, index, chunk_ptr);
+
         self.v2_chunks.write(chunk_ptr + offset, buf);
 
-        self.v2_chunk_ptr.insert((node, index), chunk_ptr);
     }
 
     fn read_chunks_v1(
@@ -291,13 +302,23 @@ impl<M: Memory> StableStorage<M> {
         Ok(size_read)
     }
 
+    
     fn read_chunks_v2(
-        &self,
+        &mut self,
         node: Node,
         offset: FileSize,
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
+
+        // compute remainder to read
+        let mut remainder = file_size - offset;
+
+        // early exit if nothing left to read
+        if remainder == 0 {
+            return Ok(0 as FileSize);
+        }
+
         let chunk_size = self.chunk_size();
 
         let start_index = (offset / chunk_size as FileSize) as FileChunkIndex;
@@ -306,13 +327,39 @@ impl<M: Memory> StableStorage<M> {
 
         let mut chunk_offset = offset - start_index as FileSize * chunk_size as FileSize;
 
-        let range = (node, start_index)..(node, end_index);
-        //let range = (node, start_index)..(node + 1, 0);
+        let mut range = (node, start_index)..(node, end_index);
 
         let mut size_read: FileSize = 0;
-        let mut remainder = file_size - offset;
 
-        for ((nd, _idx), chunk_ptr) in self.v2_chunk_ptr.range(range) {
+        if self.last_index.0 == node && self.last_index.1 == start_index {
+            // 
+            let chunk_ptr = self.last_index.2;
+
+            let chunk_space = chunk_size as FileSize - chunk_offset;
+
+            let to_read = remainder
+                .min(chunk_space)
+                .min(buf.len() as FileSize - size_read);
+
+            let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+
+            self.v2_chunks.read(chunk_ptr + chunk_offset, read_buf);
+
+            chunk_offset = 0;
+
+            size_read += to_read;
+            remainder -= to_read;
+
+            range = (node, start_index+1)..(node, end_index);
+
+        }
+
+        // early exit, if managed to completely read from the cached ptr
+        if size_read == buf.len() as FileSize {
+            return Ok(size_read);
+        }
+
+        for ((nd, idx), chunk_ptr) in self.v2_chunk_ptr.range(range) {
             assert!(nd == node);
 
             // finished reading, buffer full
@@ -326,14 +373,16 @@ impl<M: Memory> StableStorage<M> {
                 .min(chunk_space)
                 .min(buf.len() as FileSize - size_read);
 
-            let write_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+            let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
 
-            self.v2_chunks.read(chunk_ptr + chunk_offset, write_buf);
+            self.v2_chunks.read(chunk_ptr + chunk_offset, read_buf);
 
             chunk_offset = 0;
 
             size_read += to_read;
             remainder -= to_read;
+
+            self.last_index = (node, idx, chunk_ptr);
         }
 
         Ok(size_read)
@@ -416,7 +465,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     // Fill the buffer contents with data of a chosen data range.
-    fn read(&self, node: Node, offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error> {
+    fn read(&mut self, node: Node, offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error> {
         let metadata = self.get_metadata(node)?;
 
         let file_size = metadata.size;
@@ -432,11 +481,15 @@ impl<M: Memory> Storage for StableStorage<M> {
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
+
             let mut use_v2 = true;
+
             if metadata.size > 0 {
                 // try to find the first v2 node, if not found use v1
-                let ptr = self.v2_chunk_ptr.get(&(node, 0));
-                if ptr.is_none() {
+
+                // if cache contains the requested value, we know it is v2 already
+                if self.last_index.0 != node && self.v2_chunk_ptr.get(&(node, 0)).is_none() {
+                    // TODO: adapt to sparse files
                     use_v2 = false;
                 }
             }
@@ -549,6 +602,9 @@ impl<M: Memory> Storage for StableStorage<M> {
                 self.v2_allocator.free(removed);
             }
         }
+
+        // clear cache
+        self.last_index = (0, 0, 0);
 
         // remove metadata
         self.mounted_meta.remove(&node);
