@@ -1,7 +1,8 @@
 pub mod error;
 pub mod fs;
-mod runtime;
 pub mod storage;
+
+mod runtime;
 
 #[cfg(test)]
 mod test_utils;

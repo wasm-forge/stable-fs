@@ -5,6 +5,7 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
+    fs::{ChunkSize, ChunkType},
     runtime::structure_helpers::{get_chunk_infos, grow_memory},
     storage::{
         types::{
@@ -353,6 +354,23 @@ impl Storage for TransientStorage {
         }
 
         Ok(written_size as FileSize)
+    }
+
+    fn set_chunk_size(&mut self, _chunk_size: ChunkSize) -> Result<(), Error> {
+        // Noop
+        Ok(())
+    }
+
+    fn chunk_size(&self) -> usize {
+        FILE_CHUNK_SIZE_V1
+    }
+
+    fn set_chunk_type(&mut self, _chunk_type: ChunkType) {
+        // Noop
+    }
+
+    fn chunk_type(&self) -> ChunkType {
+        ChunkType::V1
     }
 }
 

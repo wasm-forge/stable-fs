@@ -11,6 +11,7 @@ use crate::{
     runtime::{
         structure_helpers::{get_chunk_infos, grow_memory},
         types::ChunkSize,
+        types::ChunkType,
     },
 };
 
@@ -35,12 +36,6 @@ const MAX_MEMORY_INDEX: u8 = 254;
 const MEMORY_INDEX_COUNT: u8 = 10;
 
 const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ChunkType {
-    V1,
-    V2,
-}
 
 struct StorageMemories<M: Memory> {
     header_memory: VirtualMemory<M>,
@@ -381,22 +376,6 @@ impl<M: Memory> StableStorage<M> {
 
         Ok(size_read)
     }
-
-    pub fn set_chunk_size(&mut self, chunk_size: ChunkSize) -> Result<(), Error> {
-        self.v2_allocator.set_chunk_size(chunk_size as usize)
-    }
-
-    pub fn chunk_size(&self) -> usize {
-        self.v2_allocator.chunk_size()
-    }
-
-    pub fn set_chunk_type(&mut self, chunk_type: ChunkType) {
-        self.chunk_type = chunk_type;
-    }
-
-    pub fn chunk_type(&self) -> ChunkType {
-        self.chunk_type
-    }
 }
 
 impl<M: Memory> Storage for StableStorage<M> {
@@ -713,6 +692,22 @@ impl<M: Memory> Storage for StableStorage<M> {
         self.mount_node(node, memory)?;
 
         Ok(())
+    }
+
+    fn set_chunk_size(&mut self, chunk_size: ChunkSize) -> Result<(), Error> {
+        self.v2_allocator.set_chunk_size(chunk_size as usize)
+    }
+
+    fn chunk_size(&self) -> usize {
+        self.v2_allocator.chunk_size()
+    }
+
+    fn set_chunk_type(&mut self, chunk_type: ChunkType) {
+        self.chunk_type = chunk_type;
+    }
+
+    fn chunk_type(&self) -> ChunkType {
+        self.chunk_type
     }
 }
 

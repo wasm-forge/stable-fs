@@ -17,7 +17,7 @@ use crate::{
 pub use crate::runtime::fd::Fd;
 
 pub use crate::runtime::types::{
-    ChunkSize, DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
+    ChunkSize, ChunkType, DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
 };
 
 // The main class implementing the API to work with the file system.

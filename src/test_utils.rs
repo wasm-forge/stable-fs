@@ -20,7 +20,8 @@ pub fn test_fs() -> FileSystem {
 
 #[cfg(test)]
 pub fn test_fs_v1() -> FileSystem {
-    use crate::storage::stable::ChunkType;
+    use crate::fs::ChunkType;
+    use crate::storage::Storage;
 
     let memory = DefaultMemoryImpl::default();
 
@@ -31,6 +32,8 @@ pub fn test_fs_v1() -> FileSystem {
 
 #[cfg(test)]
 pub fn test_fs_custom_chunk_size(chunk_size: ChunkSize) -> FileSystem {
+    use crate::storage::Storage;
+
     let memory = DefaultMemoryImpl::default();
 
     let mut storage = StableStorage::new(memory);

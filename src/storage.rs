@@ -2,10 +2,12 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
+    fs::ChunkSize,
+    fs::ChunkType,
     storage::types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
 };
 
-pub mod allocator;
+mod allocator;
 pub mod dummy;
 pub mod stable;
 pub mod transient;
@@ -61,4 +63,13 @@ pub trait Storage {
 
     // remove all file chunks
     fn rm_file(&mut self, node: Node) -> Result<(), Error>;
+
+    // configure desired chunk size
+    fn set_chunk_size(&mut self, chunk_size: ChunkSize) -> Result<(), Error>;
+    // the current FS chunk size in bytes
+    fn chunk_size(&self) -> usize;
+
+    // configure desired chunk type (V1, V2)
+    fn set_chunk_type(&mut self, chunk_type: ChunkType);
+    fn chunk_type(&self) -> ChunkType;
 }

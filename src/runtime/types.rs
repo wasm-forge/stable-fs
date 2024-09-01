@@ -43,6 +43,12 @@ impl ChunkSize {
     ];
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ChunkType {
+    V1,
+    V2,
+}
+
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub struct FdFlags: u16 {

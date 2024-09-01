@@ -9,7 +9,7 @@ repository = "https://github.com/wasm-forge/stable-fs"
 
 [dependencies]
 bitflags = "2.3.1"
-ic-cdk = "0.15"
+ic-cdk = "0.16"
 ic-stable-structures = "0.6.5"
 serde = "1.0.164"
 serde_bytes = "0.11"

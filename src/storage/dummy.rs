@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, fs::ChunkSize, fs::ChunkType};
 
 use super::{
     types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
@@ -92,6 +92,22 @@ impl Storage for DummyStorage {
     }
 
     fn rm_file(&mut self, _node: Node) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn set_chunk_size(&mut self, _chunk_size: ChunkSize) -> Result<(), Error> {
+        panic!("Not supported")
+    }
+
+    fn chunk_size(&self) -> usize {
+        panic!("Not supported")
+    }
+
+    fn set_chunk_type(&mut self, _chunk_type: ChunkType) {
+        panic!("Not supported")
+    }
+
+    fn chunk_type(&self) -> ChunkType {
         panic!("Not supported")
     }
 }
