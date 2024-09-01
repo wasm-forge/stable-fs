@@ -9,7 +9,7 @@ use crate::{
         structure_helpers::{create_hard_link, find_node, rm_dir_entry},
     },
     storage::{
-        types::{DirEntry, DirEntryIndex, FileSize, FileType, Metadata, Node},
+        types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
         Storage,
     },
 };
@@ -19,6 +19,7 @@ pub use crate::runtime::fd::Fd;
 pub use crate::runtime::types::{
     ChunkSize, ChunkType, DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
 };
+pub use crate::storage::types::FileSize;
 
 // The main class implementing the API to work with the file system.
 pub struct FileSystem {
