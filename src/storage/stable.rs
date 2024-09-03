@@ -430,7 +430,6 @@ impl<M: Memory> StableStorage<M> {
     }
 
     fn flush_mounted_meta(&mut self) {
-
         let node = self.cache_journal.read_mounted_meta_node();
 
         if let Some(node) = node {
@@ -468,7 +467,6 @@ impl<M: Memory> Storage for StableStorage<M> {
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
         if self.is_mounted(node) {
-
             if self.cache_journal.read_mounted_meta_node() == Some(node) {
                 let mut meta = Metadata::default();
                 self.cache_journal.read_mounted_meta(&mut meta);
@@ -476,12 +474,9 @@ impl<M: Memory> Storage for StableStorage<M> {
                 return Ok(meta);
             }
 
-            let res = self.mounted_meta.get(&node).ok_or(Error::NotFound);
-
-            res
+            self.mounted_meta.get(&node).ok_or(Error::NotFound)
         } else {
             if self.last_metadata.0 == node {
-
                 return Ok(self.last_metadata.1.clone());
             }
 
@@ -494,16 +489,13 @@ impl<M: Memory> Storage for StableStorage<M> {
         assert_eq!(node, metadata.node, "Node does not match medatada.node!");
 
         if self.is_mounted(node) {
-
             // flush changes if the last node was different
             if self.cache_journal.read_mounted_meta_node() != Some(node) {
                 self.flush_mounted_meta();
             }
 
             self.cache_journal.write_mounted_meta(&node, &metadata)
-            
         } else {
-
             self.last_metadata = (node, metadata.clone());
             self.metadata.insert(node, metadata);
         }
@@ -668,7 +660,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         // remove metadata
         self.mounted_meta.remove(&node);
         self.metadata.remove(&node);
-        
+
         let mounted_meta_node = self.cache_journal.read_mounted_meta_node();
         if mounted_meta_node == Some(node) {
             // reset cached mounted metadata

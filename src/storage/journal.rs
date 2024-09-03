@@ -16,8 +16,6 @@ pub struct CacheJournal<M: Memory> {
 
 impl<M: Memory> CacheJournal<M> {
     pub fn new(journal: VirtualMemory<M>) -> Result<CacheJournal<M>, Error> {
-        
-        
         let cache_journal = if journal.size() == 0 {
             journal.grow(1);
 
@@ -31,7 +29,6 @@ impl<M: Memory> CacheJournal<M> {
             cache_journal.reset_mounted_meta();
 
             cache_journal
-
         } else {
             // check the marker
             let mut b = [0u8; 4];
@@ -42,16 +39,13 @@ impl<M: Memory> CacheJournal<M> {
                 return Err(Error::InvalidMagicMarker);
             }
 
-            let cache_journal = CacheJournal { journal };
-
-            cache_journal
+            CacheJournal { journal }
         };
 
         Ok(cache_journal)
     }
 
-    pub fn read_mounted_meta_node(&self) -> Option<Node>
-    {
+    pub fn read_mounted_meta_node(&self) -> Option<Node> {
         let mut ret = 0u64;
         read_obj(&self.journal, MOUNTED_META_PTR, &mut ret);
         if ret == u64::MAX {
@@ -124,14 +118,12 @@ mod tests {
         assert_eq!(meta, meta2);
     }
 
-
     #[test]
     fn fsj1_marker_is_written() {
         let mem = new_vector_memory();
         let memory_manager = MemoryManager::init(mem);
         let journal_memory = memory_manager.get(MemoryId::new(1));
         let _journal = CacheJournal::new(journal_memory).unwrap();
-
 
         let memory = memory_manager.get(MemoryId::new(1));
         let mut b = [0u8; 4];
@@ -158,7 +150,6 @@ mod tests {
         let memory_manager = MemoryManager::init(mem);
         let journal_memory = memory_manager.get(MemoryId::new(1));
         let _journal = CacheJournal::new(journal_memory).unwrap();
-
 
         let memory = memory_manager.get(MemoryId::new(1));
         let b = [0u8; 1];
@@ -204,16 +195,14 @@ mod tests {
         };
 
         journal.write_mounted_meta(&123, &meta);
-        
 
         let journal = CacheJournal::new(memory_manager.get(MemoryId::new(1))).unwrap();
 
         assert_eq!(journal.read_mounted_meta_node(), Some(123));
-        
+
         let mut meta2 = Metadata::default();
         journal.read_mounted_meta(&mut meta2);
 
         assert_eq!(meta, meta2);
-
     }
 }
