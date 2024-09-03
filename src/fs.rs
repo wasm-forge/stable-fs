@@ -52,6 +52,13 @@ impl FileSystem {
         })
     }
 
+    pub fn flush(&mut self, fd: Fd) -> Result<(), Error> {
+        let node = self.get_node(fd)?;
+        self.storage.flush(node);
+
+        Ok(())
+    }
+
     //
     pub fn get_storage_version(&self) -> u32 {
         self.storage.get_version()
@@ -287,6 +294,7 @@ impl FileSystem {
 
     // Close the opened file and release the corresponding file descriptor.
     pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
+        self.flush(fd)?;
         self.fd_table.close(fd).ok_or(Error::NotFound)?;
 
         Ok(())

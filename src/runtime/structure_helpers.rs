@@ -393,6 +393,7 @@ pub fn rm_dir_entry(
     Ok((removed_dir_entry_node, removed_metadata))
 }
 
+#[inline]
 pub fn grow_memory(memory: &dyn Memory, max_address: FileSize) {
     let pages_required = (max_address + WASM_PAGE_SIZE_IN_BYTES - 1) / WASM_PAGE_SIZE_IN_BYTES;
 
@@ -401,6 +402,26 @@ pub fn grow_memory(memory: &dyn Memory, max_address: FileSize) {
     if cur_pages < pages_required {
         memory.grow(pages_required - cur_pages);
     }
+}
+
+#[inline]
+pub fn read_obj<T: Sized>(memory: &dyn Memory, address: u64, obj: &mut T) {
+    let obj_size = std::mem::size_of::<T>();
+
+    let obj_bytes = unsafe { std::slice::from_raw_parts_mut(obj as *mut T as *mut u8, obj_size) };
+
+    memory.read(address, obj_bytes);
+}
+
+#[inline]
+pub fn write_obj<T: Sized>(memory: &dyn Memory, address: u64, obj: &T) {
+    let obj_size = std::mem::size_of::<T>();
+
+    let obj_bytes = unsafe { std::slice::from_raw_parts(obj as *const T as *const u8, obj_size) };
+
+    grow_memory(memory, address + obj_size as u64);
+
+    memory.write(address, obj_bytes);
 }
 
 pub fn offset_to_file_chunk_index(offset: FileSize, chunk_size: usize) -> FileChunkIndex {

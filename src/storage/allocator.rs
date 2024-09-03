@@ -1,10 +1,11 @@
 use ic_stable_structures::{memory_manager::VirtualMemory, Memory};
 
-use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
-
 use crate::{
     error::Error,
-    runtime::{structure_helpers::grow_memory, types::ChunkSize},
+    runtime::{
+        structure_helpers::{read_obj, write_obj},
+        types::ChunkSize,
+    },
 };
 
 use super::types::{FileChunkPtr, DEFAULT_FILE_CHUNK_SIZE_V2};
@@ -72,21 +73,17 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         Ok(allocator)
     }
 
+    #[inline]
     fn read_u64(&self, index: u64) -> u64 {
-        let mut b = [0u8; 8];
-        self.v2_available_chunks.read(index * 8, &mut b);
+        let mut ret = 0u64;
+        read_obj(&self.v2_available_chunks, index * 8, &mut ret);
 
-        u64::from_le_bytes(b)
+        ret
     }
 
+    #[inline]
     fn write_u64(&self, index: u64, value: u64) {
-        // we only need to start checking the size at certain index
-        if index + 8 >= WASM_PAGE_SIZE_IN_BYTES / 8 {
-            grow_memory(&self.v2_available_chunks, index * 8 + 8);
-        }
-
-        self.v2_available_chunks
-            .write(index * 8, &value.to_le_bytes());
+        write_obj(&self.v2_available_chunks, index * 8, &value);
     }
 
     fn get_len(&self) -> u64 {
@@ -439,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn alo1_marker_is_written() {
+    fn fsa1_marker_is_written() {
         let mem = new_vector_memory();
         let memory_manager = MemoryManager::init(mem);
         let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();
@@ -455,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn correct_alo1_marker_is_accepted() {
+    fn correct_fsa1_marker_is_accepted() {
         let mem = new_vector_memory();
         let memory_manager = MemoryManager::init(mem);
         let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();
@@ -469,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn wrong_alo1_marker_is_rejected() {
+    fn wrong_fsa1_marker_is_rejected() {
         let mem = new_vector_memory();
         let memory_manager = MemoryManager::init(mem);
         let mut allocator = ChunkPtrAllocator::new(memory_manager.get(MemoryId::new(1))).unwrap();

@@ -17,6 +17,7 @@ use crate::{
 
 use super::{
     allocator::ChunkPtrAllocator,
+    journal::CacheJournal,
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
         Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2,
@@ -37,16 +38,37 @@ const MEMORY_INDEX_COUNT: u8 = 10;
 
 const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
+enum StorageMemoryIdx {
+    Header = 0,
+    Metadata = 1,
+    DirEntries = 2,
+    FileChunksV1 = 3,
+
+    // metadata for mounted files
+    MountedMetadata = 4,
+
+    // V2 chunks
+    FileChunksV2 = 5,
+    ChunkAllocatorV2 = 6,
+    FileChunksMemoryV2 = 7,
+
+    // caching helper
+    CacheJournal = 8,
+}
+
 struct StorageMemories<M: Memory> {
     header_memory: VirtualMemory<M>,
     metadata_memory: VirtualMemory<M>,
     direntry_memory: VirtualMemory<M>,
     filechunk_memory: VirtualMemory<M>,
+
     mounted_meta_memory: VirtualMemory<M>,
 
     v2_chunk_ptr_memory: VirtualMemory<M>,
     v2_chunks_memory: VirtualMemory<M>,
     v2_allocator_memory: VirtualMemory<M>,
+
+    cache_journal: VirtualMemory<M>,
 }
 
 #[repr(C)]
@@ -61,6 +83,8 @@ pub struct StableStorage<M: Memory> {
     v2_chunks: VirtualMemory<M>,
     v2_allocator: ChunkPtrAllocator<M>,
 
+    cache_journal: CacheJournal<M>,
+
     // It is not used, but is needed to keep memories alive.
     _memory_manager: Option<MemoryManager<M>>,
     // active mounts
@@ -71,6 +95,9 @@ pub struct StableStorage<M: Memory> {
 
     // primitive cache
     last_index: (Node, FileChunkIndex, FileChunkPtr),
+
+    // only use it with normal files (not mounted)
+    last_metadata: (Node, Metadata),
 }
 
 impl<M: Memory> StableStorage<M> {
@@ -105,15 +132,35 @@ impl<M: Memory> StableStorage<M> {
             );
         }
 
-        let header_memory = memory_manager.get(MemoryId::new(memory_indices.start));
-        let metadata_memory = memory_manager.get(MemoryId::new(memory_indices.start + 1u8));
-        let direntry_memory = memory_manager.get(MemoryId::new(memory_indices.start + 2u8));
-        let filechunk_memory = memory_manager.get(MemoryId::new(memory_indices.start + 3u8));
-        let mounted_meta_memory = memory_manager.get(MemoryId::new(memory_indices.start + 4u8));
+        let header_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::Header as u8,
+        ));
+        let metadata_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::Metadata as u8,
+        ));
+        let direntry_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::DirEntries as u8,
+        ));
+        let filechunk_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::FileChunksV1 as u8,
+        ));
+        let mounted_meta_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::MountedMetadata as u8,
+        ));
 
-        let v2_chunk_ptr_memory = memory_manager.get(MemoryId::new(memory_indices.start + 5u8));
-        let v2_chunks_memory = memory_manager.get(MemoryId::new(memory_indices.start + 7u8));
-        let v2_allocator_memory = memory_manager.get(MemoryId::new(memory_indices.start + 6u8));
+        let v2_chunk_ptr_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::FileChunksV2 as u8,
+        ));
+        let v2_allocator_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::ChunkAllocatorV2 as u8,
+        ));
+        let v2_chunks_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::FileChunksMemoryV2 as u8,
+        ));
+
+        let cache_journal = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::CacheJournal as u8,
+        ));
 
         let memories = StorageMemories {
             header_memory,
@@ -124,6 +171,7 @@ impl<M: Memory> StableStorage<M> {
             v2_chunk_ptr_memory,
             v2_chunks_memory,
             v2_allocator_memory,
+            cache_journal,
         };
 
         Self::new_with_custom_memories(memories)
@@ -136,6 +184,7 @@ impl<M: Memory> StableStorage<M> {
         };
 
         let v2_allocator = ChunkPtrAllocator::new(memories.v2_allocator_memory).unwrap();
+        let cache_journal = CacheJournal::new(memories.cache_journal).unwrap();
 
         let mut result = Self {
             header: Cell::init(memories.header_memory, default_header_value).unwrap(),
@@ -148,12 +197,15 @@ impl<M: Memory> StableStorage<M> {
             v2_chunks: memories.v2_chunks_memory,
             v2_allocator,
 
+            cache_journal,
+
             // transient runtime data
             _memory_manager: None,
             active_mounts: HashMap::new(),
             // default chunk type is V2
             chunk_type: ChunkType::V2,
-            last_index: (0, 0, 0),
+            last_index: (u64::MAX, 0, 0),
+            last_metadata: (u64::MAX, Metadata::default()),
         };
 
         let version = result.header.get().version;
@@ -376,6 +428,17 @@ impl<M: Memory> StableStorage<M> {
 
         Ok(size_read)
     }
+
+    fn flush_mounted_meta(&mut self) {
+
+        let node = self.cache_journal.read_mounted_meta_node();
+
+        if let Some(node) = node {
+            let mut meta: Metadata = Metadata::default();
+            self.cache_journal.read_mounted_meta(&mut meta);
+            self.mounted_meta.insert(node, meta);
+        }
+    }
 }
 
 impl<M: Memory> Storage for StableStorage<M> {
@@ -405,8 +468,23 @@ impl<M: Memory> Storage for StableStorage<M> {
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
         if self.is_mounted(node) {
-            self.mounted_meta.get(&node).ok_or(Error::NotFound)
+
+            if self.cache_journal.read_mounted_meta_node() == Some(node) {
+                let mut meta = Metadata::default();
+                self.cache_journal.read_mounted_meta(&mut meta);
+
+                return Ok(meta);
+            }
+
+            let res = self.mounted_meta.get(&node).ok_or(Error::NotFound);
+
+            res
         } else {
+            if self.last_metadata.0 == node {
+
+                return Ok(self.last_metadata.1.clone());
+            }
+
             self.metadata.get(&node).ok_or(Error::NotFound)
         }
     }
@@ -416,8 +494,17 @@ impl<M: Memory> Storage for StableStorage<M> {
         assert_eq!(node, metadata.node, "Node does not match medatada.node!");
 
         if self.is_mounted(node) {
-            self.mounted_meta.insert(node, metadata);
+
+            // flush changes if the last node was different
+            if self.cache_journal.read_mounted_meta_node() != Some(node) {
+                self.flush_mounted_meta();
+            }
+
+            self.cache_journal.write_mounted_meta(&node, &metadata)
+            
         } else {
+
+            self.last_metadata = (node, metadata.clone());
             self.metadata.insert(node, metadata);
         }
     }
@@ -576,11 +663,22 @@ impl<M: Memory> Storage for StableStorage<M> {
         }
 
         // clear cache
-        self.last_index = (0, 0, 0);
+        self.last_index = (u64::MAX, 0, 0);
 
         // remove metadata
         self.mounted_meta.remove(&node);
         self.metadata.remove(&node);
+        
+        let mounted_meta_node = self.cache_journal.read_mounted_meta_node();
+        if mounted_meta_node == Some(node) {
+            // reset cached mounted metadata
+            self.cache_journal.reset_mounted_meta()
+        }
+
+        if self.last_metadata.0 == node {
+            // reset cached metadata
+            self.last_metadata.0 = u64::MAX;
+        }
 
         Ok(())
     }
@@ -591,20 +689,21 @@ impl<M: Memory> Storage for StableStorage<M> {
         }
 
         // do extra meta preparation
-        let mut meta = self.metadata.get(&node).ok_or(Error::NotFound)?;
+        // get the file metadata (we are not mounted at this point)
+        let mut file_meta = self.get_metadata(node)?;
 
+        // activate mount
         self.active_mounts.insert(node, memory);
 
-        let new_mounted_meta = if let Some(old_mounted_meta) = self.mounted_meta.get(&node) {
-            // we can change here something for the new mounted meta
-            old_mounted_meta
+        if let Ok(_old_mounted_meta) = self.get_metadata(node) {
+            // do nothing, we already have the metadata
         } else {
-            // take a copy of the file meta, set size to 0 by default
-            meta.size = 0;
-            meta
-        };
+            // take a copy of the file meta, set the size to 0 by default
+            file_meta.size = 0;
 
-        self.mounted_meta.insert(node, new_mounted_meta);
+            // update mounted metadata
+            self.put_metadata(node, file_meta);
+        };
 
         Ok(())
     }
@@ -708,6 +807,10 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     fn chunk_type(&self) -> ChunkType {
         self.chunk_type
+    }
+
+    fn flush(&mut self, _node: Node) {
+        self.flush_mounted_meta();
     }
 }
 

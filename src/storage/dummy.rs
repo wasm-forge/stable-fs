@@ -110,6 +110,10 @@ impl Storage for DummyStorage {
     fn chunk_type(&self) -> ChunkType {
         panic!("Not supported")
     }
+
+    fn flush(&mut self, _node: Node) {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]

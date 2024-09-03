@@ -9,6 +9,7 @@ use crate::{
 
 mod allocator;
 pub mod dummy;
+mod journal;
 pub mod stable;
 pub mod transient;
 pub mod types;
@@ -72,4 +73,7 @@ pub trait Storage {
     // configure desired chunk type (V1, V2)
     fn set_chunk_type(&mut self, chunk_type: ChunkType);
     fn chunk_type(&self) -> ChunkType;
+
+    // flush changes related to the node
+    fn flush(&mut self, node: Node);
 }

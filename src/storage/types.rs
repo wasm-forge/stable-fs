@@ -82,7 +82,7 @@ impl ic_stable_structures::Storable for Header {
 }
 
 // Contains metadata of a node.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
     pub node: Node,
     pub file_type: FileType,
@@ -140,7 +140,7 @@ impl From<FileType> for u8 {
 }
 
 // The time stats of a node.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Times {
     pub accessed: u64,
     pub modified: u64,

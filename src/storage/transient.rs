@@ -372,6 +372,10 @@ impl Storage for TransientStorage {
     fn chunk_type(&self) -> ChunkType {
         ChunkType::V1
     }
+
+    fn flush(&mut self, _node: Node) {
+        // Noop
+    }
 }
 
 #[cfg(test)]
