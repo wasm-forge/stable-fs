@@ -12,6 +12,9 @@ const MOUNTED_META_PTR: u64 = 16;
 
 pub struct CacheJournal<M: Memory> {
     journal: VirtualMemory<M>,
+
+    mounted_node: Node,
+    mounted_meta: Metadata,
 }
 
 impl<M: Memory> CacheJournal<M> {
@@ -23,7 +26,11 @@ impl<M: Memory> CacheJournal<M> {
             let b = [b'F', b'S', b'J', b'1', 0, 0, 0, 0];
             journal.write(0, &b);
 
-            let cache_journal = CacheJournal { journal };
+            let mut cache_journal = CacheJournal {
+                journal,
+                mounted_node: u64::MAX,
+                mounted_meta: Metadata::default(),
+            };
 
             // reset mounted meta node
             cache_journal.reset_mounted_meta();
@@ -39,15 +46,34 @@ impl<M: Memory> CacheJournal<M> {
                 return Err(Error::InvalidMagicMarker);
             }
 
-            CacheJournal { journal }
+            let mut cache_journal = CacheJournal {
+                journal,
+                mounted_node: u64::MAX,
+                mounted_meta: Metadata::default(),
+            };
+
+            // init local cache variables
+            read_obj(
+                &cache_journal.journal,
+                MOUNTED_META_PTR,
+                &mut cache_journal.mounted_node,
+            );
+            read_obj(
+                &cache_journal.journal,
+                MOUNTED_META_PTR + 8,
+                &mut cache_journal.mounted_meta,
+            );
+
+            cache_journal
         };
 
         Ok(cache_journal)
     }
 
     pub fn read_mounted_meta_node(&self) -> Option<Node> {
-        let mut ret = 0u64;
-        read_obj(&self.journal, MOUNTED_META_PTR, &mut ret);
+        let ret = self.mounted_node;
+
+        //read_obj(&self.journal, MOUNTED_META_PTR, &mut ret);
         if ret == u64::MAX {
             return None;
         }
@@ -56,17 +82,23 @@ impl<M: Memory> CacheJournal<M> {
     }
 
     pub fn read_mounted_meta(&self, meta: &mut Metadata) {
-        read_obj(&self.journal, MOUNTED_META_PTR + 8, meta);
+        *meta = self.mounted_meta.clone();
+
+        //read_obj(&self.journal, MOUNTED_META_PTR + 8, meta);
     }
 
-    pub fn reset_mounted_meta(&self) {
+    pub fn reset_mounted_meta(&mut self) {
+        self.mounted_node = u64::MAX;
+        self.mounted_meta = Metadata::default();
+
         write_obj(&self.journal, MOUNTED_META_PTR, &(u64::MAX as Node));
-        write_obj(&self.journal, MOUNTED_META_PTR + 8, &Metadata::default());
     }
 
-    pub fn write_mounted_meta(&self, node: &Node, meta: &Metadata) {
-        write_obj(&self.journal, MOUNTED_META_PTR, node);
-        write_obj(&self.journal, MOUNTED_META_PTR + 8, meta);
+    pub fn write_mounted_meta(&mut self, node: &Node, meta: &Metadata) {
+        self.mounted_node = *node;
+        self.mounted_meta = (*meta).clone();
+
+        write_obj(&self.journal, MOUNTED_META_PTR, &(*node, (*meta).clone()));
     }
 }
 
@@ -85,7 +117,7 @@ mod tests {
         let mem = new_vector_memory();
         let memory_manager = MemoryManager::init(mem);
         let journal_memory = memory_manager.get(MemoryId::new(1));
-        let journal = CacheJournal::new(journal_memory).unwrap();
+        let mut journal = CacheJournal::new(journal_memory).unwrap();
 
         let node: Node = 123;
         let meta = Metadata {
@@ -176,7 +208,7 @@ mod tests {
         let mem = new_vector_memory();
         let memory_manager = MemoryManager::init(mem);
         let journal_memory = memory_manager.get(MemoryId::new(1));
-        let journal = CacheJournal::new(journal_memory).unwrap();
+        let mut journal = CacheJournal::new(journal_memory).unwrap();
 
         assert_eq!(journal.read_mounted_meta_node(), None);
 
