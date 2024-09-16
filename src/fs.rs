@@ -547,6 +547,7 @@ impl FileSystem {
 #[cfg(test)]
 mod tests {
 
+    use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
     use ic_stable_structures::{Memory, VectorMemory};
 
     use crate::{
@@ -556,7 +557,10 @@ mod tests {
             structure_helpers::find_node,
             types::{FdStat, OpenFlags},
         },
-        storage::types::{FileSize, FileType},
+        storage::{
+            stable::StableStorage,
+            types::{FileSize, FileType},
+        },
         test_utils::{
             new_vector_memory, read_text_file, test_fs, test_fs_setups, test_fs_transient,
             write_text_fd, write_text_file,
@@ -1354,6 +1358,32 @@ mod tests {
     }
 
     #[test]
+    fn reading_mounted_memory_after_upgrade() {
+        let memory_manager = MemoryManager::init(new_vector_memory());
+        let memory = memory_manager.get(MemoryId::new(1));
+
+        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
+            .unwrap();
+
+        let root_fd = fs.root_fd();
+        let content = "ABCDEFG123";
+        write_text_file(&mut fs, root_fd, "test.txt", content, 2).unwrap();
+
+        // imitate canister upgrade (we keep the memory manager but recreate the file system with the same virtual memories)
+        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
+            .unwrap();
+        let root_fd = fs.root_fd();
+
+        let content = read_text_file(&mut fs, root_fd, "test.txt", 0, 100);
+
+        assert_eq!(content, "ABCDEFG123ABCDEFG123");
+    }
+
+    #[test]
     fn deleting_mounted_file_fails() {
         let memory: VectorMemory = new_vector_memory();
 
@@ -1367,7 +1397,7 @@ mod tests {
         let res = fs.remove_file(root_fd, "test.txt");
 
         assert!(
-            res.is_err(),
+            res == Err(Error::CannotRemoveMountedMemoryFile),
             "Deleting a mounted file should not be allowed!"
         );
 
@@ -1478,4 +1508,6 @@ mod tests {
             assert!(res.is_err());
         }
     }
+
+    // test sparse files
 }

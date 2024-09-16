@@ -17,6 +17,7 @@ use crate::{
 
 use super::{
     allocator::ChunkPtrAllocator,
+    iterator::ChunkV2Iterator,
     journal::CacheJournal,
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
@@ -79,7 +80,7 @@ pub struct StableStorage<M: Memory> {
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
     mounted_meta: BTreeMap<Node, Metadata, VirtualMemory<M>>,
 
-    v2_chunk_ptr: BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
+    pub(crate) v2_chunk_ptr: BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
     v2_chunks: VirtualMemory<M>,
     v2_allocator: ChunkPtrAllocator<M>,
 
@@ -94,7 +95,7 @@ pub struct StableStorage<M: Memory> {
     chunk_type: ChunkType,
 
     // primitive cache
-    last_index: (Node, FileChunkIndex, FileChunkPtr),
+    pub(crate) last_index: (Node, FileChunkIndex, FileChunkPtr),
 
     // only use it with normal files (not mounted)
     last_metadata: (Node, Metadata),
@@ -225,6 +226,7 @@ impl<M: Memory> StableStorage<M> {
                     times: Times::default(),
                     first_dir_entry: None,
                     last_dir_entry: None,
+                    chunk_type: None,
                 };
                 result.put_metadata(ROOT_NODE, metadata);
             }
@@ -276,7 +278,7 @@ impl<M: Memory> StableStorage<M> {
         assert!(len <= self.v2_allocator.chunk_size());
 
         let chunk_ptr = if self.last_index.0 == node && self.last_index.1 == index {
-            self.last_index.2
+            self.last_index.2 as FileSize
         } else if let Some(ptr) = self.v2_chunk_ptr.get(&(node, index)) {
             ptr
         } else {
@@ -298,6 +300,8 @@ impl<M: Memory> StableStorage<M> {
 
         self.last_index = (node, index, chunk_ptr);
 
+        grow_memory(&self.v2_chunks, chunk_ptr + offset + buf.len() as FileSize);
+
         self.v2_chunks.write(chunk_ptr + offset, buf);
     }
 
@@ -309,6 +313,8 @@ impl<M: Memory> StableStorage<M> {
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
         let start_index = (offset / FILE_CHUNK_SIZE_V1 as FileSize) as FileChunkIndex;
+        let end_index = ((offset + buf.len() as FileSize) / FILE_CHUNK_SIZE_V1 as FileSize + 1)
+            as FileChunkIndex;
 
         let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize;
 
@@ -317,28 +323,48 @@ impl<M: Memory> StableStorage<M> {
         let mut size_read: FileSize = 0;
         let mut remainder = file_size - offset;
 
-        for ((nd, _idx), value) in self.filechunk.range(range) {
-            assert!(nd == node);
+        let mut iter = self.filechunk.range(range);
+        let mut cur_fetched = None;
 
-            // finished reading, buffer full
-            if size_read == buf.len() as FileSize {
-                break;
-            }
-
+        for cur_index in start_index..end_index {
             let chunk_space = FILE_CHUNK_SIZE_V1 as FileSize - chunk_offset;
 
             let to_read = remainder
                 .min(chunk_space)
                 .min(buf.len() as FileSize - size_read);
 
-            let write_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+            // finished reading, buffer full
+            if size_read == buf.len() as FileSize {
+                break;
+            }
 
-            write_buf.copy_from_slice(
-                &value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize],
-            );
+            if cur_fetched.is_none() {
+                cur_fetched = iter.next();
+            }
+
+            let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+
+            if let Some(((nd, idx), ref value)) = cur_fetched {
+                if idx == cur_index {
+                    assert!(nd == node);
+
+                    read_buf.copy_from_slice(
+                        &value.bytes
+                            [chunk_offset as usize..chunk_offset as usize + to_read as usize],
+                    );
+
+                    // consume token
+                    cur_fetched = None;
+                } else {
+                    // fill up with zeroes
+                    read_buf.iter_mut().for_each(|m| *m = 0)
+                }
+            } else {
+                // fill up with zeroes
+                read_buf.iter_mut().for_each(|m| *m = 0)
+            }
 
             chunk_offset = 0;
-
             size_read += to_read;
             remainder -= to_read;
         }
@@ -353,54 +379,35 @@ impl<M: Memory> StableStorage<M> {
         file_size: FileSize,
         buf: &mut [u8],
     ) -> Result<FileSize, Error> {
-        // compute remainder to read
-        let mut remainder = file_size - offset;
-
         // early exit if nothing left to read
-        if remainder == 0 {
+        if offset >= file_size {
             return Ok(0 as FileSize);
         }
+
+        // compute remainder to read
+        let mut remainder = file_size - offset;
 
         let chunk_size = self.chunk_size();
 
         let start_index = (offset / chunk_size as FileSize) as FileChunkIndex;
-        let end_index =
-            ((offset + buf.len() as FileSize) / chunk_size as FileSize + 1) as FileChunkIndex;
 
         let mut chunk_offset = offset - start_index as FileSize * chunk_size as FileSize;
 
-        let mut range = (node, start_index)..(node, end_index);
+        //let end_index = ((offset + buf.len() as FileSize) / chunk_size as FileSize + 1) as FileChunkIndex;
+        //let mut range = (node, start_index)..(node, end_index);
 
         let mut size_read: FileSize = 0;
 
-        if self.last_index.0 == node && self.last_index.1 == start_index {
-            //
-            let chunk_ptr = self.last_index.2;
+        let read_iter = ChunkV2Iterator::new(
+            node,
+            offset,
+            file_size,
+            self.chunk_size() as FileSize,
+            self.last_index,
+            &mut self.v2_chunk_ptr,
+        );
 
-            let chunk_space = chunk_size as FileSize - chunk_offset;
-
-            let to_read = remainder
-                .min(chunk_space)
-                .min(buf.len() as FileSize - size_read);
-
-            let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
-
-            self.v2_chunks.read(chunk_ptr + chunk_offset, read_buf);
-
-            chunk_offset = 0;
-
-            size_read += to_read;
-            remainder -= to_read;
-
-            range = (node, start_index + 1)..(node, end_index);
-        }
-
-        // early exit, if managed to completely read from the cached ptr
-        if size_read == buf.len() as FileSize {
-            return Ok(size_read);
-        }
-
-        for ((nd, idx), chunk_ptr) in self.v2_chunk_ptr.range(range) {
+        for ((nd, idx), chunk_ptr) in read_iter {
             assert!(nd == node);
 
             // finished reading, buffer full
@@ -416,14 +423,17 @@ impl<M: Memory> StableStorage<M> {
 
             let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
 
-            self.v2_chunks.read(chunk_ptr + chunk_offset, read_buf);
+            if let Some(cptr) = chunk_ptr {
+                self.v2_chunks.read(cptr + chunk_offset, read_buf);
+                self.last_index = (node, idx, cptr);
+            } else {
+                // fill read buffer with 0
+                read_buf.iter_mut().for_each(|m| *m = 0)
+            }
 
             chunk_offset = 0;
-
             size_read += to_read;
             remainder -= to_read;
-
-            self.last_index = (node, idx, chunk_ptr);
         }
 
         Ok(size_read)
@@ -555,7 +565,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         Ok(size_read)
     }
 
-    // Write file at the current file cursor, the cursor position will NOT be updated after reading.
+    // Write file at the current file cursor, the cursor position will NOT be updated after writing.
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
 
@@ -567,19 +577,23 @@ impl<M: Memory> Storage for StableStorage<M> {
             let end = offset + buf.len() as FileSize;
             let mut written_size = 0;
 
-            // decide if we use v2, first based on configuration, second: based on actual content
-            let mut use_v2 = self.chunk_type == ChunkType::V2;
+            // decide if we use v2 chunks for writing
+            let use_v2 = match metadata.chunk_type {
+                Some(ChunkType::V2) => true,
+                Some(ChunkType::V1) => false,
 
-            if metadata.size > 0 {
-                // try to find any v2 node, othersize use v1
+                // try to figure out, which chunk type to use
+                None => {
+                    if metadata.size > 0 {
+                        // try to find any v2 node, othersize use v1
+                        let ptr = self.v2_chunk_ptr.range((node, 0)..(node + 1, 0)).next();
 
-                // TODO: make this work with the iterator to support sparse files
-                let ptr = self.v2_chunk_ptr.get(&(node, 0));
-
-                if ptr.is_none() {
-                    use_v2 = false;
+                        ptr.is_some()
+                    } else {
+                        self.chunk_type() == ChunkType::V2
+                    }
                 }
-            }
+            };
 
             if use_v2 {
                 let chunk_infos = get_chunk_infos(offset, end, self.chunk_size());
@@ -645,6 +659,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         for (k, _v) in self.v2_chunk_ptr.range(range) {
             chunks.push(k);
         }
+
         for (nd, idx) in chunks.into_iter() {
             assert!(nd == node);
             let removed = self.v2_chunk_ptr.remove(&(node, idx));
@@ -829,6 +844,7 @@ mod tests {
                 times: Times::default(),
                 first_dir_entry: Some(42),
                 last_dir_entry: Some(24),
+                chunk_type: Some(storage.chunk_type()),
             },
         );
         let metadata = storage.get_metadata(node).unwrap();
@@ -838,6 +854,7 @@ mod tests {
         assert_eq!(metadata.first_dir_entry, Some(42));
         assert_eq!(metadata.last_dir_entry, Some(24));
         storage.write(node, 0, &[42; 10]).unwrap();
+
         let mut buf = [0; 10];
         storage.read(node, 0, &mut buf).unwrap();
         assert_eq!(buf, [42; 10]);

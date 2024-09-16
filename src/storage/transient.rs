@@ -50,6 +50,7 @@ impl TransientStorage {
             times: Times::default(),
             first_dir_entry: None,
             last_dir_entry: None,
+            chunk_type: None,
         };
         let mut result = Self {
             header: Header {
@@ -396,6 +397,7 @@ mod tests {
                 times: Times::default(),
                 first_dir_entry: None,
                 last_dir_entry: None,
+                chunk_type: Some(storage.chunk_type()),
             },
         );
         storage.write(node, 0, &[42; 10]).unwrap();

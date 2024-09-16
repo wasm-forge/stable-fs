@@ -118,6 +118,13 @@ pub fn create_dir_entry(
     }
 
     let node = storage.new_node();
+
+    let chunk_type = if entry_type == FileType::RegularFile {
+        Some(storage.chunk_type())
+    } else {
+        None
+    };
+
     storage.put_metadata(
         node,
         Metadata {
@@ -132,6 +139,7 @@ pub fn create_dir_entry(
             },
             first_dir_entry: None,
             last_dir_entry: None,
+            chunk_type,
         },
     );
 

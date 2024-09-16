@@ -132,6 +132,7 @@ mod tests {
             },
             first_dir_entry: None,
             last_dir_entry: Some(876),
+            chunk_type: None,
         };
 
         let mut node2 = 0;
@@ -224,6 +225,7 @@ mod tests {
             },
             first_dir_entry: None,
             last_dir_entry: Some(876),
+            chunk_type: None,
         };
 
         journal.write_mounted_meta(&123, &meta);
