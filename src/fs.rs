@@ -550,6 +550,7 @@ mod tests {
     use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
     use ic_stable_structures::{Memory, VectorMemory};
 
+    use crate::test_utils::write_text_at_offset;
     use crate::{
         error::Error,
         fs::{DstBuf, FdFlags, SrcBuf},
@@ -1509,5 +1510,112 @@ mod tests {
         }
     }
 
+    fn create_file_with_size(filename: &str, size: FileSize, fs: &mut FileSystem) -> Fd {
+        let fd = fs
+            .open_or_create(
+                fs.root_fd,
+                filename,
+                FdStat::default(),
+                OpenFlags::CREATE,
+                12,
+            )
+            .unwrap();
+        let mut meta = fs.metadata(fd).unwrap();
+        meta.size = size;
+
+        fs.set_metadata(fd, meta).unwrap();
+
+        fd
+    }
+
     // test sparse files
+    #[test]
+    fn set_size_for_an_empty_file() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+            let fd = create_file_with_size(filename, 15, &mut fs);
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, 100);
+
+            assert_eq!(content, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+            println!("{:?}", content);
+
+            write_text_at_offset(&mut fs, fd, "abc", 3, 3).unwrap();
+
+            let content = read_text_file(&mut fs, root_fd, filename, 1, 100);
+
+            assert_eq!(content, "\0\0abcabcabc\0\0\0");
+            println!("{:?}", content);
+        }
+    }
+
+    #[test]
+    fn create_file_missing_chunk_in_the_middle() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let chunk_size = fs.storage.chunk_size();
+
+            let root_fd = fs.root_fd();
+            let fd = create_file_with_size(filename, chunk_size as FileSize * 2 + 500, &mut fs);
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
+
+            let vec = vec![0; chunk_size * 2 + 500];
+
+            let expected = String::from_utf8(vec).unwrap();
+
+            assert_eq!(content, expected);
+
+            write_text_at_offset(&mut fs, fd, "abc", 33, 3).unwrap();
+            write_text_at_offset(&mut fs, fd, "abc", 33, chunk_size as FileSize * 2 + 100).unwrap();
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
+
+            let mut expected = vec![0u8; chunk_size * 2 + 500];
+
+            let pattern = b"abc".repeat(33);
+            expected[3..3 + 99].copy_from_slice(&pattern[..]);
+            expected[chunk_size * 2 + 100..chunk_size * 2 + 100 + 99].copy_from_slice(&pattern[..]);
+
+            let expected = String::from_utf8(expected).unwrap();
+
+            assert_eq!(content, expected);
+        }
+    }
+
+    #[test]
+    fn iterate_file_only_middle_chunk_is_present() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let chunk_size = fs.storage.chunk_size();
+
+            let root_fd = fs.root_fd();
+            let fd = create_file_with_size(filename, chunk_size as FileSize * 2 + 500, &mut fs);
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
+
+            let vec = vec![0; chunk_size * 2 + 500];
+
+            let expected = String::from_utf8(vec).unwrap();
+
+            assert_eq!(content, expected);
+
+            write_text_at_offset(&mut fs, fd, "abc", 33, chunk_size as FileSize * 1 + 100).unwrap();
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
+
+            let mut expected = vec![0u8; chunk_size * 2 + 500];
+
+            let pattern = b"abc".repeat(33);
+            expected[chunk_size * 1 + 100..chunk_size * 1 + 100 + 99].copy_from_slice(&pattern[..]);
+
+            let expected = String::from_utf8(expected).unwrap();
+
+            assert_eq!(content, expected);
+        }
+    }
 }

@@ -114,6 +114,32 @@ pub fn write_text_fd(
     Ok(())
 }
 
+use crate::fs::{FileSize, SrcBuf};
+
+#[cfg(test)]
+pub fn write_text_at_offset(
+    fs: &mut FileSystem,
+    file_fd: u32,
+    content: &str,
+    times: usize,
+    offset: FileSize,
+) -> Result<(), Error> {
+    let mut str = "".to_string();
+
+    for _ in 0..times {
+        str.push_str(content)
+    }
+
+    let src = SrcBuf {
+        buf: str.as_ptr(),
+        len: str.len(),
+    };
+
+    fs.write_vec_with_offset(file_fd, &[src], offset)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 pub fn read_text_file(
     fs: &mut FileSystem,

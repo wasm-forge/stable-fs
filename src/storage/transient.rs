@@ -150,14 +150,20 @@ impl Storage for TransientStorage {
             return Ok(0);
         }
 
-        let size_read = if let Some(memory) = self.get_mounted_memory(node) {
+        let size_read = if let Some(memory) = self.active_mounts.get(&node) {
             let remainder = file_size - offset;
             let to_read = remainder.min(buf.len() as FileSize);
+
+            // grow memory also for reading
+            grow_memory(memory.as_ref(), offset + to_read);
 
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
             let start_index = (offset / FILE_CHUNK_SIZE_V1 as FileSize) as FileChunkIndex;
+
+            let end_index = ((offset + buf.len() as FileSize) / FILE_CHUNK_SIZE_V1 as FileSize + 1)
+                as FileChunkIndex;
 
             let mut chunk_offset =
                 offset - start_index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize;
@@ -167,28 +173,48 @@ impl Storage for TransientStorage {
             let mut size_read: FileSize = 0;
             let mut remainder = file_size - offset;
 
-            for ((nd, _idx), value) in self.filechunk.range(range) {
-                assert!(*nd == node);
+            let mut iter = self.filechunk.range(range);
+            let mut cur_fetched = None;
 
-                // finished reading, buffer full
-                if size_read == buf.len() as FileSize {
-                    break;
-                }
-
+            for cur_index in start_index..end_index {
                 let chunk_space = FILE_CHUNK_SIZE_V1 as FileSize - chunk_offset;
 
                 let to_read = remainder
                     .min(chunk_space)
                     .min(buf.len() as FileSize - size_read);
 
-                let write_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+                // finished reading, buffer full
+                if size_read == buf.len() as FileSize {
+                    break;
+                }
 
-                write_buf.copy_from_slice(
-                    &value.bytes[chunk_offset as usize..chunk_offset as usize + to_read as usize],
-                );
+                if cur_fetched.is_none() {
+                    cur_fetched = iter.next();
+                }
+
+                let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
+
+                if let Some(((nd, idx), value)) = cur_fetched {
+                    if *idx == cur_index {
+                        assert!(*nd == node);
+
+                        read_buf.copy_from_slice(
+                            &value.bytes
+                                [chunk_offset as usize..chunk_offset as usize + to_read as usize],
+                        );
+
+                        // consume token
+                        cur_fetched = None;
+                    } else {
+                        // fill up with zeroes
+                        read_buf.iter_mut().for_each(|m| *m = 0)
+                    }
+                } else {
+                    // fill up with zeroes
+                    read_buf.iter_mut().for_each(|m| *m = 0)
+                }
 
                 chunk_offset = 0;
-
                 size_read += to_read;
                 remainder -= to_read;
             }

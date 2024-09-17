@@ -540,6 +540,9 @@ impl<M: Memory> Storage for StableStorage<M> {
             let remainder = file_size - offset;
             let to_read = remainder.min(buf.len() as FileSize);
 
+            // grow memory also for reading
+            grow_memory(memory.as_ref(), offset + to_read);
+
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
@@ -784,6 +787,9 @@ impl<M: Memory> Storage for StableStorage<M> {
 
         while remainder > 0 {
             let to_read = remainder.min(buf.len() as FileSize);
+
+            // grow memory also for reading
+            grow_memory(memory.as_ref(), offset + to_read);
 
             memory.read(offset, &mut buf[..to_read as usize]);
 

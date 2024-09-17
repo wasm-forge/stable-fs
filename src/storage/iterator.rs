@@ -124,7 +124,7 @@ mod tests {
 
         let buf = vec![142u8; write_size];
 
-        storage.write(node, 0, &*buf).unwrap();
+        storage.write(node, 0, &buf).unwrap();
 
         let meta = storage.get_metadata(node).unwrap();
         let file_size = meta.size;
