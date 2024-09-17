@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, fs::ChunkType};
 use ic_stable_structures::storable::Bound;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +31,7 @@ pub(crate) struct ChunkHandle {
 }
 
 // A file consists of multiple file chunks.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileChunk {
     pub bytes: [u8; FILE_CHUNK_SIZE_V1],
 }
@@ -91,6 +91,7 @@ pub struct Metadata {
     pub times: Times,
     pub first_dir_entry: Option<DirEntryIndex>,
     pub last_dir_entry: Option<DirEntryIndex>,
+    pub chunk_type: Option<ChunkType>,
 }
 
 impl ic_stable_structures::Storable for Metadata {
@@ -227,4 +228,125 @@ impl ic_stable_structures::Storable for DirEntry {
     }
 
     const BOUND: ic_stable_structures::storable::Bound = Bound::Unbounded;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::fs::ChunkType;
+
+    use super::{DirEntryIndex, FileSize, FileType, Node, Times};
+    use serde::{Deserialize, Serialize};
+
+    // Old node structure.
+    #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+    pub struct MetadataOld {
+        pub node: Node,
+        pub file_type: FileType,
+        pub link_count: u64,
+        pub size: FileSize,
+        pub times: Times,
+        pub first_dir_entry: Option<DirEntryIndex>,
+        pub last_dir_entry: Option<DirEntryIndex>,
+    }
+
+    // New node structure.
+    #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+    pub struct MetadataNew {
+        pub node: Node,
+        pub file_type: FileType,
+        pub link_count: u64,
+        pub size: FileSize,
+        pub times: Times,
+        pub first_dir_entry: Option<DirEntryIndex>,
+        pub last_dir_entry: Option<DirEntryIndex>,
+        pub chunk_type: Option<ChunkType>,
+    }
+
+    fn meta_to_bytes(meta: &MetadataOld) -> std::borrow::Cow<[u8]> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(meta, &mut buf).unwrap();
+        std::borrow::Cow::Owned(buf)
+    }
+
+    fn meta_from_bytes(bytes: std::borrow::Cow<[u8]>) -> MetadataNew {
+        ciborium::de::from_reader(bytes.as_ref()).unwrap()
+    }
+
+    #[test]
+    fn store_old_load_new() {
+        let meta_old = MetadataOld {
+            node: 23,
+            file_type: FileType::RegularFile,
+            link_count: 3,
+            size: 123,
+            times: Times::default(),
+            first_dir_entry: Some(23),
+            last_dir_entry: Some(35),
+        };
+
+        let bytes = meta_to_bytes(&meta_old);
+
+        let meta_new = meta_from_bytes(bytes);
+
+        assert_eq!(meta_new.node, meta_old.node);
+        assert_eq!(meta_new.file_type, meta_old.file_type);
+        assert_eq!(meta_new.link_count, meta_old.link_count);
+        assert_eq!(meta_new.size, meta_old.size);
+        assert_eq!(meta_new.times, meta_old.times);
+        assert_eq!(meta_new.first_dir_entry, meta_old.first_dir_entry);
+        assert_eq!(meta_new.last_dir_entry, meta_old.last_dir_entry);
+        assert_eq!(meta_new.chunk_type, None);
+    }
+
+    #[test]
+    fn store_old_load_new_both_none() {
+        let meta_old = MetadataOld {
+            node: 23,
+            file_type: FileType::RegularFile,
+            link_count: 3,
+            size: 123,
+            times: Times::default(),
+            first_dir_entry: None,
+            last_dir_entry: None,
+        };
+
+        let bytes = meta_to_bytes(&meta_old);
+
+        let meta_new = meta_from_bytes(bytes);
+
+        assert_eq!(meta_new.node, meta_old.node);
+        assert_eq!(meta_new.file_type, meta_old.file_type);
+        assert_eq!(meta_new.link_count, meta_old.link_count);
+        assert_eq!(meta_new.size, meta_old.size);
+        assert_eq!(meta_new.times, meta_old.times);
+        assert_eq!(meta_new.first_dir_entry, meta_old.first_dir_entry);
+        assert_eq!(meta_new.last_dir_entry, meta_old.last_dir_entry);
+        assert_eq!(meta_new.chunk_type, None);
+    }
+
+    #[test]
+    fn store_old_load_new_first_none() {
+        let meta_old = MetadataOld {
+            node: 23,
+            file_type: FileType::RegularFile,
+            link_count: 3,
+            size: 123,
+            times: Times::default(),
+            first_dir_entry: None,
+            last_dir_entry: Some(23),
+        };
+
+        let bytes = meta_to_bytes(&meta_old);
+
+        let meta_new = meta_from_bytes(bytes);
+
+        assert_eq!(meta_new.node, meta_old.node);
+        assert_eq!(meta_new.file_type, meta_old.file_type);
+        assert_eq!(meta_new.link_count, meta_old.link_count);
+        assert_eq!(meta_new.size, meta_old.size);
+        assert_eq!(meta_new.times, meta_old.times);
+        assert_eq!(meta_new.first_dir_entry, meta_old.first_dir_entry);
+        assert_eq!(meta_new.last_dir_entry, meta_old.last_dir_entry);
+        assert_eq!(meta_new.chunk_type, None);
+    }
 }

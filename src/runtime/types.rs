@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug)]
 pub struct FdStat {
@@ -43,10 +44,10 @@ impl ChunkSize {
     ];
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChunkType {
-    V1,
-    V2,
+    V1 = 1,
+    V2 = 2,
 }
 
 bitflags! {
