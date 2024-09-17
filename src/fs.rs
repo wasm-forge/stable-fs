@@ -1604,14 +1604,14 @@ mod tests {
 
             assert_eq!(content, expected);
 
-            write_text_at_offset(&mut fs, fd, "abc", 33, chunk_size as FileSize * 1 + 100).unwrap();
+            write_text_at_offset(&mut fs, fd, "abc", 33, chunk_size as FileSize + 100).unwrap();
 
             let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
 
             let mut expected = vec![0u8; chunk_size * 2 + 500];
 
             let pattern = b"abc".repeat(33);
-            expected[chunk_size * 1 + 100..chunk_size * 1 + 100 + 99].copy_from_slice(&pattern[..]);
+            expected[chunk_size + 100..chunk_size + 100 + 99].copy_from_slice(&pattern[..]);
 
             let expected = String::from_utf8(expected).unwrap();
 
