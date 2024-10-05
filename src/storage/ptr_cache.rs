@@ -82,7 +82,7 @@ mod tests {
         }
 
         let mut expected_insertions: Vec<_> = Vec::new();
-        for i in (CACHE_CAPACITY + 0)..(CACHE_CAPACITY + 5) {
+        for i in (CACHE_CAPACITY)..(CACHE_CAPACITY + 5) {
             expected_insertions.push((
                 (5 as Node, i as FileChunkIndex),
                 i as u64 * 4096 as FileChunkPtr,
