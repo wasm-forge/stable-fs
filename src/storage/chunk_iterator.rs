@@ -6,7 +6,8 @@ use ic_stable_structures;
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 use ic_stable_structures::Memory;
-use std::collections::HashMap;
+
+use super::ptr_cache::PtrCache;
 
 pub(crate) struct ChunkV2Iterator<'a, M: Memory> {
     node: Node,
@@ -14,9 +15,8 @@ pub(crate) struct ChunkV2Iterator<'a, M: Memory> {
     cur_index: FileChunkIndex,
 
     is_prefetched: bool,
-    prefetched_pointers: HashMap<(Node, FileChunkIndex), FileChunkPtr>,
 
-    last_index: (Node, FileChunkIndex, FileChunkPtr),
+    ptr_cache: &'a mut PtrCache,
     v2_chunk_ptr: &'a mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
 }
 
@@ -26,7 +26,7 @@ impl<'a, M: Memory> ChunkV2Iterator<'a, M> {
         offset: FileSize,
         file_size: FileSize,
         chunk_size: FileSize,
-        last_index: (Node, FileChunkIndex, FileChunkPtr),
+        ptr_cache: &'a mut PtrCache,
         v2_chunk_ptr: &'a mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
     ) -> Self {
         let cur_index = (offset / chunk_size) as FileChunkIndex;
@@ -37,12 +37,14 @@ impl<'a, M: Memory> ChunkV2Iterator<'a, M> {
             last_index_excluded,
             cur_index,
             is_prefetched: false,
-            prefetched_pointers: HashMap::new(),
-            last_index,
+            ptr_cache,
             v2_chunk_ptr,
         }
     }
 }
+
+// for short reads it is better to cache some more elements than the minimum required
+const EXTRA_CACHE: u32 = 0;
 
 impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
     type Item = ((Node, FileChunkIndex), Option<FileChunkPtr>);
@@ -54,30 +56,31 @@ impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
         }
 
         // try get cached item first
-        let last = self.last_index;
-        if last.0 == self.node && last.1 == self.cur_index {
-            let res = Some(((self.node, self.cur_index), Some(last.2)));
+        let ptr = self.ptr_cache.get((self.node, self.cur_index));
+
+        if ptr.is_some() {
             self.cur_index += 1;
-            // return cached value
-            return res;
+            return Some(((self.node, self.cur_index), ptr));
         }
 
         // cache failed, resort to reading the ranged values from the iterator
         if !self.is_prefetched {
-            let range = (self.node, self.cur_index)..(self.node, self.last_index_excluded);
+            let range = (self.node, self.cur_index)..(self.node, self.last_index_excluded + EXTRA_CACHE);
             let items = self.v2_chunk_ptr.range(range);
 
-            for (k, v) in items {
-                self.prefetched_pointers.insert(k, v);
+            let mut new_cache = Vec::with_capacity(self.last_index_excluded as usize - self.cur_index as usize);
+            for item in items {
+                new_cache.push(item);
             }
+            
+            self.ptr_cache.add(new_cache);
 
             self.is_prefetched = true;
         }
 
         let found: Option<FileChunkPtr> = self
-            .prefetched_pointers
-            .get(&(self.node, self.cur_index))
-            .copied();
+            .ptr_cache
+            .get((self.node, self.cur_index));
 
         let res = Some(((self.node, self.cur_index), found));
 
@@ -90,7 +93,7 @@ impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
 #[cfg(test)]
 mod tests {
     use crate::fs::FileSize;
-    use crate::storage::iterator::ChunkV2Iterator;
+    use crate::storage::chunk_iterator::ChunkV2Iterator;
     use crate::storage::stable::StableStorage;
     use crate::storage::types::{FileType, Metadata, Node, Times};
     use crate::storage::Storage;
@@ -134,7 +137,7 @@ mod tests {
             30,
             file_size,
             storage.chunk_size() as FileSize,
-            storage.last_index,
+            &mut storage.ptr_cache,
             &mut storage.v2_chunk_ptr,
         );
 
@@ -162,7 +165,7 @@ mod tests {
             30,
             file_size,
             storage.chunk_size() as FileSize,
-            storage.last_index,
+            &mut storage.ptr_cache,
             &mut storage.v2_chunk_ptr,
         );
 
@@ -193,7 +196,7 @@ mod tests {
             30,
             file_size,
             storage.chunk_size() as FileSize,
-            storage.last_index,
+            &mut storage.ptr_cache,
             &mut storage.v2_chunk_ptr,
         );
 
@@ -224,7 +227,7 @@ mod tests {
             30,
             file_size,
             storage.chunk_size() as FileSize,
-            storage.last_index,
+            &mut storage.ptr_cache,
             &mut storage.v2_chunk_ptr,
         );
 

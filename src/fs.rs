@@ -1618,4 +1618,26 @@ mod tests {
             assert_eq!(content, expected);
         }
     }
+
+    // test sparse files
+    #[test]
+    fn get_stat_of_a_file_that_doesnt_exist() {
+        let filename = "tmp/test.txt";
+
+        let mut fs = test_fs();
+
+        let root_fd = fs.root_fd();
+
+        let file_fd = create_file_with_size(filename, 15, &mut fs);
+
+        let dir_fd = fs.open_or_create(root_fd, "tmp", FdStat::default(),OpenFlags::CREATE,0).unwrap();
+
+        let (filetype, stat) = fs.get_stat(dir_fd).unwrap();
+
+        println!("root = {root_fd}, dir_fd = {dir_fd}, file_fd = {file_fd}, type = {:?}, stat = {:?}", filetype, stat);
+
+        let opened_fd = fs.open_or_create(root_fd, "tmp/a.txt", FdStat::default(), OpenFlags::empty(), 0);
+
+        println!("opened_fd = {:?}", opened_fd);
+    }    
 }

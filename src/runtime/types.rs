@@ -12,8 +12,8 @@ impl Default for FdStat {
     fn default() -> Self {
         Self {
             flags: FdFlags::empty(),
-            rights_base: 0,
-            rights_inheriting: 0,
+            rights_base: (1 << 27) - 1, // allow anything for now
+            rights_inheriting: (1 << 27) - 1,
         }
     }
 }

@@ -17,6 +17,7 @@ pub struct CacheJournal<M: Memory> {
     mounted_meta: Metadata,
 }
 
+// The cache stored in stable memory for some information that has to be stored between upgrades.
 impl<M: Memory> CacheJournal<M> {
     pub fn new(journal: VirtualMemory<M>) -> Result<CacheJournal<M>, Error> {
         let cache_journal = if journal.size() == 0 {

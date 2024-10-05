@@ -9,8 +9,9 @@ use crate::{
 
 mod allocator;
 pub mod dummy;
-mod iterator;
+mod chunk_iterator;
 mod journal;
+mod ptr_cache;
 pub mod stable;
 pub mod transient;
 pub mod types;

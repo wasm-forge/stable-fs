@@ -16,14 +16,10 @@ use crate::{
 };
 
 use super::{
-    allocator::ChunkPtrAllocator,
-    iterator::ChunkV2Iterator,
-    journal::CacheJournal,
-    types::{
+    allocator::ChunkPtrAllocator, chunk_iterator::ChunkV2Iterator, journal::CacheJournal, ptr_cache::PtrCache, types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
         Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2,
-    },
-    Storage,
+    }, Storage
 };
 
 const ROOT_NODE: Node = 0;
@@ -94,8 +90,8 @@ pub struct StableStorage<M: Memory> {
     // chunk type when creating new files
     chunk_type: ChunkType,
 
-    // primitive cache
-    pub(crate) last_index: (Node, FileChunkIndex, FileChunkPtr),
+    // 
+    pub(crate) ptr_cache: PtrCache,
 
     // only use it with normal files (not mounted)
     last_metadata: (Node, Metadata),
@@ -205,7 +201,7 @@ impl<M: Memory> StableStorage<M> {
             active_mounts: HashMap::new(),
             // default chunk type is V2
             chunk_type: ChunkType::V2,
-            last_index: (u64::MAX, 0, 0),
+            ptr_cache: PtrCache::new(),
             last_metadata: (u64::MAX, Metadata::default()),
         };
 
@@ -277,11 +273,23 @@ impl<M: Memory> StableStorage<M> {
 
         assert!(len <= self.v2_allocator.chunk_size());
 
-        let chunk_ptr = if self.last_index.0 == node && self.last_index.1 == index {
-            self.last_index.2 as FileSize
-        } else if let Some(ptr) = self.v2_chunk_ptr.get(&(node, index)) {
-            ptr
-        } else {
+        let mut chunk_ptr = self.ptr_cache.get((node, index));
+
+        if chunk_ptr.is_none() {
+
+            // prefill cache with some values, if they exist among the file chunks already
+            let mut new_cache: Vec<((Node, FileChunkIndex), FileChunkPtr)> = Vec::with_capacity(20);
+            for pair in self.v2_chunk_ptr.range((node, index)..(node, index + 20)) {
+                new_cache.push(pair);
+            }
+            self.ptr_cache.add(new_cache);
+
+            chunk_ptr = self.ptr_cache.get((node, index));
+        }
+
+        if chunk_ptr.is_none() {
+            // chunk is still not found, means it does not exist, we will have to create it
+
             let ptr = self.v2_allocator.allocate();
             // init with 0
             let remainder = self.chunk_size() as FileSize - (offset as FileSize + len as FileSize);
@@ -294,11 +302,13 @@ impl<M: Memory> StableStorage<M> {
             );
 
             self.v2_chunk_ptr.insert((node, index), ptr);
+            self.ptr_cache.add(vec![((node, index), ptr)]);
 
-            ptr
-        };
+            chunk_ptr = Some(ptr);
+        }
 
-        self.last_index = (node, index, chunk_ptr);
+        // the pointer has to be defined by now
+        let chunk_ptr = chunk_ptr.unwrap();
 
         grow_memory(&self.v2_chunks, chunk_ptr + offset + buf.len() as FileSize);
 
@@ -403,11 +413,11 @@ impl<M: Memory> StableStorage<M> {
             offset,
             file_size,
             self.chunk_size() as FileSize,
-            self.last_index,
+            &mut self.ptr_cache,
             &mut self.v2_chunk_ptr,
         );
 
-        for ((nd, idx), chunk_ptr) in read_iter {
+        for ((nd, _idx), chunk_ptr) in read_iter {
             assert!(nd == node);
 
             // finished reading, buffer full
@@ -425,7 +435,7 @@ impl<M: Memory> StableStorage<M> {
 
             if let Some(cptr) = chunk_ptr {
                 self.v2_chunks.read(cptr + chunk_offset, read_buf);
-                self.last_index = (node, idx, cptr);
+                
             } else {
                 // fill read buffer with 0
                 read_buf.iter_mut().for_each(|m| *m = 0)
@@ -447,6 +457,27 @@ impl<M: Memory> StableStorage<M> {
             self.cache_journal.read_mounted_meta(&mut meta);
             self.mounted_meta.insert(node, meta);
         }
+    }
+    
+    fn use_v2(&mut self, metadata: &Metadata, node: u64) -> bool {
+        // decide if we use v2 chunks for reading/writing
+        let use_v2 = match metadata.chunk_type {
+            Some(ChunkType::V2) => true,
+            Some(ChunkType::V1) => false,
+    
+            // try to figure out, which chunk type to use
+            None => {
+                if metadata.size > 0 {
+                    // try to find any v2 node, othersize use v1
+                    let ptr = self.v2_chunk_ptr.range((node, 0)..(node + 1, 0)).next();
+    
+                    ptr.is_some()
+                } else {
+                    self.chunk_type() == ChunkType::V2
+                }
+            }
+        };
+        use_v2
     }
 }
 
@@ -546,17 +577,8 @@ impl<M: Memory> Storage for StableStorage<M> {
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
-            let mut use_v2 = true;
 
-            if metadata.size > 0 {
-                // try to find the first v2 node, if not found use v1
-
-                // if cache contains the requested value, we know it is v2 already
-                if self.last_index.0 != node && self.v2_chunk_ptr.get(&(node, 0)).is_none() {
-                    // TODO: adapt to sparse files
-                    use_v2 = false;
-                }
-            }
+            let use_v2 = self.use_v2(&metadata, node);
 
             if use_v2 {
                 self.read_chunks_v2(node, offset, file_size, buf)?
@@ -580,23 +602,7 @@ impl<M: Memory> Storage for StableStorage<M> {
             let end = offset + buf.len() as FileSize;
             let mut written_size = 0;
 
-            // decide if we use v2 chunks for writing
-            let use_v2 = match metadata.chunk_type {
-                Some(ChunkType::V2) => true,
-                Some(ChunkType::V1) => false,
-
-                // try to figure out, which chunk type to use
-                None => {
-                    if metadata.size > 0 {
-                        // try to find any v2 node, othersize use v1
-                        let ptr = self.v2_chunk_ptr.range((node, 0)..(node + 1, 0)).next();
-
-                        ptr.is_some()
-                    } else {
-                        self.chunk_type() == ChunkType::V2
-                    }
-                }
-            };
+            let use_v2 = self.use_v2(&metadata, node);
 
             if use_v2 {
                 let chunk_infos = get_chunk_infos(offset, end, self.chunk_size());
@@ -673,7 +679,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         }
 
         // clear cache
-        self.last_index = (u64::MAX, 0, 0);
+        self.ptr_cache.clear();
 
         // remove metadata
         self.mounted_meta.remove(&node);
