@@ -5,6 +5,7 @@
 
 - Add changelog.
 - Additional caching for file read and write.
+- Fix performance regression of reading small file segments.
 
 ## [v0.6.2]
 
