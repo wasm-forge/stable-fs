@@ -16,10 +16,15 @@ use crate::{
 };
 
 use super::{
-    allocator::ChunkPtrAllocator, chunk_iterator::ChunkV2Iterator, journal::CacheJournal, ptr_cache::PtrCache, types::{
+    allocator::ChunkPtrAllocator,
+    chunk_iterator::ChunkV2Iterator,
+    journal::CacheJournal,
+    ptr_cache::PtrCache,
+    types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
         Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2,
-    }, Storage
+    },
+    Storage,
 };
 
 const ROOT_NODE: Node = 0;
@@ -90,7 +95,7 @@ pub struct StableStorage<M: Memory> {
     // chunk type when creating new files
     chunk_type: ChunkType,
 
-    // 
+    //
     pub(crate) ptr_cache: PtrCache,
 
     // only use it with normal files (not mounted)
@@ -276,7 +281,6 @@ impl<M: Memory> StableStorage<M> {
         let mut chunk_ptr = self.ptr_cache.get((node, index));
 
         if chunk_ptr.is_none() {
-
             // prefill cache with some values, if they exist among the file chunks already
             let mut new_cache: Vec<((Node, FileChunkIndex), FileChunkPtr)> = Vec::with_capacity(20);
             for pair in self.v2_chunk_ptr.range((node, index)..(node, index + 20)) {
@@ -435,7 +439,6 @@ impl<M: Memory> StableStorage<M> {
 
             if let Some(cptr) = chunk_ptr {
                 self.v2_chunks.read(cptr + chunk_offset, read_buf);
-                
             } else {
                 // fill read buffer with 0
                 read_buf.iter_mut().for_each(|m| *m = 0)
@@ -458,19 +461,19 @@ impl<M: Memory> StableStorage<M> {
             self.mounted_meta.insert(node, meta);
         }
     }
-    
+
     fn use_v2(&mut self, metadata: &Metadata, node: u64) -> bool {
         // decide if we use v2 chunks for reading/writing
         let use_v2 = match metadata.chunk_type {
             Some(ChunkType::V2) => true,
             Some(ChunkType::V1) => false,
-    
+
             // try to figure out, which chunk type to use
             None => {
                 if metadata.size > 0 {
                     // try to find any v2 node, othersize use v1
                     let ptr = self.v2_chunk_ptr.range((node, 0)..(node + 1, 0)).next();
-    
+
                     ptr.is_some()
                 } else {
                     self.chunk_type() == ChunkType::V2
@@ -577,7 +580,6 @@ impl<M: Memory> Storage for StableStorage<M> {
             memory.read(offset, &mut buf[..to_read as usize]);
             to_read
         } else {
-
             let use_v2 = self.use_v2(&metadata, node);
 
             if use_v2 {

@@ -8,8 +8,8 @@ use crate::{
 };
 
 mod allocator;
-pub mod dummy;
 mod chunk_iterator;
+pub mod dummy;
 mod journal;
 mod ptr_cache;
 pub mod stable;

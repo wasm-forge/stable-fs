@@ -65,22 +65,22 @@ impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
 
         // cache failed, resort to reading the ranged values from the iterator
         if !self.is_prefetched {
-            let range = (self.node, self.cur_index)..(self.node, self.last_index_excluded + EXTRA_CACHE);
+            let range =
+                (self.node, self.cur_index)..(self.node, self.last_index_excluded + EXTRA_CACHE);
             let items = self.v2_chunk_ptr.range(range);
 
-            let mut new_cache = Vec::with_capacity(self.last_index_excluded as usize - self.cur_index as usize);
+            let mut new_cache =
+                Vec::with_capacity(self.last_index_excluded as usize - self.cur_index as usize);
             for item in items {
                 new_cache.push(item);
             }
-            
+
             self.ptr_cache.add(new_cache);
 
             self.is_prefetched = true;
         }
 
-        let found: Option<FileChunkPtr> = self
-            .ptr_cache
-            .get((self.node, self.cur_index));
+        let found: Option<FileChunkPtr> = self.ptr_cache.get((self.node, self.cur_index));
 
         let res = Some(((self.node, self.cur_index), found));
 

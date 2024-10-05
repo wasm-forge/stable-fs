@@ -1630,14 +1630,25 @@ mod tests {
 
         let file_fd = create_file_with_size(filename, 15, &mut fs);
 
-        let dir_fd = fs.open_or_create(root_fd, "tmp", FdStat::default(),OpenFlags::CREATE,0).unwrap();
+        let dir_fd = fs
+            .open_or_create(root_fd, "tmp", FdStat::default(), OpenFlags::CREATE, 0)
+            .unwrap();
 
         let (filetype, stat) = fs.get_stat(dir_fd).unwrap();
 
-        println!("root = {root_fd}, dir_fd = {dir_fd}, file_fd = {file_fd}, type = {:?}, stat = {:?}", filetype, stat);
+        println!(
+            "root = {root_fd}, dir_fd = {dir_fd}, file_fd = {file_fd}, type = {:?}, stat = {:?}",
+            filetype, stat
+        );
 
-        let opened_fd = fs.open_or_create(root_fd, "tmp/a.txt", FdStat::default(), OpenFlags::empty(), 0);
+        let opened_fd = fs.open_or_create(
+            root_fd,
+            "tmp/a.txt",
+            FdStat::default(),
+            OpenFlags::empty(),
+            0,
+        );
 
         println!("opened_fd = {:?}", opened_fd);
-    }    
+    }
 }
