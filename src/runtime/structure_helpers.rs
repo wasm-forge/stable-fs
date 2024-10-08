@@ -3,6 +3,7 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
+    filename_cache::FilenameCache,
     storage::{
         types::{
             ChunkHandle, DirEntry, DirEntryIndex, FileChunkIndex, FileName, FileSize, FileType,
@@ -12,7 +13,7 @@ use crate::{
     },
 };
 use std::collections::BTreeMap;
-
+#[derive(Debug)]
 struct EntryFindResult {
     node: Node,
     parent_dir: Node,
@@ -62,10 +63,32 @@ fn find_node_with_index(
 }
 
 // Find directory entry node by its name, paths containing separator '/' are allowed and processed.
-pub fn find_node(parent_dir_node: Node, path: &str, storage: &dyn Storage) -> Result<Node, Error> {
-    let find_result = find_node_with_index(parent_dir_node, path, storage)?;
+pub fn find_node(
+    parent_dir_node: Node,
+    path: &str,
+    names_cache: &mut FilenameCache,
+    storage: &dyn Storage,
+) -> Result<Node, Error> {
+    let filename = path.to_string();
+    let key = (parent_dir_node, filename);
 
-    Ok(find_result.node)
+    if let Some(node) = names_cache.get(&key) {
+        return Ok(node);
+    }
+
+    let find_result = find_node_with_index(parent_dir_node, path, storage);
+
+    match find_result {
+        Ok(result) => {
+
+            names_cache.add(key, result.node);
+
+            return Ok(result.node);
+        },
+        Err(e) => {
+            return Err(e);
+        }
+    }
 }
 
 // Create a hard link to an existing node
@@ -75,10 +98,11 @@ pub fn create_hard_link(
     src_dir_node: Node,
     src_path: &str,
     is_renaming: bool,
+    names_cache: &mut FilenameCache,
     storage: &mut dyn Storage,
 ) -> Result<(), Error> {
     // Check if the node exists already.
-    let found = find_node(parent_dir_node, new_path, storage);
+    let found = find_node(parent_dir_node, new_path, names_cache, storage);
     match found {
         Err(Error::NotFound) => {}
         Ok(_) => return Err(Error::FileAlreadyExists),
@@ -86,7 +110,7 @@ pub fn create_hard_link(
     }
 
     // Get the node and metadata, the node must exist in the source folder.
-    let node: Node = find_node(src_dir_node, src_path, storage)?;
+    let node: Node = find_node(src_dir_node, src_path, names_cache, storage)?;
     let mut metadata = storage.get_metadata(node)?;
     let ctime = metadata.times.created;
 
@@ -320,8 +344,13 @@ pub fn rm_dir_entry(
     path: &str,
     expect_dir: Option<bool>,
     node_refcount: &BTreeMap<Node, usize>,
+    names_cache: &mut FilenameCache,
     storage: &mut dyn Storage,
 ) -> Result<(Node, Metadata), Error> {
+    // clear cache
+    // todo: clear concrete node, not the whole cache
+    names_cache.clear();
+
     let find_result = find_node_with_index(parent_dir_node, path, storage)?;
 
     let removed_dir_entry_node = find_result.node;
@@ -467,6 +496,7 @@ mod tests {
 
     use crate::{
         error::Error,
+        filename_cache::FilenameCache,
         runtime::structure_helpers::{create_path, find_node, get_chunk_infos},
         storage::{
             stable::StableStorage,
@@ -529,6 +559,7 @@ mod tests {
     fn create_path_with_subfolders() {
         let mut storage_box = Box::new(StableStorage::new(DefaultMemoryImpl::default()));
         let storage = storage_box.as_mut();
+        let mut names_cache = FilenameCache::new();
 
         let root_node = storage.root_node();
 
@@ -557,7 +588,7 @@ mod tests {
         )
         .unwrap();
 
-        let test1 = find_node(root_node, "test1", storage).unwrap();
+        let test1 = find_node(root_node, "test1", &mut names_cache, storage).unwrap();
 
         let (test7, _) = create_path(
             test1,
@@ -568,26 +599,38 @@ mod tests {
         )
         .unwrap();
 
-        let test2_1 = find_node(root_node, "test1/test2", storage).unwrap();
-        let test2_2 = find_node(test1, "test2", storage).unwrap();
+        let test2_1 = find_node(root_node, "test1/test2", &mut names_cache, storage).unwrap();
+        let test2_2 = find_node(test1, "test2", &mut names_cache, storage).unwrap();
 
         assert_eq!(test2_1, test2_2);
 
         assert_eq!(
             test3,
-            find_node(root_node, "test1/test2/test3", storage).unwrap()
+            find_node(root_node, "test1/test2/test3", &mut names_cache, storage).unwrap()
         );
         assert_eq!(
             test4,
-            find_node(root_node, "test1/test2/test4", storage).unwrap()
+            find_node(root_node, "test1/test2/test4", &mut names_cache, storage).unwrap()
         );
         assert_eq!(
             test6,
-            find_node(root_node, "test1/test2/test5/test6", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test5/test6",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
         assert_eq!(
             test7,
-            find_node(root_node, "test1/test2/test4/test7", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test4/test7",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
     }
 
@@ -595,6 +638,7 @@ mod tests {
     fn create_file_with_subfolders() {
         let mut storage_box = Box::new(StableStorage::new(DefaultMemoryImpl::default()));
         let storage = storage_box.as_mut();
+        let mut names_cache = FilenameCache::new();
 
         let root_node = storage.root_node();
 
@@ -623,7 +667,7 @@ mod tests {
         )
         .unwrap();
 
-        let test1 = find_node(root_node, "test1", storage).unwrap();
+        let test1 = find_node(root_node, "test1", &mut names_cache, storage).unwrap();
 
         let (test7, _) = create_path(
             test1,
@@ -634,26 +678,44 @@ mod tests {
         )
         .unwrap();
 
-        let test2_1 = find_node(root_node, "test1/test2", storage).unwrap();
-        let test2_2 = find_node(test1, "test2", storage).unwrap();
+        let test2_1 = find_node(root_node, "test1/test2", &mut names_cache, storage).unwrap();
+        let test2_2 = find_node(test1, "test2", &mut names_cache, storage).unwrap();
 
         assert_eq!(test2_1, test2_2);
 
         assert_eq!(
             test3,
-            find_node(root_node, "test1/test2/test3.txt", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test3.txt",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
         assert_eq!(
             test4,
-            find_node(root_node, "test1/test2/test4", storage).unwrap()
+            find_node(root_node, "test1/test2/test4", &mut names_cache, storage).unwrap()
         );
         assert_eq!(
             test6,
-            find_node(root_node, "test1/test2/test5/test6.txt", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test5/test6.txt",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
         assert_eq!(
             test7,
-            find_node(root_node, "test1/test2/test4/test7.txt", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test4/test7.txt",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
     }
 
@@ -731,6 +793,7 @@ mod tests {
     fn delete_file_from_subfolders() {
         let mut storage_box = Box::new(StableStorage::new(DefaultMemoryImpl::default()));
         let storage = storage_box.as_mut();
+        let mut names_cache = FilenameCache::new();
 
         let root_node = storage.root_node();
 
@@ -759,7 +822,7 @@ mod tests {
         )
         .unwrap();
 
-        let test1 = find_node(root_node, "test1", storage).unwrap();
+        let test1 = find_node(root_node, "test1", &mut names_cache, storage).unwrap();
 
         let (test7, _) = create_path(
             test1,
@@ -770,26 +833,44 @@ mod tests {
         )
         .unwrap();
 
-        let test2_1 = find_node(root_node, "test1/test2", storage).unwrap();
-        let test2_2 = find_node(test1, "test2", storage).unwrap();
+        let test2_1 = find_node(root_node, "test1/test2", &mut names_cache, storage).unwrap();
+        let test2_2 = find_node(test1, "test2", &mut names_cache, storage).unwrap();
 
         assert_eq!(test2_1, test2_2);
 
         assert_eq!(
             test3,
-            find_node(root_node, "test1/test2/test3.txt", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test3.txt",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
         assert_eq!(
             test4,
-            find_node(root_node, "test1/test2/test4", storage).unwrap()
+            find_node(root_node, "test1/test2/test4", &mut names_cache, storage).unwrap()
         );
         assert_eq!(
             test6,
-            find_node(root_node, "test1/test2/test5/test6.txt", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test5/test6.txt",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
         assert_eq!(
             test7,
-            find_node(root_node, "test1/test2/test4/test7.txt", storage).unwrap()
+            find_node(
+                root_node,
+                "test1/test2/test4/test7.txt",
+                &mut names_cache,
+                storage
+            )
+            .unwrap()
         );
     }
 }

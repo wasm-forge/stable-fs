@@ -1,5 +1,10 @@
 # Changelog
 
+## [unreleased]
+
+- Upgrade Pocket-ic client version to V5.0
+- Filename cache added (faster repeated opening of the same file)
+
 
 ## [v0.6.3]
 

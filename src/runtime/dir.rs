@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     error::Error,
+    filename_cache::FilenameCache,
     runtime::file::File,
     storage::{
         types::{DirEntry, DirEntryIndex, FileType, Node},
@@ -39,10 +40,11 @@ impl Dir {
         &self,
         path: &str,
         stat: FdStat,
+        names_cache: &mut FilenameCache,
         storage: &mut dyn Storage,
         ctime: u64,
     ) -> Result<Self, Error> {
-        let found = find_node(self.node, path, storage);
+        let found = find_node(self.node, path, names_cache, storage);
         match found {
             Err(Error::NotFound) => {}
             Ok(_) => return Err(Error::FileAlreadyExists),
@@ -52,6 +54,8 @@ impl Dir {
         let (node, _leaf_name) =
             create_path(self.node, path, Some(FileType::Directory), ctime, storage)?;
 
+        names_cache.add((self.node, path.to_string()), node);
+
         Self::new(node, stat, storage)
     }
 
@@ -60,9 +64,17 @@ impl Dir {
         &self,
         path: &str,
         node_refcount: &BTreeMap<Node, usize>,
+        names_cache: &mut FilenameCache,
         storage: &mut dyn Storage,
     ) -> Result<(), Error> {
-        let (node, metadata) = rm_dir_entry(self.node, path, Some(true), node_refcount, storage)?;
+        let (node, metadata) = rm_dir_entry(
+            self.node,
+            path,
+            Some(true),
+            node_refcount,
+            names_cache,
+            storage,
+        )?;
 
         if metadata.link_count == 0 {
             storage.rm_file(node)?;
@@ -76,10 +88,11 @@ impl Dir {
         &self,
         path: &str,
         stat: FdStat,
+        names_cache: &mut FilenameCache,
         storage: &mut dyn Storage,
         ctime: u64,
     ) -> Result<File, Error> {
-        let found = find_node(self.node, path, storage);
+        let found = find_node(self.node, path, names_cache, storage);
         match found {
             Err(Error::NotFound) => {}
             Ok(_) => return Err(Error::FileAlreadyExists),
@@ -89,6 +102,8 @@ impl Dir {
         let (node, _leaf_name) =
             create_path(self.node, path, Some(FileType::RegularFile), ctime, storage)?;
 
+        names_cache.add((self.node, path.to_string()), node);
+
         File::new(node, stat, storage)
     }
 
@@ -97,9 +112,17 @@ impl Dir {
         &self,
         path: &str,
         node_refcount: &BTreeMap<Node, usize>,
+        names_cache: &mut FilenameCache,
         storage: &mut dyn Storage,
     ) -> Result<(), Error> {
-        let (node, metadata) = rm_dir_entry(self.node, path, Some(false), node_refcount, storage)?;
+        let (node, metadata) = rm_dir_entry(
+            self.node,
+            path,
+            Some(false),
+            node_refcount,
+            names_cache,
+            storage,
+        )?;
 
         if metadata.link_count == 0 {
             storage.rm_file(node)?;

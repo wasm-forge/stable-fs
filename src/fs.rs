@@ -2,6 +2,7 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
+    filename_cache::FilenameCache,
     runtime::{
         dir::Dir,
         fd::{FdEntry, FdTable},
@@ -25,6 +26,7 @@ pub use crate::storage::types::FileSize;
 pub struct FileSystem {
     root_fd: Fd,
     fd_table: FdTable,
+    names_cache: FilenameCache,
     pub storage: Box<dyn Storage>,
 }
 
@@ -37,6 +39,7 @@ impl FileSystem {
             return Ok(Self {
                 root_fd: 0,
                 fd_table,
+                names_cache: FilenameCache::new(),
                 storage,
             });
         }
@@ -44,10 +47,12 @@ impl FileSystem {
         let root_node = storage.root_node();
         let root_entry = Dir::new(root_node, FdStat::default(), &*storage)?;
         let root_fd = fd_table.open(FdEntry::Dir(root_entry));
+        let names_cache = FilenameCache::new();
 
         Ok(Self {
             root_fd,
             fd_table,
+            names_cache,
             storage,
         })
     }
@@ -372,9 +377,9 @@ impl FileSystem {
     }
 
     // Get metadata of a file with name `path` in a given folder.
-    pub fn open_metadata(&self, parent: Fd, path: &str) -> Result<Metadata, Error> {
+    pub fn open_metadata(&mut self, parent: Fd, path: &str) -> Result<Metadata, Error> {
         let dir = self.get_dir(parent)?;
-        let node = find_node(dir.node, path, self.storage.as_ref())?;
+        let node = find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref())?;
         self.storage.get_metadata(node)
     }
 
@@ -389,15 +394,17 @@ impl FileSystem {
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
 
-        match find_node(dir.node, path, self.storage.as_ref()) {
+        match find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref()) {
             Ok(node) => self.open(node, stat, flags),
             Err(Error::NotFound) => {
                 if !flags.contains(OpenFlags::CREATE) {
                     return Err(Error::NotFound);
                 }
+                
                 if flags.contains(OpenFlags::DIRECTORY) {
                     return Err(Error::InvalidFileType);
                 }
+
                 self.create_file(parent, path, stat, ctime)
             }
             Err(err) => Err(err),
@@ -441,7 +448,13 @@ impl FileSystem {
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
 
-        let child = dir.create_file(path, stat, self.storage.as_mut(), ctime)?;
+        let child = dir.create_file(
+            path,
+            stat,
+            &mut self.names_cache,
+            self.storage.as_mut(),
+            ctime,
+        )?;
 
         let child_fd = self.fd_table.open(FdEntry::File(child));
         self.put_dir(parent, dir);
@@ -451,7 +464,12 @@ impl FileSystem {
     // Delete a file by name `path` in the given file folder.
     pub fn remove_file(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
         let dir = self.get_dir(parent)?;
-        dir.remove_file(path, self.fd_table.node_refcount(), self.storage.as_mut())
+        dir.remove_file(
+            path,
+            self.fd_table.node_refcount(),
+            &mut self.names_cache,
+            self.storage.as_mut(),
+        )
     }
 
     // Create a new directory named `path` in the given `parent` folder.
@@ -463,7 +481,13 @@ impl FileSystem {
         ctime: u64,
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
-        let child = dir.create_dir(path, stat, self.storage.as_mut(), ctime)?;
+        let child = dir.create_dir(
+            path,
+            stat,
+            &mut self.names_cache,
+            self.storage.as_mut(),
+            ctime,
+        )?;
         let child_fd = self.fd_table.open(FdEntry::Dir(child));
         self.put_dir(parent, dir);
         Ok(child_fd)
@@ -472,7 +496,12 @@ impl FileSystem {
     // Delete a directory by name `path` in the given file folder.
     pub fn remove_dir(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
         let dir = self.get_dir(parent)?;
-        dir.remove_dir(path, self.fd_table.node_refcount(), self.storage.as_mut())
+        dir.remove_dir(
+            path,
+            self.fd_table.node_refcount(),
+            &mut self.names_cache,
+            self.storage.as_mut(),
+        )
     }
 
     // Create a hard link to an existing file.
@@ -492,10 +521,16 @@ impl FileSystem {
             src_dir.node,
             old_path,
             false,
+            &mut self.names_cache,
             self.storage.as_mut(),
         )?;
 
-        let node = find_node(dst_dir.node, new_path, self.storage.as_ref())?;
+        let node = find_node(
+            dst_dir.node,
+            new_path,
+            &mut self.names_cache,
+            self.storage.as_ref(),
+        )?;
 
         self.open(node, FdStat::default(), OpenFlags::empty())
     }
@@ -518,6 +553,7 @@ impl FileSystem {
             src_dir.node,
             old_path,
             true,
+            &mut self.names_cache,
             self.storage.as_mut(),
         )?;
 
@@ -527,6 +563,7 @@ impl FileSystem {
             old_path,
             None,
             self.fd_table.node_refcount(),
+            &mut self.names_cache,
             self.storage.as_mut(),
         )?;
 
@@ -1173,7 +1210,13 @@ mod tests {
         let file_fd = create_test_file(&mut fs, root_fd as Fd, &file_name1);
 
         let root_node = fs.storage.as_ref().root_node();
-        let node1 = find_node(root_node, &file_name1, fs.storage.as_ref()).unwrap();
+        let node1 = find_node(
+            root_node,
+            &file_name1,
+            &mut fs.names_cache,
+            fs.storage.as_ref(),
+        )
+        .unwrap();
 
         // test seek and tell
         let position = fs.tell(file_fd).unwrap();
@@ -1199,7 +1242,13 @@ mod tests {
         fs.create_hard_link(dir, &file_name1, dir, &file_name2)
             .unwrap();
 
-        let node2 = find_node(root_node, &file_name2, fs.storage.as_ref()).unwrap();
+        let node2 = find_node(
+            root_node,
+            &file_name2,
+            &mut fs.names_cache,
+            fs.storage.as_ref(),
+        )
+        .unwrap();
 
         assert_eq!(node1, node2);
 
@@ -1616,6 +1665,50 @@ mod tests {
             let expected = String::from_utf8(expected).unwrap();
 
             assert_eq!(content, expected);
+        }
+    }
+
+
+    #[test]
+    fn filename_cached_on_open_or_create() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups("") {
+
+            let root_fd = fs.root_fd();
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+
+            fs.close(fd).unwrap();
+
+            assert_eq!(fs.names_cache.get_nodes().len(), 1);
+
+        }
+    }
+
+    #[test]
+    fn deleted_file_cannot_be_found() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups("") {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+            let root_fd = fs.root_fd();
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.close(fd).unwrap();
+
+            fs.remove_file(root_fd, filename).unwrap();
+            
+            assert_eq!(fs.names_cache.get_nodes().len(), 0);
+
+            // check we don't increase cache when the file is opened but not created
+            let fd2 = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
+
+            assert_eq!(fd2, Err(Error::NotFound));
+            assert_eq!(fs.names_cache.get_nodes().len(), 0);
         }
     }
 

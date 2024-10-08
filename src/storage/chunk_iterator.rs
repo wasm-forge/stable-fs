@@ -43,8 +43,8 @@ impl<'a, M: Memory> ChunkV2Iterator<'a, M> {
     }
 }
 
-// for short reads it is better to cache some more elements than the minimum required
-const EXTRA_CACHE: u32 = 0;
+// for short reads it is better to cache some more chunks than the minimum required
+const EXTRA_CACHE: u32 = 20;
 
 impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
     type Item = ((Node, FileChunkIndex), Option<FileChunkPtr>);
