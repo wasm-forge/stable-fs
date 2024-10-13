@@ -18,11 +18,10 @@ impl FilenameCache {
 
     // add new cache pointer
     pub fn add(&mut self, key: (Node, String), value: Node) {
-        
         if self.nodes.len() + 1 > CACHE_CAPACITY {
             self.clear();
         }
-        
+
         self.nodes.insert(key, value);
     }
 

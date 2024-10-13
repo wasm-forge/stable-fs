@@ -80,13 +80,12 @@ pub fn find_node(
 
     match find_result {
         Ok(result) => {
-
             names_cache.add(key, result.node);
 
-            return Ok(result.node);
-        },
+            Ok(result.node)
+        }
         Err(e) => {
-            return Err(e);
+            Err(e)
         }
     }
 }
@@ -473,8 +472,10 @@ pub fn get_chunk_infos(start: FileSize, end: FileSize, chunk_size: usize) -> Vec
     let mut result = vec![];
     let start_index = offset_to_file_chunk_index(start, chunk_size);
     let end_index = offset_to_file_chunk_index(end, chunk_size);
+
     for index in start_index..=end_index {
         let start_of_chunk = file_chunk_index_to_offset(index, chunk_size);
+
         assert!(start_of_chunk <= end);
         let start_in_chunk = start_of_chunk.max(start) - start_of_chunk;
         let end_in_chunk = (start_of_chunk + chunk_size as FileSize).min(end) - start_of_chunk;

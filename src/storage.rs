@@ -12,6 +12,7 @@ mod chunk_iterator;
 pub mod dummy;
 mod journal;
 mod ptr_cache;
+mod metadata_cache;
 pub mod stable;
 pub mod transient;
 pub mod types;
