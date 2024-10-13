@@ -84,9 +84,7 @@ pub fn find_node(
 
             Ok(result.node)
         }
-        Err(e) => {
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }
 

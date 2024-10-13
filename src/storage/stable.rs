@@ -18,10 +18,16 @@ use crate::{
 };
 
 use super::{
-    allocator::ChunkPtrAllocator, chunk_iterator::ChunkV2Iterator, journal::CacheJournal, metadata_cache::MetadataCache, ptr_cache::PtrCache, types::{
+    allocator::ChunkPtrAllocator,
+    chunk_iterator::ChunkV2Iterator,
+    journal::CacheJournal,
+    metadata_cache::MetadataCache,
+    ptr_cache::PtrCache,
+    types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
         Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2,
-    }, Storage
+    },
+    Storage,
 };
 
 const ROOT_NODE: Node = 0;
@@ -538,10 +544,8 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
-
         if self.is_mounted(node) {
             if self.cache_journal.read_mounted_meta_node() == Some(node) {
-
                 let mut meta = Metadata::default();
                 self.cache_journal.read_mounted_meta(&mut meta);
 
@@ -550,7 +554,6 @@ impl<M: Memory> Storage for StableStorage<M> {
 
             self.mounted_meta.get(&node).ok_or(Error::NotFound)
         } else {
-
             let meta = self.meta_cache.get(node);
 
             if let Some(meta) = meta {
@@ -558,7 +561,7 @@ impl<M: Memory> Storage for StableStorage<M> {
             }
 
             let meta = self.metadata.get(&node).ok_or(Error::NotFound);
-            
+
             if let Ok(ref meta) = meta {
                 self.meta_cache.update(node, meta);
             }
