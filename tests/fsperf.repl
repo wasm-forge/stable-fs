@@ -1,0 +1,84 @@
+#!ic-repl
+
+function install(wasm, args, cycle) {
+  let id = call ic.provisional_create_canister_with_cycles(record { settings = null; amount = cycle });
+  let S = id.canister_id;
+  let _ = call ic.install_code(
+    record {
+      arg = args;
+      wasm_module = gzip(wasm);
+      mode = variant { install };
+      canister_id = S;
+    }
+  );
+  S
+};
+
+function upgrade(id, wasm, args) {
+  call ic.install_code(
+    record {
+      arg = args;
+      wasm_module = gzip(wasm);
+      mode = variant { upgrade };
+      canister_id = id;
+    }
+  );
+};
+
+function uninstall(id) {
+  call ic.stop_canister(record { canister_id = id });
+  call ic.delete_canister(record { canister_id = id });
+};
+
+function get_memory(cid) {
+  let _ = call ic.canister_status(record { canister_id = cid });
+  _.memory_size
+};
+
+let file = "README.md";
+
+let rs_config = record { start_page = 1; page_limit = 1128};
+
+let wasm_name = "fs_benchmarks/target/wasm32-unknown-unknown/release/fs_benchmarks_backend_small.wasm";
+
+function perf_write_10mb() {
+  let cid = install(wasm_profiling(wasm_name, rs_config), encode (), null);
+
+  call cid.__toggle_tracing();
+  call cid.append_buffer( "abc1234567", (1_00_00: nat64) );
+  call cid.store_buffer( "test.txt");
+  call cid.__toggle_tracing();
+
+  call cid.store_buffer( "test.txt");
+
+  flamegraph(cid, "perf_write_10mb", "svg/perf_write_10mb.svg");
+  uninstall(cid)
+};
+
+function perf_write_10mb_segments() {
+  let cid = install(wasm_profiling(wasm_name, rs_config), encode (), null);
+
+  call cid.__toggle_tracing();
+  call cid.append_buffer( "abc1234567", (1_00_00: nat64) );
+  call cid.store_buffer( "test.txt");
+//  call cid.store_buffer( "test2.txt");
+  call cid.__toggle_tracing();
+
+  call cid.store_buffer_in_1000b_segments( "test.txt");
+
+  flamegraph(cid, "perf_write_10mb_segments", "svg/perf_write_10mb_segments.svg");
+  uninstall(cid)
+};
+
+
+/// files
+perf_write_10mb();
+perf_write_10mb_segments();
+
+
+//call cid.__toggle_tracing();
+//call cid.list_files("files");
+//call cid.__toggle_tracing();
+
+
+

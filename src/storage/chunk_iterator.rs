@@ -7,15 +7,13 @@ use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 use ic_stable_structures::Memory;
 
+use super::ptr_cache::CachedChunkPtr;
 use super::ptr_cache::PtrCache;
 
 pub(crate) struct ChunkV2Iterator<'a, M: Memory> {
     node: Node,
     last_index_excluded: FileChunkIndex,
     cur_index: FileChunkIndex,
-
-    is_prefetched: bool,
-
     ptr_cache: &'a mut PtrCache,
     v2_chunk_ptr: &'a mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
 }
@@ -24,30 +22,26 @@ impl<'a, M: Memory> ChunkV2Iterator<'a, M> {
     pub fn new(
         node: Node,
         offset: FileSize,
-        file_size: FileSize,
+        last_address: FileSize,
         chunk_size: FileSize,
         ptr_cache: &'a mut PtrCache,
         v2_chunk_ptr: &'a mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
     ) -> Self {
         let cur_index = (offset / chunk_size) as FileChunkIndex;
-        let last_index_excluded = (file_size / chunk_size + 1) as FileChunkIndex;
+        let last_index_excluded = (last_address / chunk_size + 1) as FileChunkIndex;
 
         Self {
             node,
             last_index_excluded,
             cur_index,
-            is_prefetched: false,
             ptr_cache,
             v2_chunk_ptr,
         }
     }
 }
 
-// for short reads it is better to cache some more chunks than the minimum required
-const EXTRA_CACHE: u32 = 20;
-
 impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
-    type Item = ((Node, FileChunkIndex), Option<FileChunkPtr>);
+    type Item = ((Node, FileChunkIndex), CachedChunkPtr);
 
     fn next(&mut self) -> Option<Self::Item> {
         // we are at the end of the list, return None
@@ -58,29 +52,22 @@ impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
         // try get cached item first
         let ptr = self.ptr_cache.get((self.node, self.cur_index));
 
-        if ptr.is_some() {
+        if let Some(chunk_ptr) = ptr {
+            let ret = Some(((self.node, self.cur_index), chunk_ptr));
             self.cur_index += 1;
-            return Some(((self.node, self.cur_index), ptr));
+            return ret;
         }
 
         // cache failed, resort to reading the ranged values from the iterator
-        if !self.is_prefetched {
-            let range =
-                (self.node, self.cur_index)..(self.node, self.last_index_excluded + EXTRA_CACHE);
-            let items = self.v2_chunk_ptr.range(range);
+        self.ptr_cache.add_range(
+            self.node,
+            self.cur_index,
+            self.last_index_excluded,
+            self.v2_chunk_ptr,
+        );
 
-            let mut new_cache =
-                Vec::with_capacity(self.last_index_excluded as usize - self.cur_index as usize);
-            for item in items {
-                new_cache.push(item);
-            }
-
-            self.ptr_cache.add(new_cache);
-
-            self.is_prefetched = true;
-        }
-
-        let found: Option<FileChunkPtr> = self.ptr_cache.get((self.node, self.cur_index));
+        //
+        let found: CachedChunkPtr = self.ptr_cache.get((self.node, self.cur_index)).unwrap();
 
         let res = Some(((self.node, self.cur_index), found));
 
@@ -94,6 +81,7 @@ impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
 mod tests {
     use crate::fs::FileSize;
     use crate::storage::chunk_iterator::ChunkV2Iterator;
+    use crate::storage::ptr_cache::CachedChunkPtr;
     use crate::storage::stable::StableStorage;
     use crate::storage::types::{FileType, Metadata, Node, Times};
     use crate::storage::Storage;
@@ -143,11 +131,9 @@ mod tests {
 
         let res_vec: Vec<_> = iterator.collect();
 
-        assert!(res_vec[0].1.is_some());
-        assert!(res_vec[1].1.is_some());
-        assert!(res_vec[2].1.is_some());
-
-        println!("{:?}", res_vec);
+        assert!(res_vec[0].1 != CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[1].1 != CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[2].1 != CachedChunkPtr::ChunkMissing);
     }
 
     #[test]
@@ -171,11 +157,9 @@ mod tests {
 
         let res_vec: Vec<_> = iterator.collect();
 
-        assert!(res_vec[0].1.is_none());
-        assert!(res_vec[1].1.is_none());
-        assert!(res_vec[2].1.is_none());
-
-        println!("{:?}", res_vec);
+        assert!(res_vec[0].1 == CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[1].1 == CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[2].1 == CachedChunkPtr::ChunkMissing);
     }
 
     #[test]
@@ -202,11 +186,9 @@ mod tests {
 
         let res_vec: Vec<_> = iterator.collect();
 
-        println!("{:?}", res_vec);
-
-        assert!(res_vec[0].1.is_some());
-        assert!(res_vec[1].1.is_none());
-        assert!(res_vec[2].1.is_some());
+        assert!(res_vec[0].1 != CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[1].1 == CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[2].1 != CachedChunkPtr::ChunkMissing);
     }
 
     #[test]
@@ -233,10 +215,8 @@ mod tests {
 
         let res_vec: Vec<_> = iterator.collect();
 
-        println!("{:?}", res_vec);
-
-        assert!(res_vec[0].1.is_none());
-        assert!(res_vec[1].1.is_some());
-        assert!(res_vec[2].1.is_none());
+        assert!(res_vec[0].1 == CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[1].1 != CachedChunkPtr::ChunkMissing);
+        assert!(res_vec[2].1 == CachedChunkPtr::ChunkMissing);
     }
 }

@@ -18,11 +18,10 @@ impl FilenameCache {
 
     // add new cache pointer
     pub fn add(&mut self, key: (Node, String), value: Node) {
-        
         if self.nodes.len() + 1 > CACHE_CAPACITY {
             self.clear();
         }
-        
+
         self.nodes.insert(key, value);
     }
 
@@ -62,7 +61,7 @@ mod tests {
         let filename = "test_file".to_string();
         let node = 35 as Node;
 
-        cache.add((fd, filename.clone()), node.clone());
+        cache.add((fd, filename.clone()), node);
 
         let retrieved_node = cache.get(&(fd, filename));
         assert_eq!(retrieved_node, Some(node));

@@ -400,7 +400,7 @@ impl FileSystem {
                 if !flags.contains(OpenFlags::CREATE) {
                     return Err(Error::NotFound);
                 }
-                
+
                 if flags.contains(OpenFlags::DIRECTORY) {
                     return Err(Error::InvalidFileType);
                 }
@@ -1327,8 +1327,6 @@ mod tests {
                 let content = format!("{i}");
                 let times = SIZE_OF_FILE / content.len();
 
-                println!("Writing to {filename}");
-
                 write_text_file(&mut fs, root_fd, filename.as_str(), content.as_str(), times)
                     .unwrap();
             }
@@ -1337,8 +1335,6 @@ mod tests {
             for i in 0..file_count {
                 let filename = format!("{}/my_file_{}.txt", dir_name, i);
                 let expected_content = format!("{i}{i}{i}");
-
-                println!("Reading {}", filename);
 
                 let text_read = read_text_file(
                     &mut fs,
@@ -1589,14 +1585,12 @@ mod tests {
             let content = read_text_file(&mut fs, root_fd, filename, 0, 100);
 
             assert_eq!(content, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
-            println!("{:?}", content);
 
             write_text_at_offset(&mut fs, fd, "abc", 3, 3).unwrap();
 
             let content = read_text_file(&mut fs, root_fd, filename, 1, 100);
 
             assert_eq!(content, "\0\0abcabcabc\0\0\0");
-            println!("{:?}", content);
         }
     }
 
@@ -1613,14 +1607,18 @@ mod tests {
             let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
 
             let vec = vec![0; chunk_size * 2 + 500];
-
             let expected = String::from_utf8(vec).unwrap();
 
+            // expect all zeroes at first
             assert_eq!(content, expected);
 
+            // write some text to the first chunk
             write_text_at_offset(&mut fs, fd, "abc", 33, 3).unwrap();
+
+            // write some text to the 100th position of the third chunk
             write_text_at_offset(&mut fs, fd, "abc", 33, chunk_size as FileSize * 2 + 100).unwrap();
 
+            // read what we have now
             let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
 
             let mut expected = vec![0u8; chunk_size * 2 + 500];
@@ -1668,13 +1666,11 @@ mod tests {
         }
     }
 
-
     #[test]
     fn filename_cached_on_open_or_create() {
         let filename = "test.txt";
 
         for mut fs in test_fs_setups("") {
-
             let root_fd = fs.root_fd();
             let fd = fs
                 .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
@@ -1683,7 +1679,6 @@ mod tests {
             fs.close(fd).unwrap();
 
             assert_eq!(fs.names_cache.get_nodes().len(), 1);
-
         }
     }
 
@@ -1692,7 +1687,6 @@ mod tests {
         let filename = "test.txt";
 
         for mut fs in test_fs_setups("") {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
             let root_fd = fs.root_fd();
             let fd = fs
                 .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
@@ -1700,12 +1694,12 @@ mod tests {
             fs.close(fd).unwrap();
 
             fs.remove_file(root_fd, filename).unwrap();
-            
+
             assert_eq!(fs.names_cache.get_nodes().len(), 0);
 
             // check we don't increase cache when the file is opened but not created
-            let fd2 = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
+            let fd2 =
+                fs.open_or_create(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
 
             assert_eq!(fd2, Err(Error::NotFound));
             assert_eq!(fs.names_cache.get_nodes().len(), 0);
