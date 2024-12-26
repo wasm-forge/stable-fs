@@ -40,7 +40,7 @@ impl<'a, M: Memory> ChunkV2Iterator<'a, M> {
     }
 }
 
-impl<'a, M: Memory> Iterator for ChunkV2Iterator<'a, M> {
+impl<M: Memory> Iterator for ChunkV2Iterator<'_, M> {
     type Item = ((Node, FileChunkIndex), CachedChunkPtr);
 
     fn next(&mut self) -> Option<Self::Item> {

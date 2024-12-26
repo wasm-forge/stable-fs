@@ -12,6 +12,7 @@ use crate::{
         Storage,
     },
 };
+
 use std::collections::BTreeMap;
 #[derive(Debug)]
 struct EntryFindResult {
@@ -429,7 +430,7 @@ pub fn rm_dir_entry(
 
 #[inline]
 pub fn grow_memory(memory: &dyn Memory, max_address: FileSize) {
-    let pages_required = (max_address + WASM_PAGE_SIZE_IN_BYTES - 1) / WASM_PAGE_SIZE_IN_BYTES;
+    let pages_required = max_address.div_ceil(WASM_PAGE_SIZE_IN_BYTES);
 
     let cur_pages = memory.size();
 

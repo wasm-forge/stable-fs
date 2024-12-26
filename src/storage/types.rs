@@ -101,6 +101,7 @@ pub struct FileMetadata {
     pub node: Node,
     pub size: FileSize,
     pub times: Times,
+    pub file_type: FileType,
 }
 
 impl ic_stable_structures::Storable for Metadata {
