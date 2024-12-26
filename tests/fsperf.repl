@@ -71,11 +71,42 @@ function perf_write_10mb_segments() {
 };
 
 
+function perf_write_1mb_segments_10_files() {
+  let cid = install(wasm_profiling(wasm_name, rs_config), encode (), null);
+
+  call cid.__toggle_tracing();
+  call cid.append_buffer( "abc1234567", (1_00_000: nat64) );
+//  call cid.store_buffer( "test.txt");
+//  call cid.store_buffer( "test2.txt");
+  call cid.__toggle_tracing();
+
+  call cid.store_buffer_in_1000b_segments_10_files( "test.txt");
+
+  flamegraph(cid, "perf_write_1mb_segments_10_files", "svg/perf_write_1mb_segments_10_files.svg");
+  uninstall(cid)
+};
+
+function perf_read_1mb_segments_10_files() {
+  let cid = install(wasm_profiling(wasm_name, rs_config), encode (), null);
+
+  call cid.__toggle_tracing();
+  call cid.append_buffer( "abc1234567", (10_000_000: nat64) );
+  call cid.store_buffer_in_1000b_segments_10_files( "test.txt");
+  call cid.__toggle_tracing();
+
+  call cid.load_buffer_in_1000b_segments_10_files( "test.txt");
+
+  flamegraph(cid, "perf_read_1mb_segments_10_files", "svg/perf_read_1mb_segments_10_files.svg");
+  uninstall(cid)
+};
+
+
 /// files
-perf_write_10mb();
+//perf_write_10mb();
 perf_write_10mb_segments();
-
-
+perf_write_1mb_segments_10_files();
+//perf_read_1mb_segments_10_files();
+//
 //call cid.__toggle_tracing();
 //call cid.list_files("files");
 //call cid.__toggle_tracing();

@@ -4,9 +4,11 @@ use super::types::{FileChunkIndex, FileChunkPtr, Node};
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 
-const CACHE_CAPACITY: usize = 1000;
+const CACHE_CAPACITY: usize = 10000;
 // for short reads and writes it is better to cache some more chunks than the minimum required
-const MIN_CACHE_CHUNKS: u32 = 10;
+const MIN_CACHE_CHUNKS: u32 = 100;
+// maximum number of chunks to pre-load
+const MAX_CACHE_CHUNKS: u32 = 1024;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum CachedChunkPtr {
@@ -46,6 +48,7 @@ impl PtrCache {
         to_index: FileChunkIndex,
         v2_chunk_ptr: &BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
     ) {
+        let to_index = to_index.min(from_index + MAX_CACHE_CHUNKS);
         let to_index = to_index.max(from_index + MIN_CACHE_CHUNKS);
 
         let range = (node, from_index)..(node, to_index);

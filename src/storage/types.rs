@@ -94,6 +94,15 @@ pub struct Metadata {
     pub chunk_type: Option<ChunkType>,
 }
 
+// Contains metadata that is stored together with the file chunks (for faster access and updates of the file size)
+#[repr(C)]
+#[derive(Clone, Debug, Default)]
+pub struct FileMetadata {
+    pub node: Node,
+    pub size: FileSize,
+    pub times: Times,
+}
+
 impl ic_stable_structures::Storable for Metadata {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         let mut buf = vec![];

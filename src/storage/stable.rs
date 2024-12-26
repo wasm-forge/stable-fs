@@ -78,30 +78,49 @@ struct StorageMemories<M: Memory> {
 
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
+    // some static-sized filesystem data, contains version number and the next node id.
     header: Cell<Header, VirtualMemory<M>>,
+    // data about one file or a folder such as creation time, file size, associated chunk type, etc.
     metadata: BTreeMap<Node, Metadata, VirtualMemory<M>>,
+    // information about the directory structure.
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
+    // actual file data stored in chunks insize BTreeMap.
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
+
+    // The metadata of the mounted memory files.
+    // * We store this separately from regular file metadata because the same node IDs can be reused for the related files.
+    // * We need this metadata because we want the information on the mounted files (such as file size) to survive between canister upgrades.
     mounted_meta: BTreeMap<Node, Metadata, VirtualMemory<M>>,
 
+    // the alternative storage to file chunks V1, we only store pointers, hence no serialization overhead
     pub(crate) v2_chunk_ptr: BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
+    // the actual storage of the chunks,
+    // * we can read and write small fragments of data, no need to read and write in chunk-sized blocks
+    // * the pointers in the BTreeMap (Node, FileChunkIndex) -> FileChunkPtr are static,
+    //   this allows caching to avoid chunk search overheads.
     v2_chunks: VirtualMemory<M>,
+    // keeps information on the chunks currently available.
+    // it can be setup to work with different chunk sizes.
+    // 4K - the same as chunks V1, 16K - the default, 64K - the biggest chunk size available.
+    // the increased chunk size reduces the number of BTree insertions, and increases the performanc.
     v2_allocator: ChunkPtrAllocator<M>,
 
+    // extra cache for storing information between upgrades.
     cache_journal: CacheJournal<M>,
 
     // It is not used, but is needed to keep memories alive.
     _memory_manager: Option<MemoryManager<M>>,
-    // active mounts
+    // active mounts.
     active_mounts: HashMap<Node, Box<dyn Memory>>,
 
-    // chunk type when creating new files
+    // chunk type to use when creating new files.
     chunk_type: ChunkType,
 
-    // chunk pointer cache
+    // chunk pointer cache. This cache reduces chunk search overhead when reading a file,
+    // or writing a file over existing data. (the new files still need insert new pointers into the treemap, hence it is rather slow)
     pub(crate) ptr_cache: PtrCache,
 
-    // only use it with non-mounted files
+    // only use it with non-mounted files. This reduces metadata search overhead, when the same file is .
     meta_cache: MetadataCache,
 }
 
