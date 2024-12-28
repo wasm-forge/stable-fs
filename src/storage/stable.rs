@@ -6,7 +6,10 @@ use ic_stable_structures::{
     BTreeMap, Cell, Memory,
 };
 
-use crate::{runtime::structure_helpers::write_obj, storage::ptr_cache::CachedChunkPtr};
+use crate::{
+    runtime::structure_helpers::{read_obj, write_obj},
+    storage::ptr_cache::CachedChunkPtr,
+};
 
 use crate::{
     error::Error,
@@ -195,26 +198,23 @@ impl<M: Memory> StableStorage<M> {
     }
 
     // support deprecated storage, recover stored mounted file metadata
-    fn init_size_from_cache_journal(&mut self, journal: &mut VirtualMemory) {
+    fn init_size_from_cache_journal(&mut self, journal: &VirtualMemory<M>) {
         // try recover stored mounted metadata (if any)
         if journal.size() > 0 {
-            let mounted_node = 0u64;
-            let mounted_meta: Metadata = Metadata::default();
+            let mut mounted_node = 0u64;
+            let mut mounted_meta: Metadata = Metadata::default();
 
-            read_obj(cache_journal.journal, MOUNTED_META_PTR, &mut mounted_node);
+            read_obj(journal, MOUNTED_META_PTR, &mut mounted_node);
 
-            read_obj(
-                cache_journal.journal,
-                MOUNTED_META_PTR + 8,
-                &mut mounted_meta,
-            );
+            read_obj(journal, MOUNTED_META_PTR + 8, &mut mounted_meta);
 
             if mounted_node != u64::MAX && mounted_node == mounted_meta.node {
                 // immediately store the recovered metadata
-                self.meta_provider.put_metadata(node, true, metadata);
+                self.meta_provider
+                    .put_metadata(mounted_node, true, mounted_meta);
 
                 // reset cached metadata
-                write_obj(&journal, MOUNTED_META_PTR, &(u64::MAX as Node));
+                write_obj(journal, MOUNTED_META_PTR, &(u64::MAX as Node));
             }
         }
     }
@@ -254,7 +254,7 @@ impl<M: Memory> StableStorage<M> {
         };
 
         // init mounted drive
-        result.init_size_from_cache(&mut memories.cache_journal);
+        result.init_size_from_cache_journal(&memories.cache_journal);
 
         let version = result.header.get().version;
 
