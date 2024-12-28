@@ -2,14 +2,16 @@ use ic_stable_structures::{memory_manager::VirtualMemory, Memory};
 
 use crate::error::Error;
 
+#[allow(dead_code)]
 pub struct CacheJournal<M: Memory> {
     journal: VirtualMemory<M>,
 }
 
 // The cache stored in stable memory for some information that has to be stored between upgrades.
 impl<M: Memory> CacheJournal<M> {
+    #[allow(dead_code)]
     pub fn new(journal: VirtualMemory<M>) -> Result<CacheJournal<M>, Error> {
-        let cache_journal = if journal.size() == 0 {
+        if journal.size() == 0 {
             journal.grow(1);
 
             // write the magic marker
@@ -18,7 +20,7 @@ impl<M: Memory> CacheJournal<M> {
 
             let cache_journal = CacheJournal { journal };
 
-            cache_journal
+            Ok(cache_journal)
         } else {
             // check the marker
             let mut b = [0u8; 4];
@@ -34,10 +36,8 @@ impl<M: Memory> CacheJournal<M> {
             // init local cache variables
             //...
 
-            cache_journal
-        };
-
-        Ok(cache_journal)
+            Ok(cache_journal)
+        }
     }
 }
 
