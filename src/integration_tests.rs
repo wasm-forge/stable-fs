@@ -587,7 +587,6 @@ fn large_file_second_write() {
     assert_eq!(size, 100_000_000);
 }
 
-
 #[test]
 fn check_metadata_binary() {
     let pic = setup_initial_canister();
@@ -596,7 +595,6 @@ fn check_metadata_binary() {
     // as it is stored directly without explicit serialization for the sake of performance.
     let bin = fns::check_metadata_binary(&pic);
 
-    assert_eq!(&bin, 
+    assert_eq!(&bin,
         "0300000000000000040000000000000006000000000000000800000000000000410000000000000042000000000000004300000000000000010000000c000000010000000d00000002ffffff00000000");
-
 }

@@ -448,7 +448,6 @@ impl FileSystem {
         stat: FdStat,
         ctime: u64,
     ) -> Result<Fd, Error> {
-        
         let dir = self.get_dir(parent)?;
 
         let child = dir.create_file(
