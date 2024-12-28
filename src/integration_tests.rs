@@ -192,6 +192,54 @@ mod fns {
             panic!("unintended call failure!");
         }
     }
+
+    pub(crate) fn check_metadata_format(pic: &PocketIc) {
+        pic.query_call(
+            active_canister(),
+            Principal::anonymous(),
+            "check_metadata_format",
+            encode_one(()).unwrap(),
+        )
+        .unwrap();
+    }
+
+    pub(crate) fn check_metadata_deserialization_into_repr_c(pic: &PocketIc) -> u64 {
+        let response = pic
+            .query_call(
+                active_canister(),
+                Principal::anonymous(),
+                "check_metadata_deserialization_into_repr_c",
+                encode_one(()).unwrap(),
+            )
+            .unwrap();
+
+        if let WasmResult::Reply(response) = response {
+            let result: u64 = decode_one(&response).unwrap();
+
+            result
+        } else {
+            panic!("unintended call failure!");
+        }
+    }
+
+    pub(crate) fn check_metadata_binary(pic: &PocketIc) -> String {
+        let response = pic
+            .query_call(
+                active_canister(),
+                Principal::anonymous(),
+                "check_metadata_binary",
+                encode_one(()).unwrap(),
+            )
+            .unwrap();
+
+        if let WasmResult::Reply(response) = response {
+            let result: String = decode_one(&response).unwrap();
+
+            result
+        } else {
+            panic!("unintended call failure!");
+        }
+    }
 }
 
 #[test]
@@ -537,4 +585,18 @@ fn large_file_second_write() {
     );
 
     assert_eq!(size, 100_000_000);
+}
+
+
+#[test]
+fn check_metadata_binary() {
+    let pic = setup_initial_canister();
+
+    // we should track any changes that affect Metadata binary representation in memory
+    // as it is stored directly without explicit serialization for the sake of performance.
+    let bin = fns::check_metadata_binary(&pic);
+
+    assert_eq!(&bin, 
+        "0300000000000000040000000000000006000000000000000800000000000000410000000000000042000000000000004300000000000000010000000c000000010000000d00000002ffffff00000000");
+
 }

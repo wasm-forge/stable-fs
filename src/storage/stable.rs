@@ -6,7 +6,7 @@ use ic_stable_structures::{
     BTreeMap, Cell, Memory,
 };
 
-use crate::storage::ptr_cache::CachedChunkPtr;
+use crate::{runtime::structure_helpers::write_obj, storage::ptr_cache::CachedChunkPtr};
 
 use crate::{
     error::Error,
@@ -20,8 +20,7 @@ use crate::{
 use super::{
     allocator::ChunkPtrAllocator,
     chunk_iterator::ChunkV2Iterator,
-    journal::CacheJournal,
-    metadata_cache::MetadataCache,
+    metadata_provider::MetadataProvider,
     ptr_cache::PtrCache,
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
@@ -43,9 +42,13 @@ const MEMORY_INDEX_COUNT: u8 = 10;
 
 const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
+// index containing cached metadata (deprecated)
+const MOUNTED_META_PTR: u64 = 16;
+
 enum StorageMemoryIdx {
     Header = 0,
     Metadata = 1,
+
     DirEntries = 2,
     FileChunksV1 = 3,
 
@@ -80,19 +83,12 @@ struct StorageMemories<M: Memory> {
 pub struct StableStorage<M: Memory> {
     // some static-sized filesystem data, contains version number and the next node id.
     header: Cell<Header, VirtualMemory<M>>,
-    // data about one file or a folder such as creation time, file size, associated chunk type, etc.
-    metadata: BTreeMap<Node, Metadata, VirtualMemory<M>>,
     // information about the directory structure.
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
     // actual file data stored in chunks insize BTreeMap.
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
 
-    // The metadata of the mounted memory files.
-    // * We store this separately from regular file metadata because the same node IDs can be reused for the related files.
-    // * We need this metadata because we want the information on the mounted files (such as file size) to survive between canister upgrades.
-    mounted_meta: BTreeMap<Node, Metadata, VirtualMemory<M>>,
-
-    // the alternative storage to file chunks V1, we only store pointers, hence no serialization overhead
+    // the file chunk storage V2, we only store pointers to reduce serialization overheads.
     pub(crate) v2_chunk_ptr: BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
     // the actual storage of the chunks,
     // * we can read and write small fragments of data, no need to read and write in chunk-sized blocks
@@ -105,8 +101,8 @@ pub struct StableStorage<M: Memory> {
     // the increased chunk size reduces the number of BTree insertions, and increases the performanc.
     v2_allocator: ChunkPtrAllocator<M>,
 
-    // extra cache for storing information between upgrades.
-    cache_journal: CacheJournal<M>,
+    // helper object managing file metadata access of all types
+    meta_provider: MetadataProvider<M>,
 
     // It is not used, but is needed to keep memories alive.
     _memory_manager: Option<MemoryManager<M>>,
@@ -119,9 +115,6 @@ pub struct StableStorage<M: Memory> {
     // chunk pointer cache. This cache reduces chunk search overhead when reading a file,
     // or writing a file over existing data. (the new files still need insert new pointers into the treemap, hence it is rather slow)
     pub(crate) ptr_cache: PtrCache,
-
-    // only use it with non-mounted files. This reduces metadata search overhead, when the same file is .
-    meta_cache: MetadataCache,
 }
 
 impl<M: Memory> StableStorage<M> {
@@ -201,6 +194,31 @@ impl<M: Memory> StableStorage<M> {
         Self::new_with_custom_memories(memories)
     }
 
+    // support deprecated storage, recover stored mounted file metadata
+    fn init_size_from_cache_journal(&mut self, journal: &mut VirtualMemory) {
+        // try recover stored mounted metadata (if any)
+        if journal.size() > 0 {
+            let mounted_node = 0u64;
+            let mounted_meta: Metadata = Metadata::default();
+
+            read_obj(cache_journal.journal, MOUNTED_META_PTR, &mut mounted_node);
+
+            read_obj(
+                cache_journal.journal,
+                MOUNTED_META_PTR + 8,
+                &mut mounted_meta,
+            );
+
+            if mounted_node != u64::MAX && mounted_node == mounted_meta.node {
+                // immediately store the recovered metadata
+                self.meta_provider.put_metadata(node, true, metadata);
+
+                // reset cached metadata
+                write_obj(&journal, MOUNTED_META_PTR, &(u64::MAX as Node));
+            }
+        }
+    }
+
     fn new_with_custom_memories(memories: StorageMemories<M>) -> Self {
         let default_header_value = Header {
             version: FS_VERSION,
@@ -208,30 +226,35 @@ impl<M: Memory> StableStorage<M> {
         };
 
         let v2_allocator = ChunkPtrAllocator::new(memories.v2_allocator_memory).unwrap();
-        let cache_journal = CacheJournal::new(memories.cache_journal).unwrap();
+        let ptr_cache = PtrCache::new();
+        let v2_chunk_ptr = BTreeMap::init(memories.v2_chunk_ptr_memory);
+
+        let meta_provider =
+            MetadataProvider::new(memories.metadata_memory, memories.mounted_meta_memory);
 
         let mut result = Self {
             header: Cell::init(memories.header_memory, default_header_value).unwrap(),
-            metadata: BTreeMap::init(memories.metadata_memory),
             direntry: BTreeMap::init(memories.direntry_memory),
             filechunk: BTreeMap::init(memories.filechunk_memory),
-            mounted_meta: BTreeMap::init(memories.mounted_meta_memory),
 
-            v2_chunk_ptr: BTreeMap::init(memories.v2_chunk_ptr_memory),
+            v2_chunk_ptr,
             v2_chunks: memories.v2_chunks_memory,
             v2_allocator,
-
-            cache_journal,
 
             // transient runtime data
             _memory_manager: None,
             active_mounts: HashMap::new(),
+
             // default chunk type is V2
             chunk_type: ChunkType::V2,
-            ptr_cache: PtrCache::new(),
 
-            meta_cache: MetadataCache::new(),
+            ptr_cache,
+
+            meta_provider,
         };
+
+        // init mounted drive
+        result.init_size_from_cache(&mut memories.cache_journal);
 
         let version = result.header.get().version;
 
@@ -506,13 +529,7 @@ impl<M: Memory> StableStorage<M> {
     }
 
     fn flush_mounted_meta(&mut self) {
-        let node = self.cache_journal.read_mounted_meta_node();
-
-        if let Some(node) = node {
-            let mut meta: Metadata = Metadata::default();
-            self.cache_journal.read_mounted_meta(&mut meta);
-            self.mounted_meta.insert(node, meta);
-        }
+        //self.meta_provider.flush_mounted_meta::<M>();
     }
 
     fn use_v2(&mut self, metadata: &Metadata, node: u64) -> bool {
@@ -563,47 +580,13 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
-        if self.is_mounted(node) {
-            if self.cache_journal.read_mounted_meta_node() == Some(node) {
-                let mut meta = Metadata::default();
-                self.cache_journal.read_mounted_meta(&mut meta);
-
-                return Ok(meta);
-            }
-
-            self.mounted_meta.get(&node).ok_or(Error::NotFound)
-        } else {
-            let meta = self.meta_cache.get(node);
-
-            if let Some(meta) = meta {
-                return Ok(meta);
-            }
-
-            let meta = self.metadata.get(&node).ok_or(Error::NotFound);
-
-            if let Ok(ref meta) = meta {
-                self.meta_cache.update(node, meta);
-            }
-
-            meta
-        }
+        self.meta_provider.get_metadata(node, self.is_mounted(node))
     }
 
     // Update the metadata associated with the node.
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        assert_eq!(node, metadata.node, "Node does not match medatada.node!");
-
-        if self.is_mounted(node) {
-            // flush changes if the last node was different
-            if self.cache_journal.read_mounted_meta_node() != Some(node) {
-                self.flush_mounted_meta();
-            }
-
-            self.cache_journal.write_mounted_meta(&node, &metadata)
-        } else {
-            self.meta_cache.update(node, &metadata);
-            self.metadata.insert(node, metadata);
-        }
+        self.meta_provider
+            .put_metadata(node, self.is_mounted(node), metadata);
     }
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
@@ -731,20 +714,7 @@ impl<M: Memory> Storage for StableStorage<M> {
             }
         }
 
-        // clear cache
-        self.ptr_cache.clear();
-
-        // remove metadata
-        self.mounted_meta.remove(&node);
-        self.metadata.remove(&node);
-
-        let mounted_meta_node = self.cache_journal.read_mounted_meta_node();
-        if mounted_meta_node == Some(node) {
-            // reset cached mounted metadata
-            self.cache_journal.reset_mounted_meta()
-        }
-
-        self.meta_cache.clear();
+        self.meta_provider.rm_file(node, &mut self.ptr_cache);
 
         Ok(())
     }

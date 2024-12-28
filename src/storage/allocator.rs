@@ -27,6 +27,7 @@ pub struct ChunkPtrAllocator<M: Memory> {
 
 impl<M: Memory> ChunkPtrAllocator<M> {
     pub fn new(v2_available_chunks: VirtualMemory<M>) -> Result<ChunkPtrAllocator<M>, Error> {
+        
         // init avaiable chunks
         if v2_available_chunks.size() == 0 {
             v2_available_chunks.grow(1);

@@ -1,6 +1,6 @@
 [package]
 name = "stable-fs"
-version = "0.6.5"
+version = "0.7.0"
 edition = "2021"
 description = "A Simple File system implementing WASI endpoints and using the stable structures of the Internet Computer"
 keywords = ["ic", "internet-computer", "file-system"]
@@ -13,8 +13,8 @@ ic-cdk = "0.17.1"
 
 ic-stable-structures = "0.6.7"
 
-serde = "1.0.216"
-serde_bytes = "0.11"
+serde = "1.0.217"
+serde_bytes = "0.11.15"
 ciborium = "0.2.2"
 
 [dev-dependencies]

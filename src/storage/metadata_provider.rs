@@ -1,10 +1,15 @@
 use std::collections::HashMap;
 
 use super::types::{Metadata, Node};
+use crate::storage::ptr_cache::PtrCache;
+use crate::storage::Error;
+use ic_stable_structures::memory_manager::VirtualMemory;
+use ic_stable_structures::BTreeMap;
+use ic_stable_structures::Memory;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const CACHE_CAPACITY: usize = 100;
+const CACHE_CAPACITY: usize = 1000;
 
 #[derive(Debug)]
 pub(crate) struct MetadataCache {
@@ -41,6 +46,93 @@ impl MetadataCache {
         let meta = (*self.meta).borrow();
 
         meta.get(&node).cloned()
+    }
+}
+
+pub(crate) struct MetadataProvider<M: Memory> {
+    // only use it with non-mounted files. This reduces metadata search overhead, when the same file is read.
+    meta_cache: MetadataCache,
+
+    // only use it with mounted files. This reduces metadata search overhead, when the same file is read.
+    mounted_meta_cache: MetadataCache,
+
+    // data about one file or a folder such as creation time, file size, associated chunk type, etc.
+    metadata: BTreeMap<Node, Metadata, VirtualMemory<M>>,
+    // The metadata of the mounted memory files.
+    // * We store this separately from regular file metadata because the same node IDs can be reused for the related files.
+    // * We need this metadata because we want the information on the mounted files (such as file size) to survive between canister upgrades.
+    mounted_meta: BTreeMap<Node, Metadata, VirtualMemory<M>>,
+}
+
+impl<M: Memory> MetadataProvider<M> {
+    pub fn new(
+        meta_mem: VirtualMemory<M>,
+        mounted_meta_mem: VirtualMemory<M>,
+    ) -> MetadataProvider<M> {
+        MetadataProvider {
+            meta_cache: MetadataCache::new(),
+            mounted_meta_cache: MetadataCache::new(),
+            metadata: BTreeMap::init(meta_mem),
+            mounted_meta: BTreeMap::init(mounted_meta_mem),
+        }
+    }
+
+    pub(crate) fn rm_file(&mut self, node: Node, ptr_cache: &mut PtrCache) {
+        // remove metadata
+        self.mounted_meta.remove(&node);
+        self.metadata.remove(&node);
+
+        self.meta_cache.clear();
+        self.mounted_meta_cache.clear();
+        ptr_cache.clear();
+    }
+
+    pub(crate) fn get_metadata(
+        &self,
+        node: Node,
+        is_mounted: bool,
+    ) -> Result<Metadata, crate::error::Error> {
+        if is_mounted {
+            let meta = self.mounted_meta_cache.get(node);
+
+            if let Some(meta) = meta {
+                return Ok(meta);
+            }
+
+            let meta = self.mounted_meta.get(&node).ok_or(Error::NotFound);
+
+            if let Ok(ref meta) = meta {
+                self.mounted_meta_cache.update(node, meta);
+            }
+
+            meta
+        } else {
+            let meta = self.meta_cache.get(node);
+
+            if let Some(meta) = meta {
+                return Ok(meta);
+            }
+
+            let meta = self.metadata.get(&node).ok_or(Error::NotFound);
+
+            if let Ok(ref meta) = meta {
+                self.meta_cache.update(node, meta);
+            }
+
+            meta
+        }
+    }
+
+    pub(crate) fn put_metadata(&mut self, node: u64, is_mounted: bool, metadata: Metadata) {
+        assert_eq!(node, metadata.node, "Node does not match medatada.node!");
+
+        if is_mounted {
+            self.mounted_meta_cache.update(node, &metadata);
+            self.mounted_meta.insert(node, metadata);
+        } else {
+            self.meta_cache.update(node, &metadata);
+            self.metadata.insert(node, metadata);
+        }
     }
 }
 

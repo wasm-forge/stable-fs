@@ -9,6 +9,17 @@ pub const MAX_FILE_CHUNK_SIZE_V2: usize = 65536;
 
 pub const MAX_FILE_NAME: usize = 255;
 
+// maximum chunk index.
+pub const MAX_FILE_CHUNK_INDEX: u32 = u32::MAX - 10;
+
+// maximum file size supported by the file system ().
+pub const MAX_FILE_SIZE: u64 = (MAX_FILE_CHUNK_INDEX as u64) * FILE_CHUNK_SIZE_V1 as u64;
+
+// custom file chunk containing metadata.
+pub const METADATA_CHUNK_INDEX: u32 = u32::MAX - 1;
+// custom file chunk containing metadata for the mounted drives.
+pub const MOUNTED_METADATA_CHUNK_INDEX: u32 = u32::MAX - 2;
+
 // The unique identifier of a node, which can be a file or a directory.
 // Also known as inode in WASI and other file systems.
 pub type Node = u64;
@@ -81,7 +92,7 @@ impl ic_stable_structures::Storable for Header {
     const BOUND: Bound = Bound::Unbounded;
 }
 
-// Contains metadata of a node.
+#[repr(C, align(8))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
     pub node: Node,
@@ -92,16 +103,6 @@ pub struct Metadata {
     pub first_dir_entry: Option<DirEntryIndex>,
     pub last_dir_entry: Option<DirEntryIndex>,
     pub chunk_type: Option<ChunkType>,
-}
-
-// Contains metadata that is stored together with the file chunks (for faster access and updates of the file size)
-#[repr(C)]
-#[derive(Clone, Debug, Default)]
-pub struct FileMetadata {
-    pub node: Node,
-    pub size: FileSize,
-    pub times: Times,
-    pub file_type: FileType,
 }
 
 impl ic_stable_structures::Storable for Metadata {
@@ -121,10 +122,10 @@ impl ic_stable_structures::Storable for Metadata {
 // The type of a node.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileType {
-    Directory,
+    Directory = 3,
     #[default]
-    RegularFile,
-    SymbolicLink,
+    RegularFile = 4,
+    SymbolicLink = 7,
 }
 
 impl TryFrom<u8> for FileType {
@@ -242,7 +243,7 @@ impl ic_stable_structures::Storable for DirEntry {
 
 #[cfg(test)]
 mod tests {
-    use crate::fs::ChunkType;
+    use crate::{fs::ChunkType, storage::types::Metadata};
 
     use super::{DirEntryIndex, FileSize, FileType, Node, Times};
     use serde::{Deserialize, Serialize};

@@ -305,7 +305,7 @@ impl FileSystem {
         Ok(())
     }
 
-    // Get the metadata for a given file descriptor
+    // Get the metadata for a given node
     pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
         self.storage.get_metadata(node)
     }
@@ -416,7 +416,9 @@ impl FileSystem {
         if flags.contains(OpenFlags::EXCLUSIVE) {
             return Err(Error::FileAlreadyExists);
         }
+
         let metadata = self.storage.get_metadata(node)?;
+
         match metadata.file_type {
             FileType::Directory => {
                 let dir = Dir::new(node, stat, self.storage.as_mut())?;
@@ -446,6 +448,7 @@ impl FileSystem {
         stat: FdStat,
         ctime: u64,
     ) -> Result<Fd, Error> {
+        
         let dir = self.get_dir(parent)?;
 
         let child = dir.create_file(
