@@ -162,6 +162,7 @@ pub fn create_dir_entry(
             first_dir_entry: None,
             last_dir_entry: None,
             chunk_type,
+            maximum_size_allowed: None,
         },
     );
 

@@ -17,6 +17,9 @@ use stable_fs::storage::types::FileType;
 use stable_fs::storage::types::Metadata;
 use stable_fs::storage::types::Node;
 use stable_fs::storage::types::Times;
+use std::mem;
+use std::mem::MaybeUninit;
+use std::ptr;
 
 use stable_fs::{
     fs::{DstBuf, FdStat, FileSystem, OpenFlags, SrcBuf, Whence},
@@ -680,6 +683,7 @@ fn check_metadata_format() {
         first_dir_entry: Some(24),
         last_dir_entry: Some(35),
         chunk_type: Some(stable_fs::fs::ChunkType::V2),
+        maximum_size_allowed: None,
     };
 
     write_obj(&mem, 16, &meta_old);
@@ -768,22 +772,38 @@ fn check_metadata_deserialization_into_repr_c() -> u64 {
 
 #[ic_cdk::query]
 fn check_metadata_binary() -> String {
-    let meta = Metadata {
-        node: 3,
-        file_type: FileType::RegularFile,
-        link_count: 6,
-        size: 8,
-        times: Times {
-            accessed: 65u64,
-            modified: 66u64,
-            created: 67u64,
-        },
-        first_dir_entry: Some(12),
-        last_dir_entry: Some(13),
-        chunk_type: Some(stable_fs::fs::ChunkType::V2),
+    // 1. Allocate "uninitialized" memory for a Metadata
+    let mut uninit = MaybeUninit::<Metadata>::uninit();
+
+    // 2. Fill that memory with 0xfa
+    unsafe {
+        ptr::write_bytes(
+            uninit.as_mut_ptr() as *mut u8,
+            0xfa,
+            mem::size_of::<Metadata>(),
+        );
+    }
+
+    // 3. Now "create" the actual Metadata from that memory
+    //    (this is only safe if every field of Metadata is
+    //    assigned a valid value afterwards)
+    let mut meta = unsafe { uninit.assume_init() };
+
+    // 4. Overwrite the fields with actual values
+    meta.node = 3;
+    meta.file_type = FileType::RegularFile;
+    meta.link_count = 6;
+    meta.size = 8;
+    meta.times = Times {
+        accessed: 65u64,
+        modified: 66u64,
+        created: 67u64,
     };
+    meta.first_dir_entry = Some(12);
+    meta.last_dir_entry = Some(13);
+    meta.chunk_type = Some(stable_fs::fs::ChunkType::V2);
+    meta.maximum_size_allowed = Some(0xcdab);
 
     let vec = to_binary(&meta);
-
     hex::encode(&vec)
 }

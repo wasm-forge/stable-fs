@@ -102,6 +102,7 @@ mod tests {
                 first_dir_entry: Some(42),
                 last_dir_entry: Some(24),
                 chunk_type: Some(storage.chunk_type()),
+                maximum_size_allowed: None,
             },
         );
         node

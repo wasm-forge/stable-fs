@@ -32,7 +32,7 @@ use super::{
     Storage,
 };
 
-const ROOT_NODE: Node = 0;
+pub const ROOT_NODE: Node = 0;
 const FS_VERSION: u32 = 1;
 
 const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
@@ -43,7 +43,7 @@ const MAX_MEMORY_INDEX: u8 = 254;
 // the number of memory indices used by the file system (currently 8 plus some reserved ids)
 const MEMORY_INDEX_COUNT: u8 = 10;
 
-const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
+pub const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
 // index containing cached metadata (deprecated)
 const MOUNTED_META_PTR: u64 = 16;
@@ -198,20 +198,52 @@ impl<M: Memory> StableStorage<M> {
     }
 
     // support deprecated storage, recover stored mounted file metadata
+    // we have to use a custom node here,
     fn init_size_from_cache_journal(&mut self, journal: &VirtualMemory<M>) {
+        // re-define old Metadata type for correct reading
+        #[derive(Clone, Default, PartialEq)]
+        pub struct MetadataDep {
+            pub node: Node,
+            pub file_type: FileType,
+            pub link_count: u64,
+            pub size: FileSize,
+            pub times: Times,
+            pub first_dir_entry: Option<DirEntryIndex>,
+            pub last_dir_entry: Option<DirEntryIndex>,
+            pub chunk_type: Option<ChunkType>,
+        }
+
         // try recover stored mounted metadata (if any)
         if journal.size() > 0 {
             let mut mounted_node = 0u64;
-            let mut mounted_meta: Metadata = Metadata::default();
+            let mut mounted_meta = MetadataDep::default();
 
             read_obj(journal, MOUNTED_META_PTR, &mut mounted_node);
 
             read_obj(journal, MOUNTED_META_PTR + 8, &mut mounted_meta);
 
+            let meta_read = Metadata {
+                node: mounted_meta.node,
+                file_type: mounted_meta.file_type,
+                link_count: mounted_meta.link_count,
+                size: mounted_meta.size,
+                times: mounted_meta.times,
+                first_dir_entry: mounted_meta.first_dir_entry,
+                last_dir_entry: mounted_meta.last_dir_entry,
+                chunk_type: mounted_meta.chunk_type,
+                maximum_size_allowed: None,
+            };
+
             if mounted_node != u64::MAX && mounted_node == mounted_meta.node {
                 // immediately store the recovered metadata
-                self.meta_provider
-                    .put_metadata(mounted_node, true, mounted_meta);
+                self.meta_provider.put_metadata(
+                    mounted_node,
+                    true,
+                    &meta_read,
+                    &mut self.v2_chunk_ptr,
+                    &mut self.v2_chunks,
+                    &mut self.v2_allocator,
+                );
 
                 // reset cached metadata
                 write_obj(journal, MOUNTED_META_PTR, &(u64::MAX as Node));
@@ -260,26 +292,6 @@ impl<M: Memory> StableStorage<M> {
 
         if version != FS_VERSION {
             panic!("Unsupported file system version");
-        }
-
-        match result.get_metadata(ROOT_NODE) {
-            Ok(_) => {}
-            Err(Error::NotFound) => {
-                let metadata = Metadata {
-                    node: ROOT_NODE,
-                    file_type: FileType::Directory,
-                    link_count: 1,
-                    size: 0,
-                    times: Times::default(),
-                    first_dir_entry: None,
-                    last_dir_entry: None,
-                    chunk_type: None,
-                };
-                result.put_metadata(ROOT_NODE, metadata);
-            }
-            Err(err) => {
-                unreachable!("Unexpected error while loading root metadata: {:?}", err);
-            }
         }
 
         result
@@ -580,13 +592,24 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
-        self.meta_provider.get_metadata(node, self.is_mounted(node))
+        self.meta_provider.get_metadata(
+            node,
+            self.is_mounted(node),
+            &self.v2_chunk_ptr,
+            &self.v2_chunks,
+        )
     }
 
     // Update the metadata associated with the node.
     fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        self.meta_provider
-            .put_metadata(node, self.is_mounted(node), metadata);
+        self.meta_provider.put_metadata(
+            node,
+            self.is_mounted(node),
+            &metadata,
+            &mut self.v2_chunk_ptr,
+            &mut self.v2_chunks,
+            &mut self.v2_allocator,
+        );
     }
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
@@ -877,6 +900,7 @@ mod tests {
                 first_dir_entry: Some(42),
                 last_dir_entry: Some(24),
                 chunk_type: Some(storage.chunk_type()),
+                maximum_size_allowed: None,
             },
         );
         let metadata = storage.get_metadata(node).unwrap();

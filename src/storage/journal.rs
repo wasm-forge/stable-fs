@@ -45,8 +45,6 @@ impl<M: Memory> CacheJournal<M> {
 mod tests {
     use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
 
-    use crate::storage::types::Node;
-
     use crate::test_utils::new_vector_memory;
 
     use super::*;

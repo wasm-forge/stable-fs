@@ -13,3 +13,5 @@ wasi2ic
 lcov.info
 
 tarpaulin-report.html
+
+tests/svg/*
