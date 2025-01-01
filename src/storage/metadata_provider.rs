@@ -7,8 +7,7 @@ use super::types::{Metadata, Node};
 use crate::fs::FileSize;
 use crate::runtime::structure_helpers::{grow_memory, read_obj, write_obj};
 use crate::storage::ptr_cache::PtrCache;
-use crate::storage::stable::ZEROES;
-use crate::storage::Error;
+use crate::storage::types::ZEROES;
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 use ic_stable_structures::Memory;
@@ -64,11 +63,6 @@ impl MetadataCache {
         let meta = (*self.meta).borrow();
         meta.get(&node).cloned()
     }
-
-    pub fn get_ptr(&self, node: Node) -> std::option::Option<FileChunkPtr> {
-        let meta = (*self.meta).borrow();
-        meta.get(&node).and_then(|x| x.1)
-    }
 }
 
 pub(crate) struct MetadataProvider<M: Memory> {
@@ -119,32 +113,29 @@ impl<M: Memory> MetadataProvider<M> {
         write_obj(v2_chunks, ptr, meta);
     }
 
+    // try to get metadata and the data pointer, or return None if not found.
     pub(crate) fn get_metadata(
         &self,
         node: Node,
         is_mounted: bool,
         v2_chunk_ptr: &BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
         v2_chunks: &VirtualMemory<M>,
-    ) -> Result<Metadata, crate::error::Error> {
+    ) -> Option<(Metadata, Option<FileChunkPtr>)> {
         let (meta_index, meta_storage, meta_cache) = if is_mounted {
             (
                 MOUNTED_METADATA_CHUNK_INDEX,
-                &self.metadata,
-                &self.meta_cache,
-            )
-        } else {
-            (
-                METADATA_CHUNK_INDEX,
                 &self.mounted_meta,
                 &self.mounted_meta_cache,
             )
+        } else {
+            (METADATA_CHUNK_INDEX, &self.metadata, &self.meta_cache)
         };
 
         // try to get meta from cache
         let meta_rec = meta_cache.get(node);
 
         if let Some(meta_rec) = meta_rec {
-            return Ok(meta_rec.0);
+            return Some((meta_rec.0.clone(), meta_rec.1));
         }
 
         // meta not found in cache, try to get it from the file chunks
@@ -157,14 +148,14 @@ impl<M: Memory> MetadataProvider<M> {
             // update cache
             meta_cache.update(node, &meta, Some(meta_ptr));
 
-            return Ok(meta);
+            return Some((meta, Some(meta_ptr)));
         }
 
         // meta not found in chunks, try to get it from the storage
-        let meta_found: Result<Metadata, Error> = meta_storage.get(&node).ok_or(Error::NotFound);
+        let meta_found = meta_storage.get(&node);
 
-        if meta_found.is_err() {
-            // root node is not found on the new file system, just return the generated one.
+        if meta_found.is_none() {
+            // if root node is not found on the new file system, just return the generated one.
             if node == ROOT_NODE {
                 let metadata = Metadata {
                     node: ROOT_NODE,
@@ -178,24 +169,26 @@ impl<M: Memory> MetadataProvider<M> {
                     maximum_size_allowed: None,
                 };
 
-                return Ok(metadata);
+                return Some((metadata, None));
             }
         }
 
-        // return error, if not found
+        // return None, if no metadata was found under given node
         let metadata = meta_found?;
 
         // update cache
         meta_cache.update(node, &metadata, None);
 
-        Ok(metadata)
+        Some((metadata, None))
     }
 
+    // put new metadata value, while overwriting the existing record, at this point the metadata should already be validated
     pub(crate) fn put_metadata(
         &mut self,
         node: u64,
         is_mounted: bool,
         metadata: &Metadata,
+        meta_ptr: Option<FileChunkPtr>,
         v2_chunk_ptr: &mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
         v2_chunks: &mut VirtualMemory<M>,
         v2_allocator: &mut ChunkPtrAllocator<M>,
@@ -203,15 +196,13 @@ impl<M: Memory> MetadataProvider<M> {
         assert_eq!(node, metadata.node, "Node does not match metadata.node!");
 
         let (meta_index, meta_cache) = if is_mounted {
-            (MOUNTED_METADATA_CHUNK_INDEX, &self.meta_cache)
+            (MOUNTED_METADATA_CHUNK_INDEX, &self.mounted_meta_cache)
         } else {
-            (METADATA_CHUNK_INDEX, &self.mounted_meta_cache)
+            (METADATA_CHUNK_INDEX, &self.meta_cache)
         };
 
-        // try to get meta pointer from cache or else chunk pointers or else create a new chunk
-        let mut meta_ptr = if let Some(meta_ptr) = meta_cache.get_ptr(node) {
-            meta_ptr
-        } else if let Some(meta_ptr) = v2_chunk_ptr.get(&(node, meta_index)) {
+        // create a new meta pointer if it was not
+        let meta_ptr = if let Some(meta_ptr) = meta_ptr {
             meta_ptr
         } else {
             let meta_ptr = v2_allocator.allocate();

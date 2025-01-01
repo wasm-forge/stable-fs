@@ -10,7 +10,7 @@ use crate::{
     storage::{
         types::{
             DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Metadata, Node,
-            Times,
+            Times, ZEROES,
         },
         Storage,
     },
@@ -53,6 +53,7 @@ impl TransientStorage {
             chunk_type: None,
             maximum_size_allowed: None,
         };
+
         let mut result = Self {
             header: Header {
                 version: 1,
@@ -65,7 +66,11 @@ impl TransientStorage {
             mounted_meta: Default::default(),
             active_mounts: Default::default(),
         };
-        result.put_metadata(ROOT_NODE, metadata);
+
+        result
+            .put_metadata(ROOT_NODE, &metadata)
+            .expect("Failed to create metadata");
+
         result
     }
 
@@ -86,6 +91,25 @@ impl TransientStorage {
             let entry = self.filechunk.entry((node, index)).or_default();
             entry.bytes[offset as usize..offset as usize + buf.len()].copy_from_slice(buf)
         }
+    }
+
+    fn validate_metadata_update(
+        old_meta: Option<&Metadata>,
+        new_meta: &Metadata,
+    ) -> Result<(), Error> {
+        if let Some(max_size) = new_meta.maximum_size_allowed {
+            if new_meta.size > max_size {
+                return Err(Error::MaxFileSizeExceeded);
+            }
+        }
+
+        if let Some(old_meta) = old_meta {
+            if old_meta.node != new_meta.node {
+                return Err(Error::MetadataUpdateInvalid);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -119,12 +143,22 @@ impl Storage for TransientStorage {
     }
 
     // Update the metadata associated with the node.
-    fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        if self.is_mounted(node) {
-            self.mounted_meta.insert(node, metadata);
+    fn put_metadata(&mut self, node: Node, metadata: &Metadata) -> Result<(), Error> {
+        let meta_storage = if self.is_mounted(node) {
+            &mut self.mounted_meta
         } else {
-            self.metadata.insert(node, metadata);
+            &mut self.metadata
+        };
+
+        if let Some(existing) = meta_storage.get(&node) {
+            Self::validate_metadata_update(Some(existing), metadata)?;
+        } else {
+            Self::validate_metadata_update(None, metadata)?;
         }
+
+        meta_storage.insert(node, metadata.clone());
+
+        Ok(())
     }
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
@@ -226,11 +260,10 @@ impl Storage for TransientStorage {
         Ok(size_read)
     }
 
-    //
-    fn rm_file(&mut self, node: Node) -> Result<(), Error> {
-        if self.is_mounted(node) {
-            return Err(Error::CannotRemoveMountedMemoryFile);
-        }
+    fn resize_file(&mut self, node: Node, new_size: FileSize) -> Result<(), Error> {
+        let chunk_size = FILE_CHUNK_SIZE_V1;
+
+        let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
 
         let range = (node, 0)..(node + 1, 0);
 
@@ -244,6 +277,28 @@ impl Storage for TransientStorage {
             assert!(nd == node);
             self.filechunk.remove(&(node, idx));
         }
+
+        // fill with zeros the last chunk memory above the file size
+        if first_deletable_index > 0 {
+            let offset = new_size as FileSize % chunk_size as FileSize;
+
+            self.write_filechunk(
+                node,
+                first_deletable_index - 1,
+                offset,
+                &ZEROES[0..(chunk_size - offset as usize)],
+            );
+        }
+
+        Ok(())
+    }
+
+    fn rm_file(&mut self, node: Node) -> Result<(), Error> {
+        if self.is_mounted(node) {
+            return Err(Error::CannotRemoveMountedMemoryFile);
+        }
+
+        self.resize_file(node, 0)?;
 
         // remove metadata
         self.mounted_meta.remove(&node);
@@ -321,7 +376,7 @@ impl Storage for TransientStorage {
 
         self.mount_node(node, memory)?;
 
-        self.put_metadata(node, meta);
+        self.put_metadata(node, &meta)?;
 
         Ok(())
     }
@@ -354,7 +409,7 @@ impl Storage for TransientStorage {
             remainder -= to_read;
         }
 
-        self.put_metadata(node, meta);
+        self.put_metadata(node, &meta)?;
 
         self.mount_node(node, memory)?;
 
@@ -364,6 +419,13 @@ impl Storage for TransientStorage {
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
         let end = offset + buf.len() as FileSize;
+
+        if let Some(max_size) = metadata.maximum_size_allowed {
+            if end > max_size {
+                return Err(Error::MaxFileSizeExceeded);
+            }
+        }
+
         let chunk_infos = get_chunk_infos(offset, end, FILE_CHUNK_SIZE_V1);
         let mut written_size = 0;
         for chunk in chunk_infos.into_iter() {
@@ -378,7 +440,7 @@ impl Storage for TransientStorage {
 
         if end > metadata.size {
             metadata.size = end;
-            self.put_metadata(node, metadata)
+            self.put_metadata(node, &metadata)?;
         }
 
         Ok(written_size as FileSize)
@@ -414,20 +476,22 @@ mod tests {
     fn read_and_write_filechunk() {
         let mut storage = TransientStorage::default();
         let node = storage.new_node();
-        storage.put_metadata(
-            node,
-            Metadata {
+        storage
+            .put_metadata(
                 node,
-                file_type: FileType::RegularFile,
-                link_count: 1,
-                size: 10,
-                times: Times::default(),
-                first_dir_entry: None,
-                last_dir_entry: None,
-                chunk_type: Some(storage.chunk_type()),
-                maximum_size_allowed: None,
-            },
-        );
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 10,
+                    times: Times::default(),
+                    first_dir_entry: None,
+                    last_dir_entry: None,
+                    chunk_type: Some(storage.chunk_type()),
+                    maximum_size_allowed: None,
+                },
+            )
+            .unwrap();
         storage.write(node, 0, &[42; 10]).unwrap();
         let mut buf = [0; 10];
         storage.read(node, 0, &mut buf).unwrap();

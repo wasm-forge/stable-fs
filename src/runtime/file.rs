@@ -130,7 +130,7 @@ impl File {
     pub fn truncate(&self, storage: &mut dyn Storage) -> Result<(), Error> {
         let mut metadata = storage.get_metadata(self.node)?;
         metadata.size = 0;
-        storage.put_metadata(self.node, metadata);
+        storage.put_metadata(self.node, &metadata)?;
         Ok(())
     }
 }

@@ -121,7 +121,7 @@ pub fn create_hard_link(
     }
 
     metadata.link_count += 1;
-    storage.put_metadata(node, metadata);
+    storage.put_metadata(node, &metadata)?;
 
     add_dir_entry(dir_node, node, leaf_name.as_bytes(), storage)?;
 
@@ -149,7 +149,7 @@ pub fn create_dir_entry(
 
     storage.put_metadata(
         node,
-        Metadata {
+        &Metadata {
             node,
             file_type: entry_type,
             link_count: 1,
@@ -164,7 +164,7 @@ pub fn create_dir_entry(
             chunk_type,
             maximum_size_allowed: None,
         },
-    );
+    )?;
 
     add_dir_entry(parent_dir_node, node, entry_name, storage)?;
 
@@ -326,7 +326,7 @@ pub fn add_dir_entry(
     }
     metadata.size += 1;
 
-    storage.put_metadata(parent_dir_node, metadata);
+    storage.put_metadata(parent_dir_node, &metadata)?;
 
     Ok(())
 }
@@ -418,13 +418,13 @@ pub fn rm_dir_entry(
     parent_dir_metadata.size -= 1;
 
     // update parent metadata
-    storage.put_metadata(parent_dir_node, parent_dir_metadata);
+    storage.put_metadata(parent_dir_node, &parent_dir_metadata)?;
 
     // remove the entry
     storage.rm_direntry(parent_dir_node, removed_entry_index);
 
     removed_metadata.link_count -= 1;
-    storage.put_metadata(removed_metadata.node, removed_metadata.clone());
+    storage.put_metadata(removed_metadata.node, &removed_metadata)?;
 
     Ok((removed_dir_entry_node, removed_metadata))
 }

@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     NotFound,
+    Unimplemented,
     InvalidOffset,
     InvalidFileType,
     InvalidFileName,
@@ -19,4 +20,10 @@ pub enum Error {
     CannotRemoveMountedMemoryFile,
     IncompatibleChunkSize,
     InvalidMagicMarker,
+
+    MaxFileSizeExceeded,
+    NoSpaceLeftOnDevice,
+    OperationNotSupported,
+    MetadataUpdateInvalid,
+    TooManyOpenFiles,
 }

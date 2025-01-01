@@ -317,9 +317,22 @@ impl FileSystem {
     }
 
     // update metadata of a given file descriptor
-    pub fn set_metadata(&mut self, fd: Fd, metadata: Metadata) -> Result<(), Error> {
+    pub fn set_metadata(&mut self, fd: Fd, metadata: &Metadata) -> Result<(), Error> {
         let node = self.get_node(fd)?;
-        self.storage.put_metadata(node, metadata);
+        self.storage.put_metadata(node, metadata)?;
+
+        Ok(())
+    }
+
+    // Set maxmum file size limit in bytes. Reading, writing, and setting the cursor above the limit will result in error.
+    // Use this feature to limit, how much memory can be consumed by the mounted memory files.
+    pub fn set_file_size_limit(&mut self, fd: Fd, max_size: FileSize) -> Result<(), Error> {
+        let node = self.get_node(fd)?;
+        let mut metadata = self.storage.get_metadata(node)?;
+
+        metadata.maximum_size_allowed = Some(max_size);
+
+        self.storage.put_metadata(node, &metadata)?;
 
         Ok(())
     }
@@ -331,7 +344,7 @@ impl FileSystem {
 
         metadata.times.accessed = time;
 
-        self.storage.put_metadata(node, metadata);
+        self.storage.put_metadata(node, &metadata)?;
 
         Ok(())
     }
@@ -343,7 +356,7 @@ impl FileSystem {
 
         metadata.times.modified = time;
 
-        self.storage.put_metadata(node, metadata);
+        self.storage.put_metadata(node, &metadata)?;
 
         Ok(())
     }
@@ -1488,7 +1501,7 @@ mod tests {
                 .unwrap();
             let mut metadata = fs.metadata(fd).unwrap();
             metadata.size = len as FileSize * count as FileSize;
-            fs.set_metadata(fd, metadata).unwrap();
+            fs.set_metadata(fd, &metadata).unwrap();
             fs.close(fd).unwrap();
 
             // store memory into a file
@@ -1570,7 +1583,7 @@ mod tests {
         let mut meta = fs.metadata(fd).unwrap();
         meta.size = size;
 
-        fs.set_metadata(fd, meta).unwrap();
+        fs.set_metadata(fd, &meta).unwrap();
 
         fd
     }

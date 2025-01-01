@@ -28,7 +28,10 @@ pub type FileChunkIndex = u32;
 // The address in memory where the V2 chunk is stored.
 pub type FileChunkPtr = u64;
 
-// A handle used for writing files in chunks
+// An array filled with 0 used to fill memory with 0 via copy.
+pub const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
+
+// A handle used for writing files in chunks.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ChunkHandle {
     pub index: FileChunkIndex,
