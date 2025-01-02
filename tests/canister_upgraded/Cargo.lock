@@ -104,9 +104,13 @@ name = "canister_upgraded_backend"
 version = "0.1.0"
 dependencies = [
  "candid",
+ "ciborium",
+ "hex",
  "ic-cdk",
  "ic-cdk-timers",
  "ic-stable-structures",
+ "serde",
+ "serde_bytes",
  "stable-fs",
 ]
 
