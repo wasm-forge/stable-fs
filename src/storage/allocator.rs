@@ -94,6 +94,11 @@ impl<M: Memory> ChunkPtrAllocator<M> {
         self.write_u64(AVAILABLE_CHUNKS_LEN_IDX, new_len);
     }
 
+    #[cfg(test)]
+    pub fn get_current_max_ptr(&self) -> u64 {
+        self.read_u64(MAX_PTR_IDX)
+    }
+
     fn get_next_max_ptr(&self) -> u64 {
         let ret = self.read_u64(MAX_PTR_IDX);
 

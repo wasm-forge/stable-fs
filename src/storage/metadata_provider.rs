@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::allocator::ChunkPtrAllocator;
-use super::stable::ROOT_NODE;
-use super::types::{FileChunkIndex, FileChunkPtr, FileType, Times};
+use super::stable::{V2FileChunks, ROOT_NODE};
+use super::types::{FileChunk, FileChunkIndex, FileChunkPtr, FileType, Times};
 use super::types::{Metadata, Node};
 use crate::fs::FileSize;
 use crate::runtime::structure_helpers::{grow_memory, read_obj, write_obj};
@@ -24,14 +24,16 @@ pub const MOUNTED_METADATA_CHUNK_INDEX: u32 = u32::MAX - 2;
 // reserve 1024 bytes for future, for storing metadata
 pub const MAX_META_SIZE: usize = 1024;
 
+type MetadataCacheMap = HashMap<Node, (Metadata, Option<FileChunkPtr>)>;
+
 #[derive(Debug)]
 pub(crate) struct MetadataCache {
-    meta: Rc<RefCell<HashMap<Node, (Metadata, Option<FileChunkPtr>)>>>,
+    meta: Rc<RefCell<MetadataCacheMap>>,
 }
 
 impl MetadataCache {
     pub fn new() -> MetadataCache {
-        let meta: Rc<RefCell<HashMap<Node, (Metadata, Option<FileChunkPtr>)>>> =
+        let meta: Rc<RefCell<MetadataCacheMap>> =
             Rc::new(RefCell::new(HashMap::with_capacity(CACHE_CAPACITY)));
 
         MetadataCache { meta }
@@ -93,14 +95,57 @@ impl<M: Memory> MetadataProvider<M> {
         }
     }
 
-    pub(crate) fn rm_file(&mut self, node: Node, ptr_cache: &mut PtrCache) {
+    pub(crate) fn remove_metadata(
+        &mut self,
+        node: Node,
+        ptr_cache: &mut PtrCache,
+        filechunk: &mut BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
+        v2_chunk_ptr: &mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
+        v2_allocator: &mut ChunkPtrAllocator<M>,
+    ) {
         // remove metadata
         self.mounted_meta.remove(&node);
         self.metadata.remove(&node);
 
         self.meta_cache.remove(node);
         self.mounted_meta_cache.remove(node);
+
         ptr_cache.clear();
+
+        // removing file data chunks as well
+        let range = (node, 0)..(node + 1, 0);
+
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
+
+        for (k, _v) in filechunk.range(range) {
+            chunks.push(k);
+        }
+
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+            filechunk.remove(&(node, idx));
+        }
+
+        // delete v2 chunks
+
+        // delete all nodes, including file contents and metadata chunks
+        let range = (node, 0)..(node + 1, 0);
+
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
+
+        for (k, _v) in v2_chunk_ptr.range(range) {
+            chunks.push((k.0, k.1));
+        }
+
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+
+            let removed = v2_chunk_ptr.remove(&(node, idx));
+
+            if let Some(removed) = removed {
+                v2_allocator.free(removed);
+            }
+        }
     }
 
     fn load_chunk_meta(&self, v2_chunks: &VirtualMemory<M>, ptr: FileChunkPtr) -> Metadata {
@@ -189,9 +234,7 @@ impl<M: Memory> MetadataProvider<M> {
         is_mounted: bool,
         metadata: &Metadata,
         meta_ptr: Option<FileChunkPtr>,
-        v2_chunk_ptr: &mut BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
-        v2_chunks: &mut VirtualMemory<M>,
-        v2_allocator: &mut ChunkPtrAllocator<M>,
+        v2: &mut V2FileChunks<M>,
     ) {
         assert_eq!(node, metadata.node, "Node does not match metadata.node!");
 
@@ -205,20 +248,23 @@ impl<M: Memory> MetadataProvider<M> {
         let meta_ptr = if let Some(meta_ptr) = meta_ptr {
             meta_ptr
         } else {
-            let meta_ptr = v2_allocator.allocate();
+            let meta_ptr = v2.v2_allocator.allocate();
 
-            v2_chunk_ptr.insert((node, meta_index), meta_ptr);
+            v2.v2_chunk_ptr.insert((node, meta_index), meta_ptr);
 
             // prefill new memory with 0 (we want to avoid undefined memory)
-            grow_memory(v2_chunks, meta_ptr as FileSize + MAX_META_SIZE as FileSize);
+            grow_memory(
+                &v2.v2_chunks,
+                meta_ptr as FileSize + MAX_META_SIZE as FileSize,
+            );
 
-            v2_chunks.write(meta_ptr, &ZEROES[0..MAX_META_SIZE]);
+            v2.v2_chunks.write(meta_ptr, &ZEROES[0..MAX_META_SIZE]);
 
             meta_ptr
         };
 
         // store metadata into chunk
-        self.store_chunk_meta(v2_chunks, meta_ptr, metadata);
+        self.store_chunk_meta(&v2.v2_chunks, meta_ptr, metadata);
 
         // update cache
         meta_cache.update(node, metadata, Some(meta_ptr));

@@ -130,7 +130,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
@@ -156,7 +156,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
@@ -185,7 +185,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
@@ -214,7 +214,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
