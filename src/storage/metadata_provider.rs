@@ -55,12 +55,6 @@ impl MetadataCache {
         meta.remove(&node);
     }
 
-    // clear cache completely
-    pub fn clear(&self) {
-        let mut meta = (*self.meta).borrow_mut();
-        meta.clear();
-    }
-
     pub fn get(&self, node: Node) -> std::option::Option<(Metadata, Option<FileChunkPtr>)> {
         let meta = (*self.meta).borrow();
         meta.get(&node).cloned()
@@ -318,43 +312,6 @@ mod tests {
             retrieved,
             Some((metadata, Some(1024))),
             "Retrieved metadata should match inserted metadata"
-        );
-    }
-
-    #[test]
-    fn cache_clear() {
-        let cache = MetadataCache::new();
-        let node = 1 as Node;
-
-        let metadata = Metadata {
-            node,
-            file_type: FileType::RegularFile,
-            link_count: 1,
-            size: 45,
-            times: Times {
-                accessed: 0,
-                modified: 0,
-                created: 0,
-            },
-            first_dir_entry: None,
-            last_dir_entry: None,
-            chunk_type: Some(ChunkType::V2),
-            maximum_size_allowed: None,
-        };
-
-        cache.update(node, &metadata, Some(1024));
-        cache.clear();
-
-        // Cache should be empty after clear
-        assert_eq!(
-            cache.meta.borrow().len(),
-            0,
-            "Cache should be empty after clearing"
-        );
-        assert_eq!(
-            cache.get(node),
-            None,
-            "Metadata should be None after cache is cleared"
         );
     }
 
