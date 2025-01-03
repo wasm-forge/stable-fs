@@ -1789,4 +1789,244 @@ mod tests {
 
         println!("opened_fd = {:?}", opened_fd);
     }
+
+    #[test]
+    fn writing_beyond_maximum_size_fails() {
+        let filename = "test.txt";
+        let max_size: FileSize = 100; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Try writing data within the size limit.
+            let within_limit_data = vec![1u8; 50];
+            assert!(fs.write(fd, &within_limit_data).is_ok());
+
+            // Try writing data that would exceed the limit.
+            let exceeding_data = vec![1u8; 60];
+            let result = fs.write(fd, &exceeding_data);
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // Ensure the file size does not exceed the limit.
+            let metadata = fs.metadata(fd).unwrap();
+            assert!(metadata.size <= max_size);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn appending_to_exact_limit() {
+        let filename = "test_append.txt";
+        let max_size: FileSize = 20000; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Write data initially within the limit (mroe than 1 chunk used).
+            let initial_data = vec![1u8; 15000];
+            assert!(fs.write(fd, &initial_data).is_ok());
+
+            // Stop exactly on the egde of file size
+            let additional_data = vec![1u8; 5000];
+            assert!(fs.write(fd, &additional_data).is_ok());
+
+            // Attempt to append just one more byte fails.
+            let append_data = vec![1u8; 1];
+            let result = fs.write(fd, &append_data);
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // Verify the file size remains within the limit.
+            let metadata = fs.metadata(fd).unwrap();
+            assert!(metadata.size <= max_size);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn seek_and_write_beyond_maximum_size_fails() {
+        let filename = "test_seek.txt";
+        let max_size: FileSize = 150; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Seek to a position within the size limit and write.
+            fs.seek(fd, 100, super::Whence::SET).unwrap();
+            let within_limit_data = vec![1u8; 30];
+            assert!(fs.write(fd, &within_limit_data).is_ok());
+
+            // Seek to a position that would exceed the limit and attempt to write.
+            fs.seek(fd, 140, super::Whence::SET).unwrap();
+            let exceeding_data = vec![1u8; 20];
+            let result = fs.write(fd, &exceeding_data);
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // Verify the file size remains within the limit.
+            let metadata = fs.metadata(fd).unwrap();
+            assert!(metadata.size <= max_size);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn write_vec_beyond_maximum_size_fails() {
+        let filename = "test_vec.txt";
+        let max_size: FileSize = 120; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Prepare vector data.
+            let within_limit_data = vec![
+                SrcBuf {
+                    buf: vec![1u8; 50].as_ptr(),
+                    len: 50,
+                },
+                SrcBuf {
+                    buf: vec![1u8; 40].as_ptr(),
+                    len: 40,
+                },
+            ];
+            assert!(fs.write_vec(fd, within_limit_data.as_ref()).is_ok());
+
+            // expect file size to be 90
+            let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 90);
+
+            // Prepare vector data that exceeds the limit.
+            let exceeding_data = vec![
+                SrcBuf {
+                    buf: vec![1u8; 20].as_ptr(),
+                    len: 20,
+                },
+                SrcBuf {
+                    buf: vec![1u8; 80].as_ptr(),
+                    len: 80,
+                },
+            ];
+            let result = fs.write_vec(fd, exceeding_data.as_ref());
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // expect only the first buffer to be stored
+            let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 110);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn shrinking_file_size_truncates_data() {
+        let filename = "shrink_test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Step 1: Create a file and write some content.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+
+            let content = "This is some sample text for testing file shrinking.";
+            fs.write(fd, content.as_bytes()).unwrap();
+
+            // Verify the initial file size matches the written content.
+            let metadata = fs.metadata(fd).unwrap();
+            assert_eq!(metadata.size as usize, content.len());
+
+            // Step 2: Shrink the file size.
+            let new_size: FileSize = 20;
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.size = new_size;
+            fs.set_metadata(fd, metadata).unwrap();
+
+            // Verify the file size is updated.
+            let shrunk_metadata = fs.metadata(fd).unwrap();
+            assert_eq!(shrunk_metadata.size, new_size);
+
+            // Step 3: Read back the content and verify it is truncated.
+            let mut buffer = vec![0u8; new_size as usize];
+            fs.seek(fd, 0, super::Whence::SET).unwrap(); // Seek to the start of the file.
+            let read_size = fs.read(fd, &mut buffer).unwrap();
+            assert_eq!(read_size, new_size);
+
+            let expected_content = &content[0..new_size as usize];
+            assert_eq!(String::from_utf8(buffer).unwrap(), expected_content);
+
+            // Close the file.
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn shrinking_max_file_size_truncates_data() {
+        let filename = "shrink_test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Step 1: Create a file and write some content.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+
+            let content = "This is some sample text for testing file shrinking.";
+            fs.write(fd, content.as_bytes()).unwrap();
+
+            // Verify the initial file size matches the written content.
+            let metadata = fs.metadata(fd).unwrap();
+            assert_eq!(metadata.size as usize, content.len());
+
+            // Step 2: Shrink the file size.
+            let new_size: FileSize = 20;
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.size = new_size;
+            metadata.maximum_size_allowed = Some(new_size);
+            fs.set_metadata(fd, metadata).unwrap();
+
+            // Verify the file size is updated.
+            let shrunk_metadata = fs.metadata(fd).unwrap();
+            assert_eq!(shrunk_metadata.size, new_size);
+
+            // Step 3: Read back the content and verify it is truncated.
+            let mut buffer = vec![0u8; new_size as usize];
+            fs.seek(fd, 0, super::Whence::SET).unwrap(); // Seek to the start of the file.
+            let read_size = fs.read(fd, &mut buffer).unwrap();
+            assert_eq!(read_size, new_size);
+
+            let expected_content = &content[0..new_size as usize];
+            assert_eq!(String::from_utf8(buffer).unwrap(), expected_content);
+
+            // Close the file.
+            fs.close(fd).unwrap();
+        }
+    }
 }
