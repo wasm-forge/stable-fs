@@ -99,13 +99,13 @@ impl TransientStorage {
     ) -> Result<(), Error> {
         if let Some(max_size) = new_meta.maximum_size_allowed {
             if new_meta.size > max_size {
-                return Err(Error::MaxFileSizeExceeded);
+                return Err(Error::FileTooLarge);
             }
         }
 
         if let Some(old_meta) = old_meta {
             if old_meta.node != new_meta.node {
-                return Err(Error::MetadataUpdateInvalid);
+                return Err(Error::InvalidArgument);
             }
         }
 
@@ -134,9 +134,11 @@ impl Storage for TransientStorage {
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
         let meta = if self.is_mounted(node) {
-            self.mounted_meta.get(&node).ok_or(Error::NotFound)?
+            self.mounted_meta
+                .get(&node)
+                .ok_or(Error::BadFileDescriptor)?
         } else {
-            self.metadata.get(&node).ok_or(Error::NotFound)?
+            self.metadata.get(&node).ok_or(Error::BadFileDescriptor)?
         };
 
         Ok(meta.clone())
@@ -163,7 +165,10 @@ impl Storage for TransientStorage {
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
-        let value = self.direntry.get(&(node, index)).ok_or(Error::NotFound)?;
+        let value = self
+            .direntry
+            .get(&(node, index))
+            .ok_or(Error::BadFileDescriptor)?;
         Ok(value.clone())
     }
 
@@ -295,7 +300,7 @@ impl Storage for TransientStorage {
 
     fn rm_file(&mut self, node: Node) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::CannotRemoveMountedMemoryFile);
+            return Err(Error::DeviceOrResourceBusy);
         }
 
         self.resize_file(node, 0)?;
@@ -309,11 +314,15 @@ impl Storage for TransientStorage {
 
     fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::MemoryFileIsMountedAlready);
+            return Err(Error::DeviceOrResourceBusy);
         }
 
         // do extra meta preparation
-        let mut meta = self.metadata.get(&node).ok_or(Error::NotFound)?.clone();
+        let mut meta = self
+            .metadata
+            .get(&node)
+            .ok_or(Error::BadFileDescriptor)?
+            .clone();
 
         self.active_mounts.insert(node, memory);
 
@@ -334,7 +343,7 @@ impl Storage for TransientStorage {
     fn unmount_node(&mut self, node: Node) -> Result<Box<dyn Memory>, Error> {
         let memory = self.active_mounts.remove(&node);
 
-        memory.ok_or(Error::MemoryFileIsNotMounted)
+        memory.ok_or(Error::NoSuchDevice)
     }
 
     fn is_mounted(&self, node: Node) -> bool {
@@ -422,7 +431,7 @@ impl Storage for TransientStorage {
 
         if let Some(max_size) = metadata.maximum_size_allowed {
             if end > max_size {
-                return Err(Error::MaxFileSizeExceeded);
+                return Err(Error::FileTooLarge);
             }
         }
 

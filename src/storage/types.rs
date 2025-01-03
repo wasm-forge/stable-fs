@@ -135,7 +135,7 @@ impl TryFrom<u8> for FileType {
             3 => Ok(FileType::Directory),
             4 => Ok(FileType::RegularFile),
             7 => Ok(FileType::SymbolicLink),
-            _ => Err(Error::InvalidFileType),
+            _ => Err(Error::InvalidArgument),
         }
     }
 }
@@ -202,7 +202,7 @@ impl FileName {
     pub fn new(name: &[u8]) -> Result<Self, Error> {
         let len = name.len();
         if len > MAX_FILE_NAME {
-            return Err(Error::NameTooLong);
+            return Err(Error::FilenameTooLong);
         }
         let mut bytes = [0; MAX_FILE_NAME];
         bytes[0..len].copy_from_slice(name);

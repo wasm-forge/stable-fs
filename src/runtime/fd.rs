@@ -6,6 +6,7 @@ use crate::{
     storage::types::Node,
 };
 
+// number of file descriptors reserved for other means
 const RESERVED_FD_COUNT: Fd = 3;
 
 pub type Fd = u32;
@@ -81,17 +82,23 @@ impl FdTable {
         fd
     }
 
-    // Reassign a file descriptor to a new number, the source descriptor is closed in the process.
+    // Copy a file descriptor to a new number, the source descriptor is closed in the process.
     // If the destination descriptor is busy, it is closed in the process.
     pub fn renumber(&mut self, src: Fd, dst: Fd) -> Result<(), Error> {
-        let old_entry = self.close(src).ok_or(Error::NotFound)?;
+        if src == dst {
+            return Ok(());
+        }
 
         // quietly close the destination file descriptor
         if let Some(_old_dst_entry) = self.close(dst) {
+            // dst should not be reused by anyone else, so we must undo the fd marked for reusal
             let removed = self.free_fds.pop().unwrap();
+            // sanity check that the removed fd was indeer dst
             assert_eq!(removed, dst);
         }
 
+        // now assign the source file descriptor to the destination
+        let old_entry = self.close(src).ok_or(Error::BadFileDescriptor)?;
         self.insert(dst, old_entry);
 
         Ok(())
@@ -102,7 +109,10 @@ impl FdTable {
         let entry = self.table.remove(&fd);
 
         if let Some(entry) = entry {
-            self.free_fds.push(fd);
+            if fd > RESERVED_FD_COUNT {
+                self.free_fds.push(fd);
+            }
+
             self.dec_node_refcount(&entry);
 
             Some(entry)

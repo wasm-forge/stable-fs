@@ -45,7 +45,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
 
             // possible accepted markers
             if b != *b"ALO1" && b != *b"FSA1" {
-                return Err(Error::InvalidMagicMarker);
+                return Err(Error::IllegalByteSequence);
             }
 
             if b == *b"ALO1" {
@@ -158,7 +158,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
             .iter()
             .any(|size| *size as usize == new_size)
         {
-            return Err(Error::IncompatibleChunkSize);
+            return Err(Error::InvalidArgument);
         }
 
         // we can only set chunk size, if there are no chunks stored in the database, or the chunk size is not changed
@@ -176,7 +176,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
             return Ok(());
         }
 
-        Err(Error::IncompatibleChunkSize)
+        Err(Error::InvalidArgument)
     }
 
     #[inline]

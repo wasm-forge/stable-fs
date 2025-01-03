@@ -42,7 +42,7 @@ fn find_node_with_index(
         }
 
         if part == ".." {
-            return Err(Error::InvalidFileName);
+            return Err(Error::InvalidArgument);
         }
 
         parent_dir_node = cur_node;
@@ -101,9 +101,10 @@ pub fn create_hard_link(
 ) -> Result<(), Error> {
     // Check if the node exists already.
     let found = find_node(parent_dir_node, new_path, names_cache, storage);
+
     match found {
-        Err(Error::NotFound) => {}
-        Ok(_) => return Err(Error::FileAlreadyExists),
+        Err(Error::BadFileDescriptor) => {}
+        Ok(_) => return Err(Error::FileExists),
         Err(err) => return Err(err),
     }
 
@@ -117,7 +118,7 @@ pub fn create_hard_link(
 
     // only allow creating a hardlink on a folder if it is a part of renaming and another link will be removed
     if !is_renaming && metadata.file_type == FileType::Directory {
-        return Err(Error::InvalidFileType);
+        return Err(Error::OperationNotPermitted);
     }
 
     metadata.link_count += 1;
@@ -136,7 +137,8 @@ pub fn create_dir_entry(
     ctime: u64,
 ) -> Result<Node, Error> {
     if entry_type != FileType::Directory && entry_type != FileType::RegularFile {
-        return Err(Error::InvalidFileType);
+        // for now we only support files and folders (but not symbolic links)
+        return Err(Error::InvalidArgument);
     }
 
     let node = storage.new_node();
@@ -200,13 +202,13 @@ pub fn create_path<'a>(
         }
 
         if part == ".." {
-            return Err(Error::InvalidFileName);
+            return Err(Error::InvalidArgument);
         }
 
         if needs_folder_creation {
             // last_name contains the folder name to create
             if last_file_type != FileType::Directory {
-                return Err(Error::InvalidFileType);
+                return Err(Error::InvalidArgument);
             }
 
             // create new folder
@@ -236,7 +238,7 @@ pub fn create_path<'a>(
 
                     last_file_type = meta.file_type;
                 }
-                Err(Error::NotFound) => {
+                Err(Error::BadFileDescriptor) => {
                     needs_folder_creation = true;
                 }
                 Err(x) => {
@@ -249,7 +251,7 @@ pub fn create_path<'a>(
     if needs_folder_creation {
         // last_name contains the folder name to create
         if last_file_type != FileType::Directory {
-            return Err(Error::InvalidFileType);
+            return Err(Error::InvalidArgument);
         }
 
         if let Some(leaf_type) = leaf_type {
@@ -282,7 +284,7 @@ pub fn find_entry_index(
         }
     }
 
-    Err(Error::NotFound)
+    Err(Error::BadFileDescriptor)
 }
 
 //  Add new directory entry
@@ -355,7 +357,7 @@ pub fn rm_dir_entry(
     let removed_dir_entry_node = find_result.node;
 
     if storage.is_mounted(removed_dir_entry_node) {
-        return Err(Error::CannotRemoveMountedMemoryFile);
+        return Err(Error::TextFileBusy);
     }
 
     let parent_dir_node = find_result.parent_dir;
@@ -368,7 +370,8 @@ pub fn rm_dir_entry(
     match removed_metadata.file_type {
         FileType::Directory => {
             if expect_dir == Some(false) {
-                return Err(Error::ExpectedToRemoveFile);
+                // expected file
+                return Err(Error::IsDirectory);
             }
 
             if removed_metadata.link_count == 1 && removed_metadata.size > 0 {
@@ -377,14 +380,15 @@ pub fn rm_dir_entry(
         }
         FileType::RegularFile | FileType::SymbolicLink => {
             if expect_dir == Some(true) {
-                return Err(Error::ExpectedToRemoveDirectory);
+                // expected directory
+                return Err(Error::NotADirectoryOrSymbolicLink);
             }
         }
     }
 
     if let Some(refcount) = node_refcount.get(&removed_metadata.node) {
         if *refcount > 0 && removed_metadata.link_count == 1 {
-            return Err(Error::CannotRemoveOpenedNode);
+            return Err(Error::TextFileBusy);
         }
     }
 
@@ -743,7 +747,7 @@ mod tests {
             44u64,
             storage,
         );
-        assert_eq!(res, Err(Error::InvalidFileType));
+        assert_eq!(res, Err(Error::InvalidArgument));
 
         let res = create_path(
             root_node,
@@ -752,7 +756,7 @@ mod tests {
             44u64,
             storage,
         );
-        assert_eq!(res, Err(Error::InvalidFileType));
+        assert_eq!(res, Err(Error::InvalidArgument));
 
         let res = create_path(
             root_node,
@@ -761,7 +765,7 @@ mod tests {
             44u64,
             storage,
         );
-        assert_eq!(res, Err(Error::InvalidFileType));
+        assert_eq!(res, Err(Error::InvalidArgument));
 
         let res = create_path(
             root_node,
@@ -770,7 +774,7 @@ mod tests {
             44u64,
             storage,
         );
-        assert_eq!(res, Err(Error::InvalidFileType));
+        assert_eq!(res, Err(Error::InvalidArgument));
     }
 
     #[test]
@@ -787,7 +791,7 @@ mod tests {
             43u64,
             storage,
         );
-        assert_eq!(res, Err(Error::InvalidFileType));
+        assert_eq!(res, Err(Error::InvalidArgument));
     }
 
     #[test]

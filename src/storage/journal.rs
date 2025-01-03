@@ -28,7 +28,7 @@ impl<M: Memory> CacheJournal<M> {
 
             // accepted marker
             if b != *b"FSJ1" {
-                return Err(Error::InvalidMagicMarker);
+                return Err(Error::IllegalByteSequence);
             }
 
             let cache_journal = CacheJournal { journal };

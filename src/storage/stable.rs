@@ -583,13 +583,13 @@ impl<M: Memory> StableStorage<M> {
     ) -> Result<(), Error> {
         if let Some(old_meta) = old_meta {
             if old_meta.node != new_meta.node {
-                return Err(Error::MetadataUpdateInvalid);
+                return Err(Error::IllegalByteSequence);
             }
         }
 
         if let Some(max_size) = new_meta.maximum_size_allowed {
             if new_meta.size > max_size {
-                return Err(Error::MaxFileSizeExceeded);
+                return Err(Error::FileTooLarge);
             }
         }
 
@@ -598,7 +598,7 @@ impl<M: Memory> StableStorage<M> {
 
     fn resize_file_internal(&mut self, node: Node, new_size: FileSize) -> Result<(), Error> {
         if self.is_mounted(node) {
-            // for the mounted node we only update size in the metadata (no need to delete chunks)
+            // for the mounted node we only update file size in the metadata (no need to delete chunks)
             return Ok(());
         }
 
@@ -697,7 +697,7 @@ impl<M: Memory> Storage for StableStorage<M> {
                 &self.v2_filechunk.v2_chunks,
             )
             .map(|x| x.0)
-            .ok_or(Error::NotFound)
+            .ok_or(Error::BadFileDescriptor)
     }
 
     // Update the metadata associated with the node.
@@ -738,7 +738,9 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
-        self.direntry.get(&(node, index)).ok_or(Error::NotFound)
+        self.direntry
+            .get(&(node, index))
+            .ok_or(Error::BadFileDescriptor)
     }
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
@@ -791,7 +793,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         let max_size = metadata.maximum_size_allowed.unwrap_or(MAX_FILE_SIZE);
 
         if offset + buf.len() as FileSize > max_size {
-            return Err(Error::MaxFileSizeExceeded);
+            return Err(Error::FileTooLarge);
         }
 
         let written_size = if let Some(memory) = self.get_mounted_memory(node) {
@@ -845,7 +847,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     //
     fn rm_file(&mut self, node: Node) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::CannotRemoveMountedMemoryFile);
+            return Err(Error::DeviceOrResourceBusy);
         }
 
         self.resize_file(node, 0)?;
@@ -863,7 +865,7 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::MemoryFileIsMountedAlready);
+            return Err(Error::DeviceOrResourceBusy);
         }
 
         // do extra meta preparation
@@ -889,7 +891,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     fn unmount_node(&mut self, node: Node) -> Result<Box<dyn Memory>, Error> {
         let memory = self.active_mounts.remove(&node);
 
-        memory.ok_or(Error::MemoryFileIsNotMounted)
+        memory.ok_or(Error::NoSuchDevice)
     }
 
     fn is_mounted(&self, node: Node) -> bool {
@@ -1309,11 +1311,11 @@ mod tests {
         // Confirm reading fails or returns NotFound
         let mut buf = [0u8; 9];
         let res = storage.read(node, 0, &mut buf);
-        assert!(matches!(res, Err(Error::NotFound)));
+        assert!(matches!(res, Err(Error::BadFileDescriptor)));
 
         // Confirm metadata is removed
         let meta_res = storage.get_metadata(node);
-        assert!(matches!(meta_res, Err(Error::NotFound)));
+        assert!(matches!(meta_res, Err(Error::BadFileDescriptor)));
 
         // check there are no chunks left after deleting the node
         let chunks: Vec<_> = storage
@@ -1369,11 +1371,11 @@ mod tests {
         // Confirm reading fails or returns NotFound
         let mut buf = [0u8; 9];
         let res = storage.read(node, 0, &mut buf);
-        assert!(matches!(res, Err(Error::NotFound)));
+        assert!(matches!(res, Err(Error::BadFileDescriptor)));
 
         // Confirm metadata is removed
         let meta_res = storage.get_metadata(node);
-        assert!(matches!(meta_res, Err(Error::NotFound)));
+        assert!(matches!(meta_res, Err(Error::BadFileDescriptor)));
 
         // check there are no chunks left after deleting the node
         let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node + 1, 0)).collect();
