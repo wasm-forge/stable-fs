@@ -89,15 +89,15 @@ impl FileSystem {
         match self.fd_table.get(fd) {
             Some(FdEntry::File(file)) => Ok(file.node),
             Some(FdEntry::Dir(dir)) => Ok(dir.node),
-            None => Err(Error::NotFound),
+            None => Err(Error::BadFileDescriptor),
         }
     }
 
     fn get_file(&self, fd: Fd) -> Result<File, Error> {
         match self.fd_table.get(fd) {
             Some(FdEntry::File(file)) => Ok(file.clone()),
-            Some(FdEntry::Dir(_)) => Err(Error::InvalidFileType),
-            None => Err(Error::NotFound),
+            Some(FdEntry::Dir(_)) => Err(Error::InvalidArgument),
+            None => Err(Error::BadFileDescriptor),
         }
     }
 
@@ -108,8 +108,8 @@ impl FileSystem {
     fn get_dir(&self, fd: Fd) -> Result<Dir, Error> {
         match self.fd_table.get(fd) {
             Some(FdEntry::Dir(dir)) => Ok(dir.clone()),
-            Some(FdEntry::File(_)) => Err(Error::InvalidFileType),
-            None => Err(Error::NotFound),
+            Some(FdEntry::File(_)) => Err(Error::InvalidArgument),
+            None => Err(Error::BadFileDescriptor),
         }
     }
 
@@ -300,12 +300,12 @@ impl FileSystem {
     // Close the opened file and release the corresponding file descriptor.
     pub fn close(&mut self, fd: Fd) -> Result<(), Error> {
         self.flush(fd)?;
-        self.fd_table.close(fd).ok_or(Error::NotFound)?;
+        self.fd_table.close(fd).ok_or(Error::BadFileDescriptor)?;
 
         Ok(())
     }
 
-    // Get the metadata for a given file descriptor
+    // Get the metadata for a given node
     pub fn metadata_from_node(&self, node: Node) -> Result<Metadata, Error> {
         self.storage.get_metadata(node)
     }
@@ -319,7 +319,20 @@ impl FileSystem {
     // update metadata of a given file descriptor
     pub fn set_metadata(&mut self, fd: Fd, metadata: Metadata) -> Result<(), Error> {
         let node = self.get_node(fd)?;
-        self.storage.put_metadata(node, metadata);
+        self.storage.put_metadata(node, &metadata)?;
+
+        Ok(())
+    }
+
+    // Set maxmum file size limit in bytes. Reading, writing, and setting the cursor above the limit will result in error.
+    // Use this feature to limit, how much memory can be consumed by the mounted memory files.
+    pub fn set_file_size_limit(&mut self, fd: Fd, max_size: FileSize) -> Result<(), Error> {
+        let node = self.get_node(fd)?;
+        let mut metadata = self.storage.get_metadata(node)?;
+
+        metadata.maximum_size_allowed = Some(max_size);
+
+        self.storage.put_metadata(node, &metadata)?;
 
         Ok(())
     }
@@ -331,7 +344,7 @@ impl FileSystem {
 
         metadata.times.accessed = time;
 
-        self.storage.put_metadata(node, metadata);
+        self.storage.put_metadata(node, &metadata)?;
 
         Ok(())
     }
@@ -343,7 +356,7 @@ impl FileSystem {
 
         metadata.times.modified = time;
 
-        self.storage.put_metadata(node, metadata);
+        self.storage.put_metadata(node, &metadata)?;
 
         Ok(())
     }
@@ -351,7 +364,7 @@ impl FileSystem {
     // Get file or directory stats.
     pub fn get_stat(&self, fd: Fd) -> Result<(FileType, FdStat), Error> {
         match self.fd_table.get(fd) {
-            None => Err(Error::NotFound),
+            None => Err(Error::BadFileDescriptor),
             Some(FdEntry::File(file)) => Ok((FileType::RegularFile, file.stat)),
             Some(FdEntry::Dir(dir)) => Ok((FileType::Directory, dir.stat)),
         }
@@ -372,7 +385,7 @@ impl FileSystem {
                 self.put_dir(fd, dir);
                 Ok(())
             }
-            None => Err(Error::NotFound),
+            None => Err(Error::BadFileDescriptor),
         }
     }
 
@@ -396,13 +409,14 @@ impl FileSystem {
 
         match find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref()) {
             Ok(node) => self.open(node, stat, flags),
-            Err(Error::NotFound) => {
+
+            Err(Error::BadFileDescriptor) => {
                 if !flags.contains(OpenFlags::CREATE) {
-                    return Err(Error::NotFound);
+                    return Err(Error::BadFileDescriptor);
                 }
 
                 if flags.contains(OpenFlags::DIRECTORY) {
-                    return Err(Error::InvalidFileType);
+                    return Err(Error::IsDirectory);
                 }
 
                 self.create_file(parent, path, stat, ctime)
@@ -411,12 +425,14 @@ impl FileSystem {
         }
     }
 
-    // Opens a file and returns its new file descriptor.
+    // Opens an existing file and return its new file descriptor.
     fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
         if flags.contains(OpenFlags::EXCLUSIVE) {
-            return Err(Error::FileAlreadyExists);
+            return Err(Error::FileExists);
         }
+
         let metadata = self.storage.get_metadata(node)?;
+
         match metadata.file_type {
             FileType::Directory => {
                 let dir = Dir::new(node, stat, self.storage.as_mut())?;
@@ -425,7 +441,7 @@ impl FileSystem {
             }
             FileType::RegularFile => {
                 if flags.contains(OpenFlags::DIRECTORY) {
-                    return Err(Error::InvalidFileType);
+                    return Err(Error::InvalidArgument);
                 }
                 let file = File::new(node, stat, self.storage.as_mut())?;
                 if flags.contains(OpenFlags::TRUNCATE) {
@@ -439,7 +455,7 @@ impl FileSystem {
     }
 
     // Create a new file named `path` in the given `parent` folder.
-    pub fn create_file(
+    pub(crate) fn create_file(
         &mut self,
         parent: Fd,
         path: &str,
@@ -748,180 +764,181 @@ mod tests {
 
     #[test]
     fn fd_renumber() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("test1.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let fd1 = fs
+                .open_or_create(dir, "test1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd1 = fs
-            .create_file(dir, "test1.txt", FdStat::default(), 0)
-            .unwrap();
-        let fd2 = fs
-            .create_file(dir, "test2.txt", FdStat::default(), 0)
-            .unwrap();
+            let fd2 = fs
+                .create_file(dir, "test2.txt", FdStat::default(), 0)
+                .unwrap();
 
-        let entry1 = fs.get_node(fd1);
+            let entry1 = fs.get_node(fd1);
 
-        fs.renumber(fd1, fd2).unwrap();
+            fs.renumber(fd1, fd2).unwrap();
 
-        assert!(fs.get_node(fd1).is_err());
-        assert_eq!(fs.get_node(fd2), entry1);
+            assert!(fs.get_node(fd1).is_err());
+            assert_eq!(fs.get_node(fd2), entry1);
+        }
     }
 
     #[test]
     fn seek_and_write() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("test.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            fs.seek(fd, 24, super::Whence::SET).unwrap();
 
-        fs.seek(fd, 24, super::Whence::SET).unwrap();
+            fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
 
-        fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
+            let meta = fs.metadata(fd).unwrap();
 
-        let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 29);
 
-        assert_eq!(meta.size, 29);
+            fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+            let mut buf = [42u8; 29];
+            let rr = fs.read(fd, &mut buf).unwrap();
+            assert_eq!(rr, 29);
+            assert_eq!(
+                buf,
+                [
+                    0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2,
+                    3, 4, 5
+                ]
+            );
 
-        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
-        let mut buf = [42u8; 29];
-        let rr = fs.read(fd, &mut buf).unwrap();
-        assert_eq!(rr, 29);
-        assert_eq!(
-            buf,
-            [
-                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
-                4, 5
-            ]
-        );
+            fs.close(fd).unwrap();
 
-        fs.close(fd).unwrap();
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            let mut buf = [42u8; 29];
+            let rr = fs.read(fd, &mut buf).unwrap();
+            assert_eq!(rr, 29);
+            assert_eq!(
+                buf,
+                [
+                    0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2,
+                    3, 4, 5
+                ]
+            );
 
-        let mut buf = [42u8; 29];
-        let rr = fs.read(fd, &mut buf).unwrap();
-        assert_eq!(rr, 29);
-        assert_eq!(
-            buf,
-            [
-                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3,
-                4, 5
-            ]
-        );
-
-        fs.close(fd).unwrap();
+            fs.close(fd).unwrap();
+        }
     }
 
     #[test]
     fn read_and_write_vec() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("test.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let write_content1 = "This is a sample file content.";
+            let write_content2 = "1234567890";
 
-        let write_content1 = "This is a sample file content.";
-        let write_content2 = "1234567890";
+            let write_content = [
+                SrcBuf {
+                    buf: write_content1.as_ptr(),
+                    len: write_content1.len(),
+                },
+                SrcBuf {
+                    buf: write_content2.as_ptr(),
+                    len: write_content2.len(),
+                },
+            ];
 
-        let write_content = [
-            SrcBuf {
-                buf: write_content1.as_ptr(),
-                len: write_content1.len(),
-            },
-            SrcBuf {
-                buf: write_content2.as_ptr(),
-                len: write_content2.len(),
-            },
-        ];
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            fs.write_vec(fd, write_content.as_ref()).unwrap();
 
-        fs.write_vec(fd, write_content.as_ref()).unwrap();
+            let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 40);
 
-        let meta = fs.metadata(fd).unwrap();
-        assert_eq!(meta.size, 40);
+            fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
 
-        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+            let mut read_content1 = String::from("......................");
+            let mut read_content2 = String::from("......................");
 
-        let mut read_content1 = String::from("......................");
-        let mut read_content2 = String::from("......................");
+            let read_content = [
+                DstBuf {
+                    buf: read_content1.as_mut_ptr(),
+                    len: read_content1.len(),
+                },
+                DstBuf {
+                    buf: read_content2.as_mut_ptr(),
+                    len: read_content2.len(),
+                },
+            ];
 
-        let read_content = [
-            DstBuf {
-                buf: read_content1.as_mut_ptr(),
-                len: read_content1.len(),
-            },
-            DstBuf {
-                buf: read_content2.as_mut_ptr(),
-                len: read_content2.len(),
-            },
-        ];
+            fs.read_vec(fd, &read_content).unwrap();
 
-        fs.read_vec(fd, &read_content).unwrap();
+            assert_eq!("This is a sample file ", read_content1);
+            assert_eq!("content.1234567890....", read_content2);
 
-        assert_eq!("This is a sample file ", read_content1);
-        assert_eq!("content.1234567890....", read_content2);
-
-        fs.close(fd).unwrap();
+            fs.close(fd).unwrap();
+        }
     }
 
     #[test]
     fn read_and_write_vec_with_offset() {
-        let mut fs = test_fs();
+        for mut fs in test_fs_setups("test.txt") {
+            let dir = fs.root_fd();
 
-        let dir = fs.root_fd();
+            let write_content1 = "This is a sample file content.";
+            let write_content2 = "1234567890";
 
-        let write_content1 = "This is a sample file content.";
-        let write_content2 = "1234567890";
+            let write_content = [
+                SrcBuf {
+                    buf: write_content1.as_ptr(),
+                    len: write_content1.len(),
+                },
+                SrcBuf {
+                    buf: write_content2.as_ptr(),
+                    len: write_content2.len(),
+                },
+            ];
 
-        let write_content = [
-            SrcBuf {
-                buf: write_content1.as_ptr(),
-                len: write_content1.len(),
-            },
-            SrcBuf {
-                buf: write_content2.as_ptr(),
-                len: write_content2.len(),
-            },
-        ];
+            let fd = fs
+                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
 
-        let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
-            .unwrap();
+            fs.write_vec_with_offset(fd, write_content.as_ref(), 2)
+                .unwrap();
 
-        fs.write_vec_with_offset(fd, write_content.as_ref(), 2)
-            .unwrap();
+            let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 42);
 
-        let meta = fs.metadata(fd).unwrap();
-        assert_eq!(meta.size, 42);
+            fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
 
-        fs.seek(fd, 0, crate::fs::Whence::SET).unwrap();
+            let mut read_content1 = String::from("......................");
+            let mut read_content2 = String::from("......................");
 
-        let mut read_content1 = String::from("......................");
-        let mut read_content2 = String::from("......................");
+            let read_content = [
+                DstBuf {
+                    buf: read_content1.as_mut_ptr(),
+                    len: read_content1.len(),
+                },
+                DstBuf {
+                    buf: read_content2.as_mut_ptr(),
+                    len: read_content2.len(),
+                },
+            ];
 
-        let read_content = [
-            DstBuf {
-                buf: read_content1.as_mut_ptr(),
-                len: read_content1.len(),
-            },
-            DstBuf {
-                buf: read_content2.as_mut_ptr(),
-                len: read_content2.len(),
-            },
-        ];
+            fs.read_vec_with_offset(fd, &read_content, 1).unwrap();
 
-        fs.read_vec_with_offset(fd, &read_content, 1).unwrap();
+            assert_eq!("\0This is a sample file", read_content1);
+            assert_eq!(" content.1234567890...", read_content2);
 
-        assert_eq!("\0This is a sample file", read_content1);
-        assert_eq!(" content.1234567890...", read_content2);
-
-        fs.close(fd).unwrap();
+            fs.close(fd).unwrap();
+        }
     }
 
     #[test]
@@ -991,7 +1008,7 @@ mod tests {
             let err = fs
                 .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
                 .unwrap_err();
-            assert_eq!(err, Error::NotFound);
+            assert_eq!(err, Error::BadFileDescriptor);
         }
     }
 
@@ -1007,7 +1024,7 @@ mod tests {
             fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
 
             let err = fs.remove_file(dir, "test.txt").unwrap_err();
-            assert_eq!(err, Error::CannotRemoveOpenedNode);
+            assert_eq!(err, Error::TextFileBusy);
 
             fs.close(fd).unwrap();
             fs.remove_file(dir, "test.txt").unwrap();
@@ -1023,7 +1040,7 @@ mod tests {
             fs.close(fd).unwrap();
 
             let err = fs.remove_file(dir, "test").unwrap_err();
-            assert_eq!(err, Error::ExpectedToRemoveFile);
+            assert_eq!(err, Error::IsDirectory);
 
             fs.remove_dir(dir, "test").unwrap();
         }
@@ -1040,7 +1057,7 @@ mod tests {
             fs.close(fd).unwrap();
 
             let err = fs.remove_dir(dir, "test.txt").unwrap_err();
-            assert_eq!(err, Error::ExpectedToRemoveDirectory);
+            assert_eq!(err, Error::NotADirectoryOrSymbolicLink);
 
             fs.remove_file(dir, "test.txt").unwrap();
         }
@@ -1443,7 +1460,7 @@ mod tests {
         let res = fs.remove_file(root_fd, "test.txt");
 
         assert!(
-            res == Err(Error::CannotRemoveMountedMemoryFile),
+            res == Err(Error::TextFileBusy),
             "Deleting a mounted file should not be allowed!"
         );
 
@@ -1667,6 +1684,40 @@ mod tests {
     }
 
     #[test]
+    fn create_larger_file_than_memory_available() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups("") {
+            let chunk_size = fs.storage.chunk_size();
+
+            let root_fd = fs.root_fd();
+
+            let fd = create_file_with_size(filename, chunk_size as FileSize * 2 + 500, &mut fs);
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
+
+            let vec = vec![0; chunk_size * 2 + 500];
+
+            let expected = String::from_utf8(vec).unwrap();
+
+            assert_eq!(content, expected);
+
+            write_text_at_offset(&mut fs, fd, "abc", 33, chunk_size as FileSize + 100).unwrap();
+
+            let content = read_text_file(&mut fs, root_fd, filename, 0, chunk_size * 10);
+
+            let mut expected = vec![0u8; chunk_size * 2 + 500];
+
+            let pattern = b"abc".repeat(33);
+            expected[chunk_size + 100..chunk_size + 100 + 99].copy_from_slice(&pattern[..]);
+
+            let expected = String::from_utf8(expected).unwrap();
+
+            assert_eq!(content, expected);
+        }
+    }
+
+    #[test]
     fn filename_cached_on_open_or_create() {
         let filename = "test.txt";
 
@@ -1701,7 +1752,7 @@ mod tests {
             let fd2 =
                 fs.open_or_create(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
 
-            assert_eq!(fd2, Err(Error::NotFound));
+            assert_eq!(fd2, Err(Error::BadFileDescriptor));
             assert_eq!(fs.names_cache.get_nodes().len(), 0);
         }
     }
@@ -1737,5 +1788,245 @@ mod tests {
         );
 
         println!("opened_fd = {:?}", opened_fd);
+    }
+
+    #[test]
+    fn writing_beyond_maximum_size_fails() {
+        let filename = "test.txt";
+        let max_size: FileSize = 100; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Try writing data within the size limit.
+            let within_limit_data = vec![1u8; 50];
+            assert!(fs.write(fd, &within_limit_data).is_ok());
+
+            // Try writing data that would exceed the limit.
+            let exceeding_data = vec![1u8; 60];
+            let result = fs.write(fd, &exceeding_data);
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // Ensure the file size does not exceed the limit.
+            let metadata = fs.metadata(fd).unwrap();
+            assert!(metadata.size <= max_size);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn appending_to_exact_limit() {
+        let filename = "test_append.txt";
+        let max_size: FileSize = 20000; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Write data initially within the limit (mroe than 1 chunk used).
+            let initial_data = vec![1u8; 15000];
+            assert!(fs.write(fd, &initial_data).is_ok());
+
+            // Stop exactly on the egde of file size
+            let additional_data = vec![1u8; 5000];
+            assert!(fs.write(fd, &additional_data).is_ok());
+
+            // Attempt to append just one more byte fails.
+            let append_data = vec![1u8; 1];
+            let result = fs.write(fd, &append_data);
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // Verify the file size remains within the limit.
+            let metadata = fs.metadata(fd).unwrap();
+            assert!(metadata.size <= max_size);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn seek_and_write_beyond_maximum_size_fails() {
+        let filename = "test_seek.txt";
+        let max_size: FileSize = 150; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Seek to a position within the size limit and write.
+            fs.seek(fd, 100, super::Whence::SET).unwrap();
+            let within_limit_data = vec![1u8; 30];
+            assert!(fs.write(fd, &within_limit_data).is_ok());
+
+            // Seek to a position that would exceed the limit and attempt to write.
+            fs.seek(fd, 140, super::Whence::SET).unwrap();
+            let exceeding_data = vec![1u8; 20];
+            let result = fs.write(fd, &exceeding_data);
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // Verify the file size remains within the limit.
+            let metadata = fs.metadata(fd).unwrap();
+            assert!(metadata.size <= max_size);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn write_vec_beyond_maximum_size_fails() {
+        let filename = "test_vec.txt";
+        let max_size: FileSize = 120; // Maximum file size allowed.
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Create the file and set the maximum size limit.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .unwrap();
+            fs.set_file_size_limit(fd, max_size).unwrap();
+
+            // Prepare vector data.
+            let within_limit_data = vec![
+                SrcBuf {
+                    buf: vec![1u8; 50].as_ptr(),
+                    len: 50,
+                },
+                SrcBuf {
+                    buf: vec![1u8; 40].as_ptr(),
+                    len: 40,
+                },
+            ];
+            assert!(fs.write_vec(fd, within_limit_data.as_ref()).is_ok());
+
+            // expect file size to be 90
+            let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 90);
+
+            // Prepare vector data that exceeds the limit.
+            let exceeding_data = vec![
+                SrcBuf {
+                    buf: vec![1u8; 20].as_ptr(),
+                    len: 20,
+                },
+                SrcBuf {
+                    buf: vec![1u8; 80].as_ptr(),
+                    len: 80,
+                },
+            ];
+            let result = fs.write_vec(fd, exceeding_data.as_ref());
+            assert_eq!(result.unwrap_err(), Error::FileTooLarge);
+
+            // expect only the first buffer to be stored
+            let meta = fs.metadata(fd).unwrap();
+            assert_eq!(meta.size, 110);
+
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn shrinking_file_size_truncates_data() {
+        let filename = "shrink_test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Step 1: Create a file and write some content.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+
+            let content = "This is some sample text for testing file shrinking.";
+            fs.write(fd, content.as_bytes()).unwrap();
+
+            // Verify the initial file size matches the written content.
+            let metadata = fs.metadata(fd).unwrap();
+            assert_eq!(metadata.size as usize, content.len());
+
+            // Step 2: Shrink the file size.
+            let new_size: FileSize = 20;
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.size = new_size;
+            fs.set_metadata(fd, metadata).unwrap();
+
+            // Verify the file size is updated.
+            let shrunk_metadata = fs.metadata(fd).unwrap();
+            assert_eq!(shrunk_metadata.size, new_size);
+
+            // Step 3: Read back the content and verify it is truncated.
+            let mut buffer = vec![0u8; new_size as usize];
+            fs.seek(fd, 0, super::Whence::SET).unwrap(); // Seek to the start of the file.
+            let read_size = fs.read(fd, &mut buffer).unwrap();
+            assert_eq!(read_size, new_size);
+
+            let expected_content = &content[0..new_size as usize];
+            assert_eq!(String::from_utf8(buffer).unwrap(), expected_content);
+
+            // Close the file.
+            fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn shrinking_max_file_size_truncates_data() {
+        let filename = "shrink_test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Step 1: Create a file and write some content.
+            let fd = fs
+                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+
+            let content = "This is some sample text for testing file shrinking.";
+            fs.write(fd, content.as_bytes()).unwrap();
+
+            // Verify the initial file size matches the written content.
+            let metadata = fs.metadata(fd).unwrap();
+            assert_eq!(metadata.size as usize, content.len());
+
+            // Step 2: Shrink the file size.
+            let new_size: FileSize = 20;
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.size = new_size;
+            metadata.maximum_size_allowed = Some(new_size);
+            fs.set_metadata(fd, metadata).unwrap();
+
+            // Verify the file size is updated.
+            let shrunk_metadata = fs.metadata(fd).unwrap();
+            assert_eq!(shrunk_metadata.size, new_size);
+
+            // Step 3: Read back the content and verify it is truncated.
+            let mut buffer = vec![0u8; new_size as usize];
+            fs.seek(fd, 0, super::Whence::SET).unwrap(); // Seek to the start of the file.
+            let read_size = fs.read(fd, &mut buffer).unwrap();
+            assert_eq!(read_size, new_size);
+
+            let expected_content = &content[0..new_size as usize];
+            assert_eq!(String::from_utf8(buffer).unwrap(), expected_content);
+
+            // Close the file.
+            fs.close(fd).unwrap();
+        }
     }
 }

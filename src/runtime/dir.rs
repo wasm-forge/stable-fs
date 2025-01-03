@@ -46,8 +46,8 @@ impl Dir {
     ) -> Result<Self, Error> {
         let found = find_node(self.node, path, names_cache, storage);
         match found {
-            Err(Error::NotFound) => {}
-            Ok(_) => return Err(Error::FileAlreadyExists),
+            Err(Error::BadFileDescriptor) => {}
+            Ok(_) => return Err(Error::FileExists),
             Err(err) => return Err(err),
         }
 
@@ -94,8 +94,8 @@ impl Dir {
     ) -> Result<File, Error> {
         let found = find_node(self.node, path, names_cache, storage);
         match found {
-            Err(Error::NotFound) => {}
-            Ok(_) => return Err(Error::FileAlreadyExists),
+            Err(Error::BadFileDescriptor) => {}
+            Ok(_) => return Err(Error::FileExists),
             Err(err) => return Err(err),
         }
 
@@ -317,7 +317,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(
             root_fd,
@@ -362,7 +362,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(
             dir1_fd,
@@ -406,7 +406,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(
             dir1_fd,
@@ -450,7 +450,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(
             root_fd,
@@ -494,7 +494,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(
             dir1_fd,
@@ -534,7 +534,7 @@ mod tests {
 
         let res = fs.open_or_create(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 
@@ -568,7 +568,7 @@ mod tests {
 
         let res = fs.open_or_create(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
 
-        assert_eq!(res, Err(Error::NotFound));
+        assert_eq!(res, Err(Error::BadFileDescriptor));
 
         let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 

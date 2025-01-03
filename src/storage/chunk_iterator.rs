@@ -91,19 +91,23 @@ mod tests {
     fn create_file_with_size<M: Memory>(size: FileSize, storage: &mut StableStorage<M>) -> Node {
         let node = storage.new_node();
 
-        storage.put_metadata(
-            node,
-            Metadata {
+        storage
+            .put_metadata(
                 node,
-                file_type: FileType::RegularFile,
-                link_count: 1,
-                size,
-                times: Times::default(),
-                first_dir_entry: Some(42),
-                last_dir_entry: Some(24),
-                chunk_type: Some(storage.chunk_type()),
-            },
-        );
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size,
+                    times: Times::default(),
+                    first_dir_entry: Some(42),
+                    last_dir_entry: Some(24),
+                    chunk_type: Some(storage.chunk_type()),
+                    maximum_size_allowed: None,
+                },
+            )
+            .unwrap();
+
         node
     }
 
@@ -126,7 +130,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
@@ -152,7 +156,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
@@ -181,7 +185,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();
@@ -210,7 +214,7 @@ mod tests {
             file_size,
             storage.chunk_size() as FileSize,
             &mut storage.ptr_cache,
-            &mut storage.v2_chunk_ptr,
+            &mut storage.v2_filechunk.v2_chunk_ptr,
         );
 
         let res_vec: Vec<_> = iterator.collect();

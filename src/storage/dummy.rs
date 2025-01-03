@@ -36,7 +36,7 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    fn put_metadata(&mut self, _node: Node, _metadata: Metadata) {
+    fn put_metadata(&mut self, _node: Node, _metadata: &Metadata) -> Result<(), Error> {
         panic!("Not supported")
     }
 
@@ -114,6 +114,10 @@ impl Storage for DummyStorage {
     fn flush(&mut self, _node: Node) {
         panic!("Not supported")
     }
+
+    fn resize_file(&mut self, _node: Node, _new_size: FileSize) -> Result<(), Error> {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]
@@ -127,19 +131,22 @@ mod tests {
     fn put_metadata_panic() {
         let mut storage = DummyStorage::new();
         let node = storage.new_node();
-        storage.put_metadata(
-            node,
-            Metadata {
+        storage
+            .put_metadata(
                 node,
-                file_type: FileType::RegularFile,
-                link_count: 1,
-                size: 10,
-                times: Times::default(),
-                first_dir_entry: Some(42),
-                last_dir_entry: Some(24),
-                chunk_type: None,
-            },
-        )
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 10,
+                    times: Times::default(),
+                    first_dir_entry: Some(42),
+                    last_dir_entry: Some(24),
+                    chunk_type: None,
+                    maximum_size_allowed: None,
+                },
+            )
+            .unwrap();
     }
 
     #[test]
