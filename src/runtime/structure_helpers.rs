@@ -176,9 +176,10 @@ pub fn create_dir_entry(
 // create whole path if it doesn't exist
 // parent_node        parent folder node
 // path               full path
-// leaf_type          file type of the last path elemen (RegularFile or Directory)
-// storage            file system storage
+// leaf_type          file type of the last path element (RegularFile or Directory)
+// is_exclusive       if true, an error is returned if the node exists
 // ctime              creation time to be used
+// storage            file system storage
 // returns the node of the last created folder part, return error if creation failed
 pub fn create_path<'a>(
     parent_node: Node,
@@ -348,13 +349,12 @@ pub fn rm_dir_entry(
     names_cache: &mut FilenameCache,
     storage: &mut dyn Storage,
 ) -> Result<(Node, Metadata), Error> {
-    // clear cache
-    // todo: clear concrete node, not the whole cache
-    names_cache.clear();
-
     let find_result = find_node_with_index(parent_dir_node, path, storage)?;
 
     let removed_dir_entry_node = find_result.node;
+
+    // remove node from name cache
+    names_cache.clear();
 
     if storage.is_mounted(removed_dir_entry_node) {
         return Err(Error::TextFileBusy);

@@ -91,7 +91,7 @@ pub fn write_text_file(
 ) -> Result<(), Error> {
     use crate::fs::{FdStat, OpenFlags};
 
-    let file_fd = fs.open_or_create(parent_fd, path, FdStat::default(), OpenFlags::CREATE, 0)?;
+    let file_fd = fs.open(parent_fd, path, FdStat::default(), OpenFlags::CREATE, 0)?;
 
     write_text_fd(fs, file_fd, content, times)
 }
@@ -151,7 +151,7 @@ pub fn read_text_file(
     use crate::fs::{DstBuf, FdStat, OpenFlags};
 
     let fd = fs
-        .open_or_create(parent_fd, path, FdStat::default(), OpenFlags::empty(), 0)
+        .open(parent_fd, path, FdStat::default(), OpenFlags::empty(), 0)
         .unwrap();
 
     let mut content = (0..size).map(|_| ".").collect::<String>();
@@ -174,11 +174,12 @@ pub fn read_text_file(
 
 #[cfg(test)]
 mod test_env {
-    use crate::runtime::fd::Fd;
     use crate::runtime::types::DstBuf;
+    use crate::runtime::types::Fd;
     use crate::runtime::types::FdStat;
     use crate::runtime::types::OpenFlags;
     use crate::runtime::types::Whence;
+    use crate::storage::types::FileType;
     use crate::test_utils::FileSystem;
     use crate::test_utils::SrcBuf;
     use crate::test_utils::StableStorage;
@@ -231,7 +232,7 @@ mod test_env {
             let dir = fs.root_fd();
 
             let fd = fs
-                .open_or_create(
+                .open(
                     dir,
                     filename.as_str(),
                     FdStat::default(),
@@ -346,7 +347,7 @@ mod test_env {
                 let root_fd = (*fs).root_fd();
 
                 let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
+                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
                     .unwrap();
 
                 let write_content = [SrcBuf {
@@ -379,7 +380,7 @@ mod test_env {
                 let root_fd = (*fs).root_fd();
 
                 let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
+                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
                     .unwrap();
 
                 (*fs).seek(fd, 0, Whence::SET).unwrap();
@@ -431,7 +432,7 @@ mod test_env {
 
                 for i in 0..FILES_COUNT {
                     let fd = (*fs)
-                        .open_or_create(
+                        .open(
                             root_fd,
                             &format!("{}{}", filename, i),
                             FdStat::default(),
@@ -494,7 +495,7 @@ mod test_env {
                 let root_fd = (*fs).root_fd();
 
                 let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
+                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
                     .unwrap();
 
                 let size = (*fs).metadata(fd).unwrap().size as usize;
@@ -533,7 +534,7 @@ mod test_env {
                 let root_fd = (*fs).root_fd();
 
                 let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
+                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
                     .unwrap();
 
                 let len = (*fs).metadata(fd).unwrap().size as usize;
@@ -585,7 +586,7 @@ mod test_env {
 
                 for i in 0..FILES_COUNT {
                     let fd = (*fs)
-                        .open_or_create(
+                        .open(
                             root_fd,
                             &format!("{}{}", filename, i),
                             FdStat::default(),
@@ -771,5 +772,226 @@ mod test_env {
     #[test]
     fn file_read_100mb_in_segments_10_files() {
         read_100mb_in_segments_10_files("file.txt")
+    }
+
+    #[derive(Debug)]
+    struct AssertionError {
+        details: String,
+    }
+
+    impl AssertionError {
+        fn new(msg: &str) -> AssertionError {
+            AssertionError {
+                details: msg.to_string(),
+            }
+        }
+    }
+
+    impl std::error::Error for AssertionError {
+        fn description(&self) -> &str {
+            &self.details
+        }
+    }
+
+    impl std::fmt::Display for AssertionError {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "{}", self.details)
+        }
+    }
+
+    // deterministic 32-bit pseudo-random number provider
+    fn next_rand(cur_rand: u64) -> u64 {
+        let a: u64 = 1103515245;
+        let c: u64 = 12345;
+        let m: u64 = 1 << 31;
+
+        (a.wrapping_mul(cur_rand).wrapping_add(c)) % m
+    }
+
+    pub fn generate_random_file_structure(
+        op_count: u32, // number of operations to do
+        cur_rand: u64, // current random seed
+        depth: u32,    // current folder depth
+        parent_fd: Fd, // host fd
+        fs: &mut FileSystem,
+    ) -> Result<u32, crate::error::Error> {
+        let mut op_count = op_count;
+        let mut cur_rand = cur_rand;
+
+        while op_count > 0 {
+            op_count -= 1;
+
+            cur_rand = next_rand(cur_rand);
+            let action = cur_rand % 6; // e.g., 0..5
+
+            match action {
+                0 => {
+                    // create a file
+                    let filename = format!("file{}.txt", op_count);
+                    let fd = fs.open(
+                        parent_fd,
+                        &filename,
+                        FdStat::default(),
+                        OpenFlags::CREATE,
+                        op_count as u64,
+                    )?;
+                    fs.close(fd)?;
+                }
+
+                1 => {
+                    // create a directory.
+                    let dirname = format!("dir{}.txt", op_count);
+
+                    fs.mkdir(parent_fd, &dirname, FdStat::default(), op_count as u64)?;
+                }
+
+                2 => {
+                    // remove a random folder item
+                    let files = fs.list_dir_internal(parent_fd, None)?;
+
+                    if files.len() > 0 {
+                        let cur_rand = next_rand(cur_rand);
+                        let (node, name) = &files[cur_rand as usize % files.len()];
+
+                        let meta = fs.metadata_from_node(*node)?;
+
+                        match meta.file_type {
+                            FileType::Directory => {
+                                let _ = fs.remove_dir(parent_fd, &name);
+                            }
+                            FileType::RegularFile => {
+                                let _ = fs.remove_file(parent_fd, &name);
+                            }
+                            FileType::SymbolicLink => panic!("Symlink are not supported!"),
+                        }
+                    }
+                }
+
+                3 => {
+                    // enter subfolder
+                    let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
+
+                    if dirs.len() > 0 {
+                        let cur_rand = next_rand(cur_rand);
+                        let (_node, name) = &dirs[cur_rand as usize % dirs.len()];
+
+                        let dir_fd = fs.open(
+                            parent_fd,
+                            &name,
+                            FdStat::default(),
+                            OpenFlags::empty(),
+                            op_count as u64,
+                        )?;
+
+                        op_count = generate_random_file_structure(
+                            op_count,
+                            cur_rand,
+                            depth + 1,
+                            dir_fd,
+                            fs,
+                        )?;
+                    }
+                }
+
+                4 => {
+                    // exit the current folder
+                    if depth > 0 {
+                        return Ok(op_count);
+                    }
+                }
+
+                5 => {
+                    let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
+
+                    // Random open/close a file (or directory)
+                    if dirs.len() > 0 {
+                        let cur_rand = next_rand(cur_rand);
+                        let (_node, filename) = &dirs[cur_rand as usize % dirs.len()];
+
+                        let fd = fs.open(
+                            parent_fd,
+                            &filename,
+                            FdStat::default(),
+                            OpenFlags::empty(),
+                            op_count as u64,
+                        )?;
+
+                        fs.close(fd)?;
+                    }
+                }
+
+                _ => {
+                    panic!("Incorrect action {action}");
+                }
+            }
+        }
+
+        Ok(op_count)
+    }
+
+    fn list_all_files_as_string(fs: &mut FileSystem) -> Result<String, crate::error::Error> {
+        let mut paths = Vec::new();
+
+        scan_directory(fs, fs.root_fd(), "", &mut paths)?;
+        Ok(paths.join("\n"))
+    }
+
+    fn scan_directory(
+        fs: &mut FileSystem,
+        dir_fd: u32,
+        current_path: &str,
+        collected_paths: &mut Vec<String>,
+    ) -> Result<(), crate::error::Error> {
+        let entries = fs.list_dir_internal(dir_fd, None)?;
+
+        for (entry_node, filename) in entries {
+            let entry_path = if current_path.is_empty() {
+                format!("/{}", filename)
+            } else {
+                format!("{}/{}", current_path, filename)
+            };
+
+            let meta = fs.metadata_from_node(entry_node)?;
+
+            match meta.file_type {
+                FileType::Directory => {
+                    let child_fd = fs.open(
+                        dir_fd,
+                        &filename,
+                        FdStat::default(),
+                        OpenFlags::DIRECTORY,
+                        0,
+                    )?;
+
+                    scan_directory(fs, child_fd, &entry_path, collected_paths)?;
+
+                    fs.close(child_fd)?;
+                }
+                FileType::RegularFile => {
+                    collected_paths.push(entry_path);
+                }
+                FileType::SymbolicLink => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_generator() {
+        let memory = DefaultMemoryImpl::default();
+
+        let storage = StableStorage::new(memory);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+
+        // generate random file structure.
+        generate_random_file_structure(100, 36, 0, fs.root_fd(), &mut fs).unwrap();
+
+        // get all files
+        let files = list_all_files_as_string(&mut fs).unwrap();
+
+        println!("------------------------------------------");
+        println!("FILE STRUCTURE");
+        println!("{}", files);
     }
 }

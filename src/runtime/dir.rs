@@ -45,6 +45,7 @@ impl Dir {
         ctime: u64,
     ) -> Result<Self, Error> {
         let found = find_node(self.node, path, names_cache, storage);
+
         match found {
             Err(Error::BadFileDescriptor) => {}
             Ok(_) => return Err(Error::FileExists),
@@ -153,15 +154,15 @@ mod tests {
         let dir = fs.root_fd();
 
         let fd = fs
-            .create_file(dir, "test1.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test1.txt", FdStat::default(), 0)
             .unwrap();
         fs.close(fd).unwrap();
         let fd = fs
-            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test2.txt", FdStat::default(), 0)
             .unwrap();
         fs.close(fd).unwrap();
         let fd = fs
-            .create_file(dir, "test3.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test3.txt", FdStat::default(), 0)
             .unwrap();
         fs.close(fd).unwrap();
 
@@ -192,10 +193,12 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        let new_dir_fd = fs.create_dir(dir, "dir1", FdStat::default(), 123).unwrap();
+        let new_dir_fd = fs
+            .create_open_directory(dir, "dir1", FdStat::default(), 123)
+            .unwrap();
 
         let new_file_fd = fs
-            .create_file(dir, "test.txt", FdStat::default(), 234)
+            .create_open_file(dir, "test.txt", FdStat::default(), 234)
             .unwrap();
 
         let dir_meta = fs.metadata(new_dir_fd).unwrap();
@@ -217,7 +220,7 @@ mod tests {
         let dir = fs.root_fd();
 
         let fd = fs
-            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test2.txt", FdStat::default(), 0)
             .unwrap();
         fs.close(fd).unwrap();
 
@@ -237,7 +240,7 @@ mod tests {
         let dir = fs.root_fd();
 
         let fd = fs
-            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test2.txt", FdStat::default(), 0)
             .unwrap();
 
         fs.close(fd).unwrap();
@@ -261,7 +264,7 @@ mod tests {
 
         let parent_fd = fs.root_fd();
 
-        fs.create_file(parent_fd, "test1.txt", FdStat::default(), 120)
+        fs.create_open_file(parent_fd, "test1.txt", FdStat::default(), 120)
             .unwrap();
 
         let fd2 = fs
@@ -280,13 +283,13 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
         let dir2_fd = fs
-            .create_dir(root_fd, "dir2", FdStat::default(), 123)
+            .create_open_directory(root_fd, "dir2", FdStat::default(), 123)
             .unwrap();
         let _dir3_fd = fs
-            .create_dir(dir1_fd, "dir3", FdStat::default(), 320)
+            .create_open_directory(dir1_fd, "dir3", FdStat::default(), 320)
             .unwrap();
         let dir4_res = fs.create_hard_link(dir1_fd, "dir3", dir2_fd, "dir4");
 
@@ -300,16 +303,16 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let file_fd = fs
-            .create_file(dir1_fd, "test1.txt", FdStat::default(), 120)
+            .create_open_file(dir1_fd, "test1.txt", FdStat::default(), 120)
             .unwrap();
 
         fs.close(file_fd).unwrap();
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             root_fd,
             "test1.txt",
             FdStat::default(),
@@ -319,7 +322,7 @@ mod tests {
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             root_fd,
             "dir1/test1.txt",
             FdStat::default(),
@@ -338,11 +341,11 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let file_fd = fs
-            .create_file(root_fd, "test1.txt", FdStat::default(), 120)
+            .create_open_file(root_fd, "test1.txt", FdStat::default(), 120)
             .unwrap();
 
         let fd2 = fs
@@ -354,7 +357,7 @@ mod tests {
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             root_fd,
             "test1.txt",
             FdStat::default(),
@@ -364,7 +367,7 @@ mod tests {
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             dir1_fd,
             "test2.txt",
             FdStat::default(),
@@ -382,11 +385,11 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let file_fd = fs
-            .create_file(root_fd, "test1.txt", FdStat::default(), 120)
+            .create_open_file(root_fd, "test1.txt", FdStat::default(), 120)
             .unwrap();
 
         let fd2 = fs
@@ -398,7 +401,7 @@ mod tests {
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             root_fd,
             "test1.txt",
             FdStat::default(),
@@ -408,7 +411,7 @@ mod tests {
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             dir1_fd,
             "test2.txt",
             FdStat::default(),
@@ -426,11 +429,11 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let file_fd = fs
-            .create_file(dir1_fd, "test1.txt", FdStat::default(), 120)
+            .create_open_file(dir1_fd, "test1.txt", FdStat::default(), 120)
             .unwrap();
 
         let fd2 = fs
@@ -442,7 +445,7 @@ mod tests {
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             dir1_fd,
             "test1.txt",
             FdStat::default(),
@@ -452,7 +455,7 @@ mod tests {
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             root_fd,
             "test2.txt",
             FdStat::default(),
@@ -470,11 +473,11 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let file_fd = fs
-            .create_file(root_fd, "test1.txt", FdStat::default(), 120)
+            .create_open_file(root_fd, "test1.txt", FdStat::default(), 120)
             .unwrap();
 
         let fd2 = fs
@@ -486,7 +489,7 @@ mod tests {
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             root_fd,
             "test1.txt",
             FdStat::default(),
@@ -496,7 +499,7 @@ mod tests {
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(
+        let res = fs.open(
             dir1_fd,
             "test2.txt",
             FdStat::default(),
@@ -514,15 +517,15 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let _file_fd = fs
-            .create_file(dir1_fd, "test1.txt", FdStat::default(), 123)
+            .create_open_file(dir1_fd, "test1.txt", FdStat::default(), 123)
             .unwrap();
 
         let dir2_fd = fs
-            .create_dir(root_fd, "dir2", FdStat::default(), 125)
+            .create_open_directory(root_fd, "dir2", FdStat::default(), 125)
             .unwrap();
 
         let fd2 = fs.rename(root_fd, "dir1", dir2_fd, "dir3").unwrap();
@@ -532,11 +535,11 @@ mod tests {
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
+        let res = fs.open(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
+        let res = fs.open(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 
         assert!(res.is_ok());
     }
@@ -548,15 +551,15 @@ mod tests {
         let root_fd = fs.root_fd();
 
         let dir1_fd = fs
-            .create_dir(root_fd, "dir1", FdStat::default(), 120)
+            .create_open_directory(root_fd, "dir1", FdStat::default(), 120)
             .unwrap();
 
         let _file_fd = fs
-            .create_file(dir1_fd, "test1.txt", FdStat::default(), 123)
+            .create_open_file(dir1_fd, "test1.txt", FdStat::default(), 123)
             .unwrap();
 
         let dir2_fd = fs
-            .create_dir(root_fd, "dir2", FdStat::default(), 125)
+            .create_open_directory(root_fd, "dir2", FdStat::default(), 125)
             .unwrap();
 
         let fd2 = fs.rename(root_fd, "dir1", root_fd, "dir2/dir3").unwrap();
@@ -566,11 +569,11 @@ mod tests {
 
         assert_eq!(meta.node, meta2.node);
 
-        let res = fs.open_or_create(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
+        let res = fs.open(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
 
         assert_eq!(res, Err(Error::BadFileDescriptor));
 
-        let res = fs.open_or_create(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
+        let res = fs.open(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 
         assert!(res.is_ok());
     }

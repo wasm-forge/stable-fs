@@ -1,6 +1,9 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
+// file descriptor
+pub type Fd = u32;
+
 #[derive(Copy, Clone, Debug)]
 pub struct FdStat {
     pub flags: FdFlags,

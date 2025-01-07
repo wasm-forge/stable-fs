@@ -148,7 +148,7 @@ mod tests {
     fn seek_and_tell() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -190,7 +190,7 @@ mod tests {
     fn read_and_write_cursor() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -213,7 +213,7 @@ mod tests {
     fn read_and_write_offset() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -237,7 +237,7 @@ mod tests {
     fn read_and_write_small_and_big_buffer() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let file = fs.get_test_file(fd);
@@ -267,7 +267,7 @@ mod tests {
         for mut fs in [test_fs()] {
             //test_fs_setups("test") {
             let fd = fs
-                .open_or_create(
+                .open(
                     fs.root_fd(),
                     "test",
                     FdStat::default(),
@@ -300,7 +300,7 @@ mod tests {
     fn read_and_write_offset_vs_range() {
         for mut fs in test_fs_setups("test") {
             let fd = fs
-                .open_or_create(
+                .open(
                     fs.root_fd(),
                     "test",
                     FdStat::default(),

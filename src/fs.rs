@@ -15,10 +15,9 @@ use crate::{
     },
 };
 
-pub use crate::runtime::fd::Fd;
-
 pub use crate::runtime::types::{
-    ChunkSize, ChunkType, DstBuf, DstIoVec, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec, Whence,
+    ChunkSize, ChunkType, DstBuf, DstIoVec, Fd, FdFlags, FdStat, OpenFlags, SrcBuf, SrcIoVec,
+    Whence,
 };
 pub use crate::storage::types::FileSize;
 
@@ -46,7 +45,7 @@ impl FileSystem {
 
         let root_node = storage.root_node();
         let root_entry = Dir::new(root_node, FdStat::default(), &*storage)?;
-        let root_fd = fd_table.open(FdEntry::Dir(root_entry));
+        let root_fd = fd_table.open_root(FdEntry::Dir(root_entry));
         let names_cache = FilenameCache::new();
 
         Ok(Self {
@@ -121,7 +120,7 @@ impl FileSystem {
         memory: Box<dyn Memory>,
     ) -> Result<(), Error> {
         // create a file for the mount
-        let fd = self.open_or_create(
+        let fd = self.open(
             self.root_fd,
             filename,
             FdStat::default(),
@@ -129,18 +128,20 @@ impl FileSystem {
             0,
         )?;
 
-        let node = self.get_node(fd)?;
-        self.close(fd)?;
+        let result = (|| {
+            let node = self.get_node(fd)?;
+            self.storage.mount_node(node, memory)
+        })();
 
-        self.storage.mount_node(node, memory)?;
+        let _ = self.close(fd);
 
-        Ok(())
+        result
     }
 
     // initialize mounted memory with the data stored in the host file
     pub fn init_memory_file(&mut self, filename: &str) -> Result<(), Error> {
         // create a file for the mount
-        let fd = self.open_or_create(
+        let fd = self.open(
             self.root_fd,
             filename,
             FdStat::default(),
@@ -148,16 +149,20 @@ impl FileSystem {
             0,
         )?;
 
-        let node = self.get_node(fd)?;
-        self.close(fd)?;
+        let result = (|| {
+            let node = self.get_node(fd)?;
+            self.storage.init_mounted_memory(node)
+        })();
 
-        self.storage.init_mounted_memory(node)
+        let _ = self.close(fd);
+
+        result
     }
 
     // store content of the currently active memory file to the file system
     pub fn store_memory_file(&mut self, filename: &str) -> Result<(), Error> {
         // create a file for the mount
-        let fd = self.open_or_create(
+        let fd = self.open(
             self.root_fd,
             filename,
             FdStat::default(),
@@ -165,16 +170,20 @@ impl FileSystem {
             0,
         )?;
 
-        let node = self.get_node(fd)?;
-        self.close(fd)?;
+        let result = (|| {
+            let node = self.get_node(fd)?;
+            self.storage.store_mounted_memory(node)
+        })();
 
-        self.storage.store_mounted_memory(node)
+        let _ = self.close(fd);
+
+        result
     }
 
     // Unmount memory, the system will continue to work with the file in normal mode.
     pub fn unmount_memory_file(&mut self, filename: &str) -> Result<Box<dyn Memory>, Error> {
         // create a file for the mount
-        let fd = self.open_or_create(
+        let fd = self.open(
             self.root_fd,
             filename,
             FdStat::default(),
@@ -182,17 +191,26 @@ impl FileSystem {
             0,
         )?;
 
-        let node = self.get_node(fd)?;
-        self.close(fd)?;
+        let result = (|| {
+            let node = self.get_node(fd)?;
 
-        let memory = self.storage.unmount_node(node)?;
+            let memory = self.storage.unmount_node(node)?;
 
-        Ok(memory)
+            Ok(memory)
+        })();
+
+        let _ = self.close(fd);
+
+        result
     }
 
     // Get directory entry for a given directory file descriptor and the entry index.
     pub fn get_direntry(&self, fd: Fd, index: DirEntryIndex) -> Result<DirEntry, Error> {
         self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
+    }
+
+    fn get_node_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
+        self.storage.get_direntry(node, index)
     }
 
     fn put_dir(&mut self, fd: Fd, dir: Dir) {
@@ -396,19 +414,19 @@ impl FileSystem {
         self.storage.get_metadata(node)
     }
 
-    // Opens of creates a new file.
-    pub fn open_or_create(
+    // Opens a directory or file or creates a new file (depending on the flags provided).
+    pub fn open(
         &mut self,
-        parent: Fd,
+        parent_fd: Fd,
         path: &str,
         stat: FdStat,
         flags: OpenFlags,
         ctime: u64,
     ) -> Result<Fd, Error> {
-        let dir = self.get_dir(parent)?;
+        let dir = self.get_dir(parent_fd)?;
 
         match find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref()) {
-            Ok(node) => self.open(node, stat, flags),
+            Ok(node) => self.open_internal(node, stat, flags),
 
             Err(Error::BadFileDescriptor) => {
                 if !flags.contains(OpenFlags::CREATE) {
@@ -416,21 +434,17 @@ impl FileSystem {
                 }
 
                 if flags.contains(OpenFlags::DIRECTORY) {
-                    return Err(Error::IsDirectory);
+                    self.create_open_directory(parent_fd, path, stat, ctime)
+                } else {
+                    self.create_open_file(parent_fd, path, stat, ctime)
                 }
-
-                self.create_file(parent, path, stat, ctime)
             }
             Err(err) => Err(err),
         }
     }
 
-    // Opens an existing file and return its new file descriptor.
-    fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
-        if flags.contains(OpenFlags::EXCLUSIVE) {
-            return Err(Error::FileExists);
-        }
-
+    // Opens an existing file or directory by node and return its new file descriptor.
+    fn open_internal(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
         let metadata = self.storage.get_metadata(node)?;
 
         match metadata.file_type {
@@ -443,19 +457,22 @@ impl FileSystem {
                 if flags.contains(OpenFlags::DIRECTORY) {
                     return Err(Error::InvalidArgument);
                 }
-                let file = File::new(node, stat, self.storage.as_mut())?;
+
+                let mut file = File::new(node, stat, self.storage.as_mut())?;
+
                 if flags.contains(OpenFlags::TRUNCATE) {
                     file.truncate(self.storage.as_mut())?;
                 }
+
                 let fd = self.fd_table.open(FdEntry::File(file));
                 Ok(fd)
             }
-            FileType::SymbolicLink => unimplemented!("Symbolic links are not supported yet"),
+            FileType::SymbolicLink => unimplemented!("Symbolic links are not supported"),
         }
     }
 
-    // Create a new file named `path` in the given `parent` folder.
-    pub(crate) fn create_file(
+    // Create a new file and open it. Function fails if the file exists already.
+    pub(crate) fn create_open_file(
         &mut self,
         parent: Fd,
         path: &str,
@@ -474,6 +491,7 @@ impl FileSystem {
 
         let child_fd = self.fd_table.open(FdEntry::File(child));
         self.put_dir(parent, dir);
+
         Ok(child_fd)
     }
 
@@ -488,8 +506,25 @@ impl FileSystem {
         )
     }
 
-    // Create a new directory named `path` in the given `parent` folder.
-    pub fn create_dir(
+    // Convenience method, create a new directory without opening it
+    pub fn mkdir(&mut self, parent: Fd, path: &str, stat: FdStat, ctime: u64) -> Result<(), Error> {
+        let dir = self.get_dir(parent)?;
+
+        dir.create_dir(
+            path,
+            stat,
+            &mut self.names_cache,
+            self.storage.as_mut(),
+            ctime,
+        )?;
+
+        self.put_dir(parent, dir);
+
+        Ok(())
+    }
+
+    // create a directory and return an opened file descriptor of it
+    pub fn create_open_directory(
         &mut self,
         parent: Fd,
         path: &str,
@@ -497,6 +532,7 @@ impl FileSystem {
         ctime: u64,
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent)?;
+
         let child = dir.create_dir(
             path,
             stat,
@@ -504,8 +540,10 @@ impl FileSystem {
             self.storage.as_mut(),
             ctime,
         )?;
+
         let child_fd = self.fd_table.open(FdEntry::Dir(child));
         self.put_dir(parent, dir);
+
         Ok(child_fd)
     }
 
@@ -518,6 +556,83 @@ impl FileSystem {
             &mut self.names_cache,
             self.storage.as_mut(),
         )
+    }
+
+    pub(crate) fn list_dir_internal(
+        &mut self,
+        dir_fd: Fd,
+        file_type: Option<FileType>,
+    ) -> Result<Vec<(Node, String)>, Error> {
+        let mut res = vec![];
+
+        let meta = self.metadata(dir_fd)?;
+
+        let mut entry_index = meta.first_dir_entry;
+
+        while let Some(index) = entry_index {
+            let entry = self.get_node_direntry(meta.node, index)?;
+
+            // here we assume the entry value name is correct UTF-8
+            let filename = unsafe {
+                std::str::from_utf8_unchecked(&entry.name.bytes[..(entry.name.length as usize)])
+            }
+            .to_string();
+
+            if let Some(file_type) = file_type {
+                let meta = self.metadata_from_node(entry.node)?;
+
+                if meta.file_type == file_type {
+                    res.push((entry.node, filename));
+                }
+            } else {
+                res.push((entry.node, filename));
+            }
+
+            entry_index = entry.next_entry;
+        }
+
+        Ok(res)
+    }
+
+    /// Recursively remove a directory (and all subdirectories/files within).
+    pub fn remove_dir_recursive(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
+        // Open the target directory. We use `OpenFlags::DIRECTORY` to ensure
+        //    the path is interpreted as a directory (or fail if it doesn't exist).
+        let dir_fd = self.open(parent, path, FdStat::default(), OpenFlags::DIRECTORY, 0)?;
+
+        let result = (|| {
+            // Find all directory children
+            let children = self.list_dir_internal(dir_fd, None)?;
+
+            // For each child, figure out if it's a subdirectory or file and remove accordingly.
+            for (child_node, child_name) in children {
+                let child_meta = self.storage.get_metadata(child_node)?;
+
+                match child_meta.file_type {
+                    FileType::Directory => {
+                        // Recurse into the subdirectory.
+                        self.remove_dir_recursive(dir_fd, &child_name)?;
+                    }
+                    FileType::RegularFile => {
+                        // Remove the file.
+                        self.remove_file(dir_fd, &child_name)?;
+                    }
+                    FileType::SymbolicLink => {
+                        unimplemented!("Symbolic links are not supported yet");
+                    }
+                }
+            }
+
+            Ok(())
+        })();
+
+        // close the folder itself before its deletion
+        self.close(dir_fd)?;
+
+        // Now that it is empty, remove the directory entry from its parent.
+        self.remove_dir(parent, path)?;
+
+        result
     }
 
     // Create a hard link to an existing file.
@@ -548,7 +663,7 @@ impl FileSystem {
             self.storage.as_ref(),
         )?;
 
-        self.open(node, FdStat::default(), OpenFlags::empty())
+        self.open_internal(node, FdStat::default(), OpenFlags::empty())
     }
 
     // Rename a file.
@@ -583,7 +698,7 @@ impl FileSystem {
             self.storage.as_mut(),
         )?;
 
-        self.open(node, FdStat::default(), OpenFlags::empty())
+        self.open_internal(node, FdStat::default(), OpenFlags::empty())
     }
 
     #[cfg(test)]
@@ -631,7 +746,7 @@ mod tests {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(dir, path, FdStat::default(), OpenFlags::DIRECTORY, 0)
+            .open(dir, path, FdStat::default(), OpenFlags::DIRECTORY, 0)
             .unwrap();
 
         let meta = fs.metadata(fd).unwrap();
@@ -670,7 +785,13 @@ mod tests {
         let mut fs = test_fs();
 
         let file = fs
-            .create_file(fs.root_fd(), "test.txt", Default::default(), 0)
+            .open(
+                fs.root_fd(),
+                "test.txt",
+                Default::default(),
+                OpenFlags::CREATE,
+                0,
+            )
             .unwrap();
 
         assert!(file > fs.root_fd());
@@ -681,16 +802,17 @@ mod tests {
         let mut fs = test_fs();
 
         let dir = fs
-            .create_dir(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_directory(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let fd = fs
-            .create_file(dir, "file.txt", FdStat::default(), 0)
+            .create_open_file(dir, "file.txt", FdStat::default(), 0)
             .unwrap();
+
         fs.write(fd, "Hello, world!".as_bytes()).unwrap();
 
         let dir = fs
-            .open_or_create(
+            .open(
                 fs.root_fd(),
                 "test",
                 FdStat::default(),
@@ -700,7 +822,7 @@ mod tests {
             .unwrap();
 
         let fd = fs
-            .open_or_create(dir, "file.txt", FdStat::default(), OpenFlags::empty(), 0)
+            .open(dir, "file.txt", FdStat::default(), OpenFlags::empty(), 0)
             .unwrap();
 
         let mut buf = [0; 13];
@@ -714,11 +836,11 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        fs.create_file(dir, "test1.txt", FdStat::default(), 0)
+        fs.create_open_file(dir, "test1.txt", FdStat::default(), 0)
             .unwrap();
-        fs.create_file(dir, "test2.txt", FdStat::default(), 0)
+        fs.create_open_file(dir, "test2.txt", FdStat::default(), 0)
             .unwrap();
-        fs.create_file(dir, "test3.txt", FdStat::default(), 0)
+        fs.create_open_file(dir, "test3.txt", FdStat::default(), 0)
             .unwrap();
 
         let meta = fs.metadata(fs.root_fd()).unwrap();
@@ -745,18 +867,18 @@ mod tests {
 
         let dir = fs.root_fd();
 
-        fs.create_file(dir, "test1.txt", FdStat::default(), 0)
+        fs.create_open_file(dir, "test1.txt", FdStat::default(), 0)
             .unwrap();
         let fd2 = fs
-            .create_file(dir, "test2.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test2.txt", FdStat::default(), 0)
             .unwrap();
-        fs.create_file(dir, "test3.txt", FdStat::default(), 0)
+        fs.create_open_file(dir, "test3.txt", FdStat::default(), 0)
             .unwrap();
 
         fs.close(fd2).unwrap();
 
         let fd4 = fs
-            .create_file(dir, "test4.txt", FdStat::default(), 0)
+            .create_open_file(dir, "test4.txt", FdStat::default(), 0)
             .unwrap();
 
         assert_eq!(fd2, fd4);
@@ -768,11 +890,11 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd1 = fs
-                .open_or_create(dir, "test1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test1.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             let fd2 = fs
-                .create_file(dir, "test2.txt", FdStat::default(), 0)
+                .create_open_file(dir, "test2.txt", FdStat::default(), 0)
                 .unwrap();
 
             let entry1 = fs.get_node(fd1);
@@ -790,7 +912,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.seek(fd, 24, super::Whence::SET).unwrap();
@@ -816,7 +938,7 @@ mod tests {
             fs.close(fd).unwrap();
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             let mut buf = [42u8; 29];
@@ -854,7 +976,7 @@ mod tests {
             ];
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.write_vec(fd, write_content.as_ref()).unwrap();
@@ -907,7 +1029,7 @@ mod tests {
             ];
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.write_vec_with_offset(fd, write_content.as_ref(), 2)
@@ -948,7 +1070,7 @@ mod tests {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
             .unwrap();
 
         fs.seek(fd, 24, super::Whence::SET).unwrap();
@@ -974,7 +1096,7 @@ mod tests {
         fs.close(fd).unwrap();
 
         let fd = fs
-            .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+            .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
             .unwrap();
 
         let mut buf = [42u8; 29];
@@ -997,7 +1119,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
@@ -1006,7 +1128,7 @@ mod tests {
             fs.remove_file(dir, "test.txt").unwrap();
 
             let err = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
                 .unwrap_err();
             assert_eq!(err, Error::BadFileDescriptor);
         }
@@ -1018,7 +1140,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.write(fd, &[1, 2, 3, 4, 5]).unwrap();
@@ -1036,7 +1158,9 @@ mod tests {
         for mut fs in test_fs_setups("virtual_memory.txt") {
             let dir = fs.root_fd();
 
-            let fd = fs.create_dir(dir, "test", FdStat::default(), 0).unwrap();
+            let fd = fs
+                .create_open_directory(dir, "test", FdStat::default(), 0)
+                .unwrap();
             fs.close(fd).unwrap();
 
             let err = fs.remove_file(dir, "test").unwrap_err();
@@ -1052,7 +1176,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd = fs
-                .open_or_create(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
             fs.close(fd).unwrap();
 
@@ -1069,7 +1193,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd1 = fs
-                .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
@@ -1077,7 +1201,7 @@ mod tests {
             let pos1 = fs.tell(fd1).unwrap();
 
             let fd2 = fs
-                .open_or_create(dir, "file2.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "file2.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             let pos2 = fs.tell(fd2).unwrap();
@@ -1103,7 +1227,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd1 = fs
-                .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .open(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
@@ -1132,7 +1256,7 @@ mod tests {
             let dir = fs.root_fd();
 
             let fd1 = fs
-                .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
+                .open(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
                 .unwrap();
 
             fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
@@ -1159,7 +1283,7 @@ mod tests {
         let dir = fs.root_fd();
 
         let fd1 = fs
-            .open_or_create(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
+            .open(dir, "file1.txt", FdStat::default(), OpenFlags::CREATE, 111)
             .unwrap();
 
         fs.write(fd1, &[1, 2, 3, 4, 5]).unwrap();
@@ -1186,7 +1310,7 @@ mod tests {
         content: Vec<String>,
     ) -> Fd {
         let file_fd = fs
-            .create_file(parent, file_name, FdStat::default(), 0)
+            .create_open_file(parent, file_name, FdStat::default(), 0)
             .unwrap();
 
         let mut src = String::from("");
@@ -1199,7 +1323,7 @@ mod tests {
 
         assert!(bytes_written > 0);
 
-        file_fd as Fd
+        file_fd
     }
 
     fn create_test_file(fs: &mut FileSystem, parent_fd: Fd, file_name: &str) -> Fd {
@@ -1270,7 +1394,7 @@ mod tests {
         assert_eq!(node1, node2);
 
         let link_file_fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 "file_link.txt",
                 FdStat::default(),
@@ -1307,7 +1431,7 @@ mod tests {
         fs.rename(root_fd, "dir1/dir2", root_fd, "dir2").unwrap();
 
         let file_fd = fs
-            .open_or_create(
+            .open(
                 root_fd,
                 "dir2/file.txt",
                 FdStat::default(),
@@ -1465,9 +1589,9 @@ mod tests {
         );
 
         // check the dir entry still exists after deletion
-        let files = list_files(&mut fs, "");
+        let files = fs.list_dir_internal(root_fd, None).unwrap();
 
-        assert_eq!(files[0], "test.txt".to_string());
+        assert_eq!(files[0].1, "test.txt".to_string());
     }
 
     #[test]
@@ -1493,7 +1617,7 @@ mod tests {
             }
 
             let fd = fs
-                .open_or_create(
+                .open(
                     fs.root_fd,
                     file_name,
                     FdStat::default(),
@@ -1535,7 +1659,7 @@ mod tests {
             let root_fd = fs.root_fd();
 
             let fd1 = fs
-                .open_or_create(
+                .open(
                     root_fd,
                     "f1/f2/text.txt",
                     FdStat::default(),
@@ -1544,7 +1668,7 @@ mod tests {
                 )
                 .unwrap();
             let fd2 = fs
-                .open_or_create(
+                .open(
                     root_fd,
                     "f1//f2/text.txt",
                     FdStat::default(),
@@ -1574,7 +1698,7 @@ mod tests {
 
     fn create_file_with_size(filename: &str, size: FileSize, fs: &mut FileSystem) -> Fd {
         let fd = fs
-            .open_or_create(
+            .open(
                 fs.root_fd,
                 filename,
                 FdStat::default(),
@@ -1724,7 +1848,7 @@ mod tests {
         for mut fs in test_fs_setups("") {
             let root_fd = fs.root_fd();
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
                 .unwrap();
 
             fs.close(fd).unwrap();
@@ -1740,7 +1864,7 @@ mod tests {
         for mut fs in test_fs_setups("") {
             let root_fd = fs.root_fd();
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
                 .unwrap();
             fs.close(fd).unwrap();
 
@@ -1749,8 +1873,7 @@ mod tests {
             assert_eq!(fs.names_cache.get_nodes().len(), 0);
 
             // check we don't increase cache when the file is opened but not created
-            let fd2 =
-                fs.open_or_create(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
+            let fd2 = fs.open(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
 
             assert_eq!(fd2, Err(Error::BadFileDescriptor));
             assert_eq!(fs.names_cache.get_nodes().len(), 0);
@@ -1769,7 +1892,7 @@ mod tests {
         let file_fd = create_file_with_size(filename, 15, &mut fs);
 
         let dir_fd = fs
-            .open_or_create(root_fd, "tmp", FdStat::default(), OpenFlags::CREATE, 0)
+            .open(root_fd, "tmp", FdStat::default(), OpenFlags::CREATE, 0)
             .unwrap();
 
         let (filetype, stat) = fs.get_stat(dir_fd).unwrap();
@@ -1779,7 +1902,7 @@ mod tests {
             filetype, stat
         );
 
-        let opened_fd = fs.open_or_create(
+        let opened_fd = fs.open(
             root_fd,
             "tmp/a.txt",
             FdStat::default(),
@@ -1800,7 +1923,7 @@ mod tests {
 
             // Create the file and set the maximum size limit.
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
                 .unwrap();
 
             fs.set_file_size_limit(fd, max_size).unwrap();
@@ -1832,7 +1955,7 @@ mod tests {
 
             // Create the file and set the maximum size limit.
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
                 .unwrap();
             fs.set_file_size_limit(fd, max_size).unwrap();
 
@@ -1867,7 +1990,7 @@ mod tests {
 
             // Create the file and set the maximum size limit.
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
                 .unwrap();
             fs.set_file_size_limit(fd, max_size).unwrap();
 
@@ -1900,8 +2023,9 @@ mod tests {
 
             // Create the file and set the maximum size limit.
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 12)
                 .unwrap();
+
             fs.set_file_size_limit(fd, max_size).unwrap();
 
             // Prepare vector data.
@@ -1952,7 +2076,7 @@ mod tests {
 
             // Step 1: Create a file and write some content.
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             let content = "This is some sample text for testing file shrinking.";
@@ -1995,7 +2119,7 @@ mod tests {
 
             // Step 1: Create a file and write some content.
             let fd = fs
-                .open_or_create(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 0)
                 .unwrap();
 
             let content = "This is some sample text for testing file shrinking.";
@@ -2027,6 +2151,63 @@ mod tests {
 
             // Close the file.
             fs.close(fd).unwrap();
+        }
+    }
+
+    #[test]
+    fn remove_dir_recurse_test() {
+        use super::*;
+        // TODO: fix test
+
+        let mut fs = test_fs();
+        let root_fd = fs.root_fd();
+
+        // create test directory structure:
+        // /subdir
+        // /subdir/file1.txt
+        // /subdir/nested
+        // /subdir/nested/file2.txt
+
+        // Create a directory structure and close all file descriptors
+        fs.mkdir(root_fd, "subdir", FdStat::default(), 0).unwrap();
+
+        /*         let fd = fs
+            .create_open_file(root_fd, "subdir/file1.txt", FdStat::default(), 0)
+            .unwrap();
+        fs.close(fd).unwrap();
+
+        fs.mkdir(root_fd, "subdir/nested", FdStat::default(), 0)
+            .unwrap();
+
+         let fd = fs
+            .create_open_file(root_fd, "subdir/nested/file2.txt", FdStat::default(), 0)
+            .unwrap();
+        fs.close(fd).unwrap();*/
+
+        // Now remove `subdir` recursively (this should remove `nested` and its contents as well).
+        fs.remove_dir_recursive(root_fd, "subdir").unwrap();
+
+        // Check subdir was deleted.
+        let result = fs.open(root_fd, "subdir", FdStat::default(), OpenFlags::empty(), 0);
+        assert!(
+            result.is_err(),
+            "Expected an error when trying to open a removed directory"
+        );
+
+        // assert we get the right file descriptor back
+        assert_eq!(
+            result.unwrap_err(),
+            Error::BadFileDescriptor,
+            "Unexpected error type"
+        );
+
+        // internal memory check, since all files were deleted, there should be no metadata nodes left in the system (appart from the 0 node)
+        for i in 1..10 {
+            let result = fs.storage.get_metadata(i as Node);
+            assert!(
+                result.is_err(),
+                "Expected an error when trying to get any metadata from the storage"
+            );
         }
     }
 }
