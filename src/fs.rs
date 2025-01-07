@@ -752,37 +752,6 @@ mod tests {
 
     use super::{Fd, FileSystem};
 
-    pub fn list_files(fs: &mut FileSystem, path: &str) -> Vec<String> {
-        use std::str::FromStr;
-
-        let mut res = vec![];
-
-        let dir = fs.root_fd();
-
-        let fd = fs
-            .open(dir, path, FdStat::default(), OpenFlags::DIRECTORY, 0)
-            .unwrap();
-
-        let meta = fs.metadata(fd).unwrap();
-
-        let mut entry_index = meta.first_dir_entry;
-
-        while let Some(index) = entry_index {
-            let entry = fs.get_direntry(fd, index).unwrap();
-
-            let filename_str: &str =
-                std::str::from_utf8(&entry.name.bytes[0..(entry.name.length as usize)]).unwrap();
-
-            let st = String::from_str(filename_str).unwrap();
-
-            res.push(st);
-
-            entry_index = entry.next_entry;
-        }
-
-        res
-    }
-
     #[test]
     fn get_root_info() {
         let fs = test_fs();

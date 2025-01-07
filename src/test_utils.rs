@@ -175,7 +175,6 @@ pub fn read_text_file(
 #[cfg(test)]
 mod test_env {
     use crate::fs::FileSize;
-    use crate::fs::SrcIoVec;
     use crate::runtime::types::DstBuf;
     use crate::runtime::types::Fd;
     use crate::runtime::types::FdStat;
@@ -225,30 +224,6 @@ mod test_env {
                 fs
             })
         };
-    }
-
-    fn file_size(filename: String) -> usize {
-        FS.with(|fs| {
-            let mut fs = fs.borrow_mut();
-
-            let dir = fs.root_fd();
-
-            let fd = fs
-                .open(
-                    dir,
-                    filename.as_str(),
-                    FdStat::default(),
-                    OpenFlags::empty(),
-                    0,
-                )
-                .unwrap();
-
-            let meta = fs.metadata(fd).unwrap();
-
-            let size = meta.size;
-
-            size as usize
-        })
     }
 
     thread_local! {
@@ -325,98 +300,6 @@ mod test_env {
         })
     }
 
-    pub fn read_buffer(offset: usize, size: usize) -> String {
-        BUFFER.with(|chunk| {
-            let mut chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_mut().unwrap();
-
-            std::str::from_utf8(&chunk[offset..offset + size])
-                .unwrap()
-                .to_string()
-        })
-    }
-
-    pub fn store_buffer(filename: String) -> usize {
-        let res = BUFFER.with(|chunk| {
-            let chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_ref().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                let write_content = [SrcBuf {
-                    buf: chunk.as_ptr(),
-                    len: chunk.len(),
-                }];
-
-                let res = (*fs).write_vec(fd, write_content.as_ref()).unwrap();
-
-                (*fs).close(fd).unwrap();
-
-                res as usize
-            })
-        });
-
-        res
-    }
-
-    pub fn store_buffer_in_1000b_segments(filename: String) -> (u64, usize) {
-        let stime = instruction_counter();
-
-        let res = BUFFER.with(|chunk| {
-            let chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_ref().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                (*fs).seek(fd, 0, Whence::SET).unwrap();
-
-                let len = chunk.len();
-
-                let mut p = 0;
-                let part_len = SEGMENT_SIZE;
-                let mut res = 0;
-
-                while p < len {
-                    let write_len = (len - p).min(part_len);
-
-                    let write_content = [SrcBuf {
-                        buf: chunk[p..(p + part_len).min(len)].as_ptr(),
-                        len: write_len,
-                    }];
-
-                    res += (*fs).write_vec(fd, write_content.as_ref()).unwrap();
-
-                    p += write_len;
-                }
-
-                (*fs).close(fd).unwrap();
-
-                res as usize
-            })
-        });
-
-        let etime = instruction_counter();
-
-        (etime - stime, res)
-    }
-
     pub fn store_buffer_in_1000b_segments_10_files(filename: String) -> (u64, usize) {
         let stime = instruction_counter();
 
@@ -473,94 +356,6 @@ mod test_env {
                 }
 
                 fds.iter_mut().for_each(|fd| (*fs).close(*fd).unwrap());
-
-                res as usize
-            })
-        });
-
-        let etime = instruction_counter();
-
-        (etime - stime, res)
-    }
-
-    pub fn load_buffer(filename: String) -> (u64, usize) {
-        let stime = instruction_counter();
-
-        let res = BUFFER.with(|chunk| {
-            let mut chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_mut().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                let size = (*fs).metadata(fd).unwrap().size as usize;
-
-                (*fs).seek(fd, 0, Whence::SET).unwrap();
-
-                let read_content = [DstBuf {
-                    buf: chunk.as_mut_ptr(),
-                    len: size,
-                }];
-
-                unsafe { chunk.set_len(size) };
-
-                let res = (*fs).read_vec(fd, &read_content).unwrap();
-
-                res as usize
-            })
-        });
-
-        let etime = instruction_counter();
-
-        (etime - stime, res)
-    }
-
-    pub fn load_buffer_in_1000b_segments(filename: String) -> (u64, usize) {
-        let stime = instruction_counter();
-
-        let res = BUFFER.with(|chunk| {
-            let mut chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_mut().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                let len = (*fs).metadata(fd).unwrap().size as usize;
-
-                (*fs).seek(fd, 0, Whence::SET).unwrap();
-
-                let mut p = 0;
-                let part_len = SEGMENT_SIZE;
-                let mut res = 0;
-
-                unsafe { chunk.set_len(len) };
-
-                while p < len {
-                    let read_len = (len - p).min(part_len);
-
-                    let read_content = [DstBuf {
-                        buf: chunk[p..p + read_len].as_mut_ptr(),
-                        len: read_len,
-                    }];
-
-                    res += (*fs).read_vec(fd, read_content.as_ref()).unwrap();
-
-                    p += read_len;
-                }
 
                 res as usize
             })
@@ -657,31 +452,6 @@ mod test_env {
     #[test]
     fn file_read_100mb_in_segments_10_files() {
         read_100mb_in_segments_10_files("file.txt")
-    }
-
-    #[derive(Debug)]
-    struct AssertionError {
-        details: String,
-    }
-
-    impl AssertionError {
-        fn new(msg: &str) -> AssertionError {
-            AssertionError {
-                details: msg.to_string(),
-            }
-        }
-    }
-
-    impl std::error::Error for AssertionError {
-        fn description(&self) -> &str {
-            &self.details
-        }
-    }
-
-    impl std::fmt::Display for AssertionError {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "{}", self.details)
-        }
     }
 
     // deterministic 32-bit pseudo-random number provider
@@ -802,7 +572,7 @@ mod test_env {
                     // remove a random folder item
                     let files = fs.list_dir_internal(parent_fd, None)?;
 
-                    if files.len() > 0 {
+                    if !files.is_empty() {
                         let cur_rand = next_rand(cur_rand);
                         let (node, name) = &files[cur_rand as usize % files.len()];
 
@@ -810,10 +580,10 @@ mod test_env {
 
                         match meta.file_type {
                             FileType::Directory => {
-                                let _ = fs.remove_dir(parent_fd, &name);
+                                let _ = fs.remove_dir(parent_fd, name);
                             }
                             FileType::RegularFile => {
-                                let _ = fs.remove_file(parent_fd, &name);
+                                let _ = fs.remove_file(parent_fd, name);
                             }
                             FileType::SymbolicLink => panic!("Symlink are not supported!"),
                         }
@@ -824,13 +594,13 @@ mod test_env {
                     // enter subfolder
                     let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
 
-                    if dirs.len() > 0 {
+                    if !dirs.is_empty() {
                         let cur_rand = next_rand(cur_rand);
                         let (_node, name) = &dirs[cur_rand as usize % dirs.len()];
 
                         let dir_fd = fs.open(
                             parent_fd,
-                            &name,
+                            name,
                             FdStat::default(),
                             OpenFlags::empty(),
                             op_count as u64,
@@ -861,13 +631,13 @@ mod test_env {
                     let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
 
                     // Random open/close a file (or directory)
-                    if dirs.len() > 0 {
+                    if !dirs.is_empty() {
                         let cur_rand = next_rand(cur_rand);
                         let (_node, filename) = &dirs[cur_rand as usize % dirs.len()];
 
                         let fd = fs.open(
                             parent_fd,
-                            &filename,
+                            filename,
                             FdStat::default(),
                             OpenFlags::empty(),
                             op_count as u64,
@@ -947,32 +717,6 @@ mod test_env {
         }
 
         Ok(())
-    }
-
-    #[test]
-    fn test_operation() {
-        let memory = DefaultMemoryImpl::default();
-
-        let storage = StableStorage::new(memory);
-        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
-
-        let root_fd = fs
-            .create_open_directory(fs.root_fd(), "root_dir", FdStat::default(), 0)
-            .unwrap();
-
-        let dir_fd = fs
-            .create_open_directory(root_fd, "dir", FdStat::default(), 0)
-            .unwrap();
-        let fd = fs
-            .create_open_file(dir_fd, "file.txt", FdStat::default(), 0)
-            .unwrap();
-
-        // show all files
-        let files = list_all_files_as_string(&mut fs).unwrap();
-
-        println!("------------------------------------------");
-        println!("FILE STRUCTURE");
-        println!("{}", files);
     }
 
     #[test]

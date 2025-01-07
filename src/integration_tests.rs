@@ -193,35 +193,6 @@ mod fns {
         }
     }
 
-    pub(crate) fn check_metadata_format(pic: &PocketIc) {
-        pic.query_call(
-            active_canister(),
-            Principal::anonymous(),
-            "check_metadata_format",
-            encode_one(()).unwrap(),
-        )
-        .unwrap();
-    }
-
-    pub(crate) fn check_metadata_deserialization_into_repr_c(pic: &PocketIc) -> u64 {
-        let response = pic
-            .query_call(
-                active_canister(),
-                Principal::anonymous(),
-                "check_metadata_deserialization_into_repr_c",
-                encode_one(()).unwrap(),
-            )
-            .unwrap();
-
-        if let WasmResult::Reply(response) = response {
-            let result: u64 = decode_one(&response).unwrap();
-
-            result
-        } else {
-            panic!("unintended call failure!");
-        }
-    }
-
     pub(crate) fn check_metadata_binary(pic: &PocketIc) -> String {
         let response = pic
             .query_call(
