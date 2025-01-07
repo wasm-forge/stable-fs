@@ -148,7 +148,7 @@ pub fn store_buffer(filename: String) -> (u64, usize) {
             let root_fd = (*fs).root_fd();
 
             let fd = (*fs)
-                .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
+                .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
                 .unwrap();
 
             let write_content = [SrcBuf {
@@ -182,7 +182,7 @@ pub fn load_buffer(filename: String) -> (u64, usize) {
             let root_fd = (*fs).root_fd();
 
             let fd = (*fs)
-                .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
+                .open(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
                 .unwrap();
 
             let size = (*fs).seek(fd, 0, Whence::END).unwrap() as usize;
@@ -239,7 +239,7 @@ fn write_kib_text(filename: String, kb_size: usize) -> u64 {
         }];
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
@@ -287,7 +287,7 @@ fn write_mib_text(filename: String, mib_size: usize) -> u64 {
         }];
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
@@ -324,7 +324,7 @@ fn read_bytes(filename: String, offset: i64, size: usize) -> (u64, usize) {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
@@ -382,7 +382,7 @@ fn list_files(path: String) -> Vec<String> {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 path.as_str(),
                 FdStat::default(),
@@ -419,7 +419,7 @@ fn cat_file(filename: String) -> String {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
@@ -453,7 +453,7 @@ fn create_depth_folders(path: String, count: usize) -> String {
             dir_name = format!("{}/d{}", dir_name, num);
         }
 
-        fs.create_dir(root_dir, dir_name.as_str(), FdStat::default(), 0)
+        fs.mkdir(root_dir, dir_name.as_str(), FdStat::default(), 0)
             .unwrap();
 
         format!("{}/{}", path, dir_name)
@@ -473,7 +473,7 @@ fn create_files(path: String, count: usize) -> u64 {
             let filename = format!("{}/{}.txt", path, num);
 
             let fd = fs
-                .open_or_create(
+                .open(
                     dir,
                     filename.as_str(),
                     FdStat::default(),
@@ -527,7 +527,7 @@ fn append_text(filename: String, text: String, times: usize) -> u64 {
         }];
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
@@ -556,7 +556,7 @@ fn read_text(filename: String, offset: i64, size: usize) -> String {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
@@ -592,7 +592,7 @@ fn file_size(filename: String) -> usize {
         let dir = fs.root_fd();
 
         let fd = fs
-            .open_or_create(
+            .open(
                 dir,
                 filename.as_str(),
                 FdStat::default(),
