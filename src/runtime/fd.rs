@@ -107,14 +107,14 @@ impl FdTable {
         let src_entry: Option<&FdEntry> = self.table.get(&src);
         let dst_entry: Option<&FdEntry> = self.table.get(&dst);
 
-        if let Some(FdEntry::Dir(s)) = src_entry {
-            if let Some(FdEntry::File(d)) = dst_entry {
+        if let Some(FdEntry::Dir(_s)) = src_entry {
+            if let Some(FdEntry::File(_d)) = dst_entry {
                 return Err(Error::BadFileDescriptor);
             }
         }
 
-        if let Some(FdEntry::File(s)) = src_entry {
-            if let Some(FdEntry::Dir(d)) = dst_entry {
+        if let Some(FdEntry::File(_s)) = src_entry {
+            if let Some(FdEntry::Dir(_d)) = dst_entry {
                 return Err(Error::BadFileDescriptor);
             }
         }

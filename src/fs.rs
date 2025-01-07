@@ -458,7 +458,7 @@ impl FileSystem {
                     return Err(Error::InvalidArgument);
                 }
 
-                let mut file = File::new(node, stat, self.storage.as_mut())?;
+                let file = File::new(node, stat, self.storage.as_mut())?;
 
                 if flags.contains(OpenFlags::TRUNCATE) {
                     file.truncate(self.storage.as_mut())?;
@@ -503,7 +503,11 @@ impl FileSystem {
             self.fd_table.node_refcount(),
             &mut self.names_cache,
             self.storage.as_mut(),
-        )
+        )?;
+
+        self.put_dir(parent, dir);
+
+        Ok(())
     }
 
     // Convenience method, create a new directory without opening it
@@ -555,7 +559,11 @@ impl FileSystem {
             self.fd_table.node_refcount(),
             &mut self.names_cache,
             self.storage.as_mut(),
-        )
+        )?;
+
+        self.put_dir(parent, dir);
+
+        Ok(())
     }
 
     pub(crate) fn list_dir_internal(
@@ -594,8 +602,14 @@ impl FileSystem {
         Ok(res)
     }
 
-    /// Recursively remove a directory (and all subdirectories/files within).
-    pub fn remove_dir_recursive(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
+    /// A convenience method to recursively remove a directory (and all subdirectories/files within) or delete a file, if the entry is a file.
+    pub fn remove_recursive(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
+        let meta = self.open_metadata(parent, path)?;
+
+        if meta.file_type == FileType::RegularFile {
+            return self.remove_file(parent, path);
+        }
+
         // Open the target directory. We use `OpenFlags::DIRECTORY` to ensure
         //    the path is interpreted as a directory (or fail if it doesn't exist).
         let dir_fd = self.open(parent, path, FdStat::default(), OpenFlags::DIRECTORY, 0)?;
@@ -611,7 +625,7 @@ impl FileSystem {
                 match child_meta.file_type {
                     FileType::Directory => {
                         // Recurse into the subdirectory.
-                        self.remove_dir_recursive(dir_fd, &child_name)?;
+                        self.remove_recursive(dir_fd, &child_name)?;
                     }
                     FileType::RegularFile => {
                         // Remove the file.
@@ -1184,6 +1198,30 @@ mod tests {
             assert_eq!(err, Error::NotADirectoryOrSymbolicLink);
 
             fs.remove_file(dir, "test.txt").unwrap();
+        }
+    }
+
+    #[test]
+    fn remove_file_in_a_subdir() {
+        for mut fs in test_fs_setups("") {
+            let root_fd = fs.root_fd();
+
+            // create dirs and a file
+            let fd = fs
+                .open(
+                    root_fd,
+                    "dir1/dir2/test.txt",
+                    FdStat::default(),
+                    OpenFlags::CREATE,
+                    0,
+                )
+                .unwrap();
+            fs.close(fd).unwrap();
+
+            // remove one by one
+            fs.remove_file(root_fd, "dir1/dir2/test.txt").unwrap();
+            fs.remove_dir(root_fd, "dir1/dir2").unwrap();
+            fs.remove_dir(root_fd, "dir1").unwrap();
         }
     }
 
@@ -2185,7 +2223,7 @@ mod tests {
         fs.close(fd).unwrap();*/
 
         // Now remove `subdir` recursively (this should remove `nested` and its contents as well).
-        fs.remove_dir_recursive(root_fd, "subdir").unwrap();
+        fs.remove_recursive(root_fd, "subdir").unwrap();
 
         // Check subdir was deleted.
         let result = fs.open(root_fd, "subdir", FdStat::default(), OpenFlags::empty(), 0);
