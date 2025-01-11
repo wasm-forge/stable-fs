@@ -67,6 +67,7 @@ impl FdTable {
         self.table.get(&fd)
     }
 
+    // open root file descriptor
     pub fn open_root(&mut self, entry: FdEntry) -> Fd {
         let fd = ROOT_FD;
 
@@ -100,7 +101,7 @@ impl FdTable {
 
         // renumbering between special file descriptors is not allowed
         if dst < FIRST_AVAILABLE_FD || src < FIRST_AVAILABLE_FD {
-            return Err(Error::BadFileDescriptor);
+            return Err(Error::OperationNotPermitted);
         }
 
         // cannot do renumbering between a file and a folder

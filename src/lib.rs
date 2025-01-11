@@ -10,4 +10,7 @@ mod runtime;
 mod test_utils;
 
 #[cfg(test)]
+mod fs_tests;
+
+#[cfg(test)]
 mod integration_tests;
