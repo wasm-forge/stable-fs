@@ -91,7 +91,7 @@ pub fn write_text_file(
 ) -> Result<(), Error> {
     use crate::fs::{FdStat, OpenFlags};
 
-    let file_fd = fs.open_or_create(parent_fd, path, FdStat::default(), OpenFlags::CREATE, 0)?;
+    let file_fd = fs.open(parent_fd, path, FdStat::default(), OpenFlags::CREATE, 0)?;
 
     write_text_fd(fs, file_fd, content, times)
 }
@@ -151,7 +151,7 @@ pub fn read_text_file(
     use crate::fs::{DstBuf, FdStat, OpenFlags};
 
     let fd = fs
-        .open_or_create(parent_fd, path, FdStat::default(), OpenFlags::empty(), 0)
+        .open(parent_fd, path, FdStat::default(), OpenFlags::empty(), 0)
         .unwrap();
 
     let mut content = (0..size).map(|_| ".").collect::<String>();
@@ -174,11 +174,13 @@ pub fn read_text_file(
 
 #[cfg(test)]
 mod test_env {
-    use crate::runtime::fd::Fd;
+    use crate::fs::FileSize;
     use crate::runtime::types::DstBuf;
+    use crate::runtime::types::Fd;
     use crate::runtime::types::FdStat;
     use crate::runtime::types::OpenFlags;
     use crate::runtime::types::Whence;
+    use crate::storage::types::FileType;
     use crate::test_utils::FileSystem;
     use crate::test_utils::SrcBuf;
     use crate::test_utils::StableStorage;
@@ -203,7 +205,7 @@ mod test_env {
                 //v0.4
                 //let storage = StableStorage::new_with_memory_manager(&memory_manager, 200u8);
                 //v0.5, v0.6 ...
-                let mut storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
+                let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
 
                 // set chunk version to V1
                 //storage.set_chunk_type(storage::stable::ChunkType::V1);
@@ -222,30 +224,6 @@ mod test_env {
                 fs
             })
         };
-    }
-
-    fn file_size(filename: String) -> usize {
-        FS.with(|fs| {
-            let mut fs = fs.borrow_mut();
-
-            let dir = fs.root_fd();
-
-            let fd = fs
-                .open_or_create(
-                    dir,
-                    filename.as_str(),
-                    FdStat::default(),
-                    OpenFlags::empty(),
-                    0,
-                )
-                .unwrap();
-
-            let meta = fs.metadata(fd).unwrap();
-
-            let size = meta.size;
-
-            size as usize
-        })
     }
 
     thread_local! {
@@ -322,98 +300,6 @@ mod test_env {
         })
     }
 
-    pub fn read_buffer(offset: usize, size: usize) -> String {
-        BUFFER.with(|chunk| {
-            let mut chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_mut().unwrap();
-
-            std::str::from_utf8(&chunk[offset..offset + size])
-                .unwrap()
-                .to_string()
-        })
-    }
-
-    pub fn store_buffer(filename: String) -> usize {
-        let res = BUFFER.with(|chunk| {
-            let chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_ref().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                let write_content = [SrcBuf {
-                    buf: chunk.as_ptr(),
-                    len: chunk.len(),
-                }];
-
-                let res = (*fs).write_vec(fd, write_content.as_ref()).unwrap();
-
-                (*fs).close(fd).unwrap();
-
-                res as usize
-            })
-        });
-
-        res
-    }
-
-    pub fn store_buffer_in_1000b_segments(filename: String) -> (u64, usize) {
-        let stime = instruction_counter();
-
-        let res = BUFFER.with(|chunk| {
-            let chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_ref().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                (*fs).seek(fd, 0, Whence::SET).unwrap();
-
-                let len = chunk.len();
-
-                let mut p = 0;
-                let part_len = SEGMENT_SIZE;
-                let mut res = 0;
-
-                while p < len {
-                    let write_len = (len - p).min(part_len);
-
-                    let write_content = [SrcBuf {
-                        buf: chunk[p..(p + part_len).min(len)].as_ptr(),
-                        len: write_len,
-                    }];
-
-                    res += (*fs).write_vec(fd, write_content.as_ref()).unwrap();
-
-                    p += write_len;
-                }
-
-                (*fs).close(fd).unwrap();
-
-                res as usize
-            })
-        });
-
-        let etime = instruction_counter();
-
-        (etime - stime, res)
-    }
-
     pub fn store_buffer_in_1000b_segments_10_files(filename: String) -> (u64, usize) {
         let stime = instruction_counter();
 
@@ -431,7 +317,7 @@ mod test_env {
 
                 for i in 0..FILES_COUNT {
                     let fd = (*fs)
-                        .open_or_create(
+                        .open(
                             root_fd,
                             &format!("{}{}", filename, i),
                             FdStat::default(),
@@ -480,94 +366,6 @@ mod test_env {
         (etime - stime, res)
     }
 
-    pub fn load_buffer(filename: String) -> (u64, usize) {
-        let stime = instruction_counter();
-
-        let res = BUFFER.with(|chunk| {
-            let mut chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_mut().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                let size = (*fs).metadata(fd).unwrap().size as usize;
-
-                (*fs).seek(fd, 0, Whence::SET).unwrap();
-
-                let read_content = [DstBuf {
-                    buf: chunk.as_mut_ptr(),
-                    len: size,
-                }];
-
-                unsafe { chunk.set_len(size) };
-
-                let res = (*fs).read_vec(fd, &read_content).unwrap();
-
-                res as usize
-            })
-        });
-
-        let etime = instruction_counter();
-
-        (etime - stime, res)
-    }
-
-    pub fn load_buffer_in_1000b_segments(filename: String) -> (u64, usize) {
-        let stime = instruction_counter();
-
-        let res = BUFFER.with(|chunk| {
-            let mut chunk = chunk.borrow_mut();
-
-            let chunk = chunk.as_mut().unwrap();
-
-            FS.with(|fs| {
-                let mut fs = fs.borrow_mut();
-
-                let root_fd = (*fs).root_fd();
-
-                let fd = (*fs)
-                    .open_or_create(root_fd, &filename, FdStat::default(), OpenFlags::CREATE, 42)
-                    .unwrap();
-
-                let len = (*fs).metadata(fd).unwrap().size as usize;
-
-                (*fs).seek(fd, 0, Whence::SET).unwrap();
-
-                let mut p = 0;
-                let part_len = SEGMENT_SIZE;
-                let mut res = 0;
-
-                unsafe { chunk.set_len(len) };
-
-                while p < len {
-                    let read_len = (len - p).min(part_len);
-
-                    let read_content = [DstBuf {
-                        buf: chunk[p..p + read_len].as_mut_ptr(),
-                        len: read_len,
-                    }];
-
-                    res += (*fs).read_vec(fd, read_content.as_ref()).unwrap();
-
-                    p += read_len;
-                }
-
-                res as usize
-            })
-        });
-
-        let etime = instruction_counter();
-
-        (etime - stime, res)
-    }
-
     pub fn load_buffer_in_1000b_segments_10_files(filename: String) -> (u64, usize) {
         let stime = instruction_counter();
 
@@ -585,7 +383,7 @@ mod test_env {
 
                 for i in 0..FILES_COUNT {
                     let fd = (*fs)
-                        .open_or_create(
+                        .open(
                             root_fd,
                             &format!("{}{}", filename, i),
                             FdStat::default(),
@@ -636,123 +434,6 @@ mod test_env {
         (etime - stime, res)
     }
 
-    fn write_100mb(file_name: &str) {
-        check_buffer("abc1234567".to_string(), 0);
-
-        append_buffer("abc1234567".to_string(), 10_000_000);
-
-        check_buffer("abc1234567".to_string(), 10_000_000);
-
-        store_buffer("temp2.txt".to_string());
-
-        // bench
-        store_buffer(file_name.to_string());
-    }
-
-    fn write_100mb_over_existing(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-
-        store_buffer(file_name.to_string());
-        store_buffer("temp2.txt".to_string());
-
-        // bench
-        store_buffer(file_name.to_string());
-    }
-
-    fn read_100mb(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-        store_buffer(file_name.to_string());
-        store_buffer("temp2.txt".to_string());
-
-        check_buffer("abc1234567".to_string(), 10_000_000);
-        clear_buffer();
-        check_buffer("abc1234567".to_string(), 0);
-
-        // bench
-        load_buffer(file_name.to_string());
-
-        check_buffer("abc1234567".to_string(), 10_000_000);
-    }
-
-    fn write_100mb_in_segments(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-
-        store_buffer("temp1.txt".to_string());
-
-        //bench
-        store_buffer_in_1000b_segments(file_name.to_string());
-
-        assert_eq!(file_size(file_name.to_string()), 100_000_000);
-        clear_buffer();
-        load_buffer(file_name.to_string());
-        check_buffer("abc1234567".to_string(), 10_000_000);
-    }
-
-    fn write_100mb_in_segments_over_existing(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-
-        store_buffer("temp1.txt".to_string());
-        store_buffer(file_name.to_string());
-        store_buffer("temp2.txt".to_string());
-
-        // bench
-        store_buffer_in_1000b_segments(file_name.to_string());
-    }
-
-    fn read_100mb_in_segments(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-
-        store_buffer("temp1.txt".to_string());
-        store_buffer(file_name.to_string());
-        store_buffer("temp2.txt".to_string());
-
-        clear_buffer();
-        check_buffer("abc1234567".to_string(), 0);
-
-        //bench
-        load_buffer_in_1000b_segments(file_name.to_string());
-
-        check_buffer("abc1234567".to_string(), 10_000_000);
-    }
-
-    fn write_100mb_in_segments_10_files(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-        //store_buffer("temp1.txt".to_string());
-
-        // bench
-        store_buffer_in_1000b_segments_10_files(file_name.to_string());
-
-        clear_buffer();
-        load_buffer_in_1000b_segments_10_files(file_name.to_string());
-        check_buffer("abc1234567".to_string(), 10_000_000);
-    }
-
-    fn write_100mb_in_segments_over_existing_10_files(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 10_000_000);
-
-        //store_buffer("temp1.txt".to_string());
-        store_buffer_in_1000b_segments_10_files(file_name.to_string());
-        store_buffer("temp2.txt".to_string());
-
-        // bench
-        store_buffer_in_1000b_segments_10_files(file_name.to_string());
-    }
-
-    fn read_20mb_in_segments_10_files(file_name: &str) {
-        append_buffer("abc1234567".to_string(), 2_000_000);
-
-        //        store_buffer("temp1.txt".to_string());
-        store_buffer_in_1000b_segments_10_files(file_name.to_string());
-        //        store_buffer("temp2.txt".to_string());
-
-        clear_buffer();
-
-        // bench
-        load_buffer_in_1000b_segments_10_files(file_name.to_string());
-
-        check_buffer("abc1234567".to_string(), 2_000_000);
-    }
-
     fn read_100mb_in_segments_10_files(file_name: &str) {
         append_buffer("abc1234567".to_string(), 10_000_000);
 
@@ -771,5 +452,300 @@ mod test_env {
     #[test]
     fn file_read_100mb_in_segments_10_files() {
         read_100mb_in_segments_10_files("file.txt")
+    }
+
+    // deterministic 32-bit pseudo-random number provider
+    fn next_rand(cur_rand: u64) -> u64 {
+        let a: u64 = 1103515245;
+        let c: u64 = 12345;
+        let m: u64 = 1 << 31;
+
+        (a.wrapping_mul(cur_rand).wrapping_add(c)) % m
+    }
+
+    pub fn generate_random_file_structure(
+        op_count: u32, // number of operations to do
+        cur_rand: u64, // current random seed
+        depth: u32,    // current folder depth
+        parent_fd: Fd, // host fd
+        fs: &mut FileSystem,
+    ) -> Result<u32, crate::error::Error> {
+        let mut op_count = op_count;
+        let mut cur_rand = cur_rand;
+
+        while op_count > 0 {
+            op_count -= 1;
+
+            cur_rand = next_rand(cur_rand);
+            let action = cur_rand % 10; // e.g., 0..9
+
+            match action {
+                0 => {
+                    // create a file using open
+                    let filename = format!("file{}.txt", op_count);
+
+                    let fd = fs.open(
+                        parent_fd,
+                        &filename,
+                        FdStat::default(),
+                        OpenFlags::CREATE,
+                        op_count as u64,
+                    )?;
+
+                    fs.seek(fd, op_count as i64 * 100, Whence::SET)?;
+
+                    fs.write(fd, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10])?;
+
+                    fs.close(fd)?;
+                }
+                1 => {
+                    // create a file using create_open_file
+                    let filename = format!("file{}.txt", op_count);
+
+                    let fd = fs.create_open_file(
+                        parent_fd,
+                        &filename,
+                        FdStat::default(),
+                        op_count as u64,
+                    );
+
+                    if fd.is_err() {
+                        continue;
+                    }
+
+                    let fd = fd?;
+
+                    let write_content1 = "12345";
+                    let write_content2 = "67890";
+
+                    let src = [
+                        SrcBuf {
+                            buf: write_content1.as_ptr(),
+                            len: write_content1.len(),
+                        },
+                        SrcBuf {
+                            buf: write_content2.as_ptr(),
+                            len: write_content2.len(),
+                        },
+                    ];
+
+                    fs.write_vec_with_offset(fd, src.as_ref(), op_count as FileSize * 1000)?;
+
+                    fs.close(fd)?;
+                }
+
+                2 => {
+                    // create a directory using mkdir.
+                    let dirname = format!("dir{}", op_count);
+
+                    // function might fail because of the naming conflict
+                    let _ = fs.mkdir(parent_fd, &dirname, FdStat::default(), op_count as u64);
+                }
+                3 => {
+                    // create a directory using create_open_directory.
+                    let dirname = format!("dir{}", op_count);
+
+                    let fd = fs.create_open_directory(
+                        parent_fd,
+                        &dirname,
+                        FdStat::default(),
+                        op_count as u64,
+                    )?;
+                    fs.close(fd)?;
+                }
+                4 => {
+                    // create or open a directory using open
+                    let dirname = format!("dir_o{}", op_count);
+
+                    let fd = fs.open(
+                        parent_fd,
+                        &dirname,
+                        FdStat::default(),
+                        OpenFlags::DIRECTORY | OpenFlags::CREATE,
+                        op_count as u64,
+                    )?;
+
+                    fs.close(fd)?;
+                }
+
+                5 => {
+                    // remove a random folder item
+                    let files = fs.list_dir_internal(parent_fd, None)?;
+
+                    if !files.is_empty() {
+                        let cur_rand = next_rand(cur_rand);
+                        let (node, name) = &files[cur_rand as usize % files.len()];
+
+                        let meta = fs.metadata_from_node(*node)?;
+
+                        match meta.file_type {
+                            FileType::Directory => {
+                                let _ = fs.remove_dir(parent_fd, name);
+                            }
+                            FileType::RegularFile => {
+                                let _ = fs.remove_file(parent_fd, name);
+                            }
+                            FileType::SymbolicLink => panic!("Symlink are not supported!"),
+                        }
+                    }
+                }
+
+                6 => {
+                    // enter subfolder
+                    let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
+
+                    if !dirs.is_empty() {
+                        let cur_rand = next_rand(cur_rand);
+                        let (_node, name) = &dirs[cur_rand as usize % dirs.len()];
+
+                        let dir_fd = fs.open(
+                            parent_fd,
+                            name,
+                            FdStat::default(),
+                            OpenFlags::empty(),
+                            op_count as u64,
+                        )?;
+
+                        let res = generate_random_file_structure(
+                            op_count,
+                            cur_rand,
+                            depth + 1,
+                            dir_fd,
+                            fs,
+                        );
+
+                        fs.close(dir_fd)?;
+
+                        op_count = res?;
+                    }
+                }
+
+                7 => {
+                    // exit the current folder
+                    if depth > 0 {
+                        return Ok(op_count);
+                    }
+                }
+
+                8 => {
+                    let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
+
+                    // Random open/close a file (or directory)
+                    if !dirs.is_empty() {
+                        let cur_rand = next_rand(cur_rand);
+                        let (_node, filename) = &dirs[cur_rand as usize % dirs.len()];
+
+                        let fd = fs.open(
+                            parent_fd,
+                            filename,
+                            FdStat::default(),
+                            OpenFlags::empty(),
+                            op_count as u64,
+                        )?;
+
+                        fs.close(fd)?;
+                    }
+                }
+
+                9 => {
+                    // occasionly increate counter to cause naming conflicts and provoce errors
+                    op_count += 2;
+                }
+
+                _ => {
+                    panic!("Incorrect action {action}");
+                }
+            }
+        }
+
+        Ok(op_count)
+    }
+
+    fn list_all_files_as_string(fs: &mut FileSystem) -> Result<String, crate::error::Error> {
+        let mut paths = Vec::new();
+
+        scan_directory(fs, fs.root_fd(), "", &mut paths)?;
+        Ok(paths.join("\n"))
+    }
+
+    fn scan_directory(
+        fs: &mut FileSystem,
+        dir_fd: u32,
+        current_path: &str,
+        collected_paths: &mut Vec<String>,
+    ) -> Result<(), crate::error::Error> {
+        let meta = fs.metadata(dir_fd)?;
+
+        // add current folder as well
+        let entry_path = if current_path.is_empty() {
+            format!("/. {}", meta.size)
+        } else {
+            format!("{}/. {}", current_path, meta.size)
+        };
+        collected_paths.push(entry_path);
+
+        let entries = fs.list_dir_internal(dir_fd, None)?;
+
+        for (entry_node, filename) in entries {
+            let meta = fs.metadata_from_node(entry_node)?;
+
+            let entry_path = if current_path.is_empty() {
+                format!("/{} {}", filename, meta.size)
+            } else {
+                format!("{}/{} {}", current_path, filename, meta.size)
+            };
+
+            match meta.file_type {
+                FileType::Directory => {
+                    let child_fd = fs.open(
+                        dir_fd,
+                        &filename,
+                        FdStat::default(),
+                        OpenFlags::DIRECTORY,
+                        0,
+                    )?;
+
+                    scan_directory(fs, child_fd, &entry_path, collected_paths)?;
+
+                    fs.close(child_fd)?;
+                }
+                FileType::RegularFile => {
+                    collected_paths.push(entry_path);
+                }
+                FileType::SymbolicLink => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_generator() {
+        let memory = DefaultMemoryImpl::default();
+
+        let storage = StableStorage::new(memory);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+
+        let root_fd = fs
+            .create_open_directory(fs.root_fd(), "root_dir", FdStat::default(), 0)
+            .unwrap();
+
+        // generate random file structure.
+        generate_random_file_structure(1700, 35, 0, root_fd, &mut fs).unwrap();
+        fs.close(root_fd).unwrap();
+
+        // test deletion
+
+        // get all files
+        let files = list_all_files_as_string(&mut fs).unwrap();
+
+        println!("------------------------------------------");
+        println!("FILE STRUCTURE");
+        println!("{}", files);
+
+        // try to delete the generated folder
+        //fs.remove_recursive(fs.root_fd(), "root_dir").unwrap();
+        //fs.remove_file(fs.root_fd(), "root_dir/file4.txt").unwrap();
+        //fs.remove_dir(fs.root_fd(), "root_dir").unwrap();
     }
 }

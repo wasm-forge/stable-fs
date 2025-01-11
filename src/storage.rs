@@ -11,7 +11,7 @@ mod allocator;
 mod chunk_iterator;
 pub mod dummy;
 mod journal;
-mod metadata_cache;
+mod metadata_provider;
 mod ptr_cache;
 pub mod stable;
 pub mod transient;
@@ -45,7 +45,7 @@ pub trait Storage {
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error>;
     // Update the metadata associated with the node.
-    fn put_metadata(&mut self, node: Node, metadata: Metadata);
+    fn put_metadata(&mut self, node: Node, metadata: &Metadata) -> Result<(), Error>;
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error>;
@@ -64,6 +64,9 @@ pub trait Storage {
 
     // Write file at the current file cursor, the cursor position will NOT be updated after reading.
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error>;
+
+    // delete chunks to match the new file size specified
+    fn resize_file(&mut self, node: Node, new_size: FileSize) -> Result<(), Error>;
 
     // remove all file chunks
     fn rm_file(&mut self, node: Node) -> Result<(), Error>;

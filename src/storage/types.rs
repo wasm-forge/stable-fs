@@ -9,6 +9,12 @@ pub const MAX_FILE_CHUNK_SIZE_V2: usize = 65536;
 
 pub const MAX_FILE_NAME: usize = 255;
 
+// maximum chunk index. (reserve last 10 chunks for custom needs)
+pub const MAX_FILE_CHUNK_INDEX: u32 = u32::MAX - 10;
+
+// maximum file size supported by the file system.
+pub const MAX_FILE_SIZE: u64 = (MAX_FILE_CHUNK_INDEX as u64) * FILE_CHUNK_SIZE_V1 as u64;
+
 // The unique identifier of a node, which can be a file or a directory.
 // Also known as inode in WASI and other file systems.
 pub type Node = u64;
@@ -22,7 +28,10 @@ pub type FileChunkIndex = u32;
 // The address in memory where the V2 chunk is stored.
 pub type FileChunkPtr = u64;
 
-// A handle used for writing files in chunks
+// An array filled with 0 used to fill memory with 0 via copy.
+pub static ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
+
+// A handle used for writing files in chunks.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ChunkHandle {
     pub index: FileChunkIndex,
@@ -81,7 +90,7 @@ impl ic_stable_structures::Storable for Header {
     const BOUND: Bound = Bound::Unbounded;
 }
 
-// Contains metadata of a node.
+#[repr(C, align(8))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
     pub node: Node,
@@ -92,16 +101,7 @@ pub struct Metadata {
     pub first_dir_entry: Option<DirEntryIndex>,
     pub last_dir_entry: Option<DirEntryIndex>,
     pub chunk_type: Option<ChunkType>,
-}
-
-// Contains metadata that is stored together with the file chunks (for faster access and updates of the file size)
-#[repr(C)]
-#[derive(Clone, Debug, Default)]
-pub struct FileMetadata {
-    pub node: Node,
-    pub size: FileSize,
-    pub times: Times,
-    pub file_type: FileType,
+    pub maximum_size_allowed: Option<FileSize>,
 }
 
 impl ic_stable_structures::Storable for Metadata {
@@ -121,10 +121,10 @@ impl ic_stable_structures::Storable for Metadata {
 // The type of a node.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileType {
-    Directory,
+    Directory = 3,
     #[default]
-    RegularFile,
-    SymbolicLink,
+    RegularFile = 4,
+    SymbolicLink = 7,
 }
 
 impl TryFrom<u8> for FileType {
@@ -135,7 +135,7 @@ impl TryFrom<u8> for FileType {
             3 => Ok(FileType::Directory),
             4 => Ok(FileType::RegularFile),
             7 => Ok(FileType::SymbolicLink),
-            _ => Err(Error::InvalidFileType),
+            _ => Err(Error::InvalidArgument),
         }
     }
 }
@@ -202,7 +202,7 @@ impl FileName {
     pub fn new(name: &[u8]) -> Result<Self, Error> {
         let len = name.len();
         if len > MAX_FILE_NAME {
-            return Err(Error::NameTooLong);
+            return Err(Error::FilenameTooLong);
         }
         let mut bytes = [0; MAX_FILE_NAME];
         bytes[0..len].copy_from_slice(name);

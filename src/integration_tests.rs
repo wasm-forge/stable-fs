@@ -192,6 +192,25 @@ mod fns {
             panic!("unintended call failure!");
         }
     }
+
+    pub(crate) fn check_metadata_binary(pic: &PocketIc) -> String {
+        let response = pic
+            .query_call(
+                active_canister(),
+                Principal::anonymous(),
+                "check_metadata_binary",
+                encode_one(()).unwrap(),
+            )
+            .unwrap();
+
+        if let WasmResult::Reply(response) = response {
+            let result: String = decode_one(&response).unwrap();
+
+            result
+        } else {
+            panic!("unintended call failure!");
+        }
+    }
 }
 
 #[test]
@@ -537,4 +556,17 @@ fn large_file_second_write() {
     );
 
     assert_eq!(size, 100_000_000);
+}
+
+#[test]
+fn check_metadata_binary() {
+    let pic = setup_initial_canister();
+
+    // we should track any changes that affect Metadata binary representation in memory
+    // as it is stored directly without explicit serialization for the sake of performance.
+    let bin = fns::check_metadata_binary(&pic);
+
+    // object memory is prefilled with 0xfa explicitly in fns::check_metadata_binary to ensure stable test
+    assert_eq!(&bin,
+        "030000000000000004fafafafafafafa06000000000000000800000000000000410000000000000042000000000000004300000000000000010000000c000000010000000d00000002fafafafafafafa0100000000000000abcd000000000000");
 }

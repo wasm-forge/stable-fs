@@ -45,26 +45,26 @@ impl File {
         let position = match whence {
             Whence::SET => {
                 if delta < 0 {
-                    return Err(Error::InvalidOffset);
+                    return Err(Error::InvalidArgument);
                 }
                 delta as FileSize
             }
             Whence::CUR => {
                 let back = if delta < 0 {
-                    (-delta).try_into().map_err(|_| Error::InvalidOffset)?
+                    (-delta).try_into().map_err(|_| Error::InvalidSeek)?
                 } else {
                     0
                 };
                 let fwd = if delta >= 0 { delta as FileSize } else { 0 };
                 if back > self.cursor {
-                    return Err(Error::InvalidOffset);
+                    return Err(Error::InvalidSeek);
                 }
                 self.cursor + fwd - back
             }
             Whence::END => {
-                let back: FileSize = (-delta).try_into().map_err(|_| Error::InvalidOffset)?;
+                let back: FileSize = (-delta).try_into().map_err(|_| Error::InvalidSeek)?;
                 if back > size {
-                    return Err(Error::InvalidOffset);
+                    return Err(Error::InvalidSeek);
                 }
                 size - back
             }
@@ -130,7 +130,7 @@ impl File {
     pub fn truncate(&self, storage: &mut dyn Storage) -> Result<(), Error> {
         let mut metadata = storage.get_metadata(self.node)?;
         metadata.size = 0;
-        storage.put_metadata(self.node, metadata);
+        storage.put_metadata(self.node, &metadata)?;
         Ok(())
     }
 }
@@ -148,7 +148,7 @@ mod tests {
     fn seek_and_tell() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(file.tell(), 1);
 
         let err = file.seek(-2, Whence::CUR, storage).unwrap_err();
-        assert_eq!(err, Error::InvalidOffset);
+        assert_eq!(err, Error::InvalidSeek);
         assert_eq!(file.tell(), 1);
 
         let pos = file.seek(0, Whence::END, storage).unwrap();
@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(file.tell(), 500);
 
         let err = file.seek(-1, Whence::SET, storage).unwrap_err();
-        assert_eq!(err, Error::InvalidOffset);
+        assert_eq!(err, Error::InvalidArgument);
         assert_eq!(file.tell(), 500);
 
         let pos = file.seek(1001, Whence::SET, storage).unwrap();
@@ -190,7 +190,7 @@ mod tests {
     fn read_and_write_cursor() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -213,7 +213,7 @@ mod tests {
     fn read_and_write_offset() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let mut file = fs.get_test_file(fd);
@@ -237,7 +237,7 @@ mod tests {
     fn read_and_write_small_and_big_buffer() {
         let mut fs = test_fs();
         let fd = fs
-            .create_file(fs.root_fd(), "test", FdStat::default(), 0)
+            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
 
         let file = fs.get_test_file(fd);
@@ -267,7 +267,7 @@ mod tests {
         for mut fs in [test_fs()] {
             //test_fs_setups("test") {
             let fd = fs
-                .open_or_create(
+                .open(
                     fs.root_fd(),
                     "test",
                     FdStat::default(),
@@ -300,7 +300,7 @@ mod tests {
     fn read_and_write_offset_vs_range() {
         for mut fs in test_fs_setups("test") {
             let fd = fs
-                .open_or_create(
+                .open(
                     fs.root_fd(),
                     "test",
                     FdStat::default(),

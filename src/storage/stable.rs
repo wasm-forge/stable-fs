@@ -1,12 +1,16 @@
 use std::{collections::HashMap, ops::Range};
 
+use crate::storage::types::ZEROES;
 use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     BTreeMap, Cell, Memory,
 };
 
-use crate::storage::ptr_cache::CachedChunkPtr;
+use crate::{
+    runtime::structure_helpers::{read_obj, write_obj},
+    storage::ptr_cache::CachedChunkPtr,
+};
 
 use crate::{
     error::Error,
@@ -20,17 +24,16 @@ use crate::{
 use super::{
     allocator::ChunkPtrAllocator,
     chunk_iterator::ChunkV2Iterator,
-    journal::CacheJournal,
-    metadata_cache::MetadataCache,
+    metadata_provider::MetadataProvider,
     ptr_cache::PtrCache,
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
-        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_SIZE_V2,
+        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_INDEX, MAX_FILE_SIZE,
     },
     Storage,
 };
 
-const ROOT_NODE: Node = 0;
+pub const ROOT_NODE: Node = 0;
 const FS_VERSION: u32 = 1;
 
 const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
@@ -41,11 +44,13 @@ const MAX_MEMORY_INDEX: u8 = 254;
 // the number of memory indices used by the file system (currently 8 plus some reserved ids)
 const MEMORY_INDEX_COUNT: u8 = 10;
 
-const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
+// index containing cached metadata (deprecated)
+const MOUNTED_META_PTR: u64 = 16;
 
 enum StorageMemoryIdx {
     Header = 0,
     Metadata = 1,
+
     DirEntries = 2,
     FileChunksV1 = 3,
 
@@ -77,36 +82,35 @@ struct StorageMemories<M: Memory> {
 }
 
 #[repr(C)]
-pub struct StableStorage<M: Memory> {
-    // some static-sized filesystem data, contains version number and the next node id.
-    header: Cell<Header, VirtualMemory<M>>,
-    // data about one file or a folder such as creation time, file size, associated chunk type, etc.
-    metadata: BTreeMap<Node, Metadata, VirtualMemory<M>>,
-    // information about the directory structure.
-    direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
-    // actual file data stored in chunks insize BTreeMap.
-    filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
-
-    // The metadata of the mounted memory files.
-    // * We store this separately from regular file metadata because the same node IDs can be reused for the related files.
-    // * We need this metadata because we want the information on the mounted files (such as file size) to survive between canister upgrades.
-    mounted_meta: BTreeMap<Node, Metadata, VirtualMemory<M>>,
-
-    // the alternative storage to file chunks V1, we only store pointers, hence no serialization overhead
+pub struct V2FileChunks<M: Memory> {
+    // the file chunk storage V2, we only store pointers to reduce serialization overheads.
     pub(crate) v2_chunk_ptr: BTreeMap<(Node, FileChunkIndex), FileChunkPtr, VirtualMemory<M>>,
     // the actual storage of the chunks,
     // * we can read and write small fragments of data, no need to read and write in chunk-sized blocks
     // * the pointers in the BTreeMap (Node, FileChunkIndex) -> FileChunkPtr are static,
     //   this allows caching to avoid chunk search overheads.
-    v2_chunks: VirtualMemory<M>,
+    pub(crate) v2_chunks: VirtualMemory<M>,
     // keeps information on the chunks currently available.
     // it can be setup to work with different chunk sizes.
     // 4K - the same as chunks V1, 16K - the default, 64K - the biggest chunk size available.
     // the increased chunk size reduces the number of BTree insertions, and increases the performanc.
-    v2_allocator: ChunkPtrAllocator<M>,
+    pub(crate) v2_allocator: ChunkPtrAllocator<M>,
+}
 
-    // extra cache for storing information between upgrades.
-    cache_journal: CacheJournal<M>,
+#[repr(C)]
+pub struct StableStorage<M: Memory> {
+    // some static-sized filesystem data, contains version number and the next node id.
+    header: Cell<Header, VirtualMemory<M>>,
+    // information about the directory structure.
+    direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
+    // actual file data stored in chunks insize BTreeMap.
+    filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
+
+    // file data stored in V2 file chunks
+    pub(crate) v2_filechunk: V2FileChunks<M>,
+
+    // helper object managing file metadata access of all types
+    meta_provider: MetadataProvider<M>,
 
     // It is not used, but is needed to keep memories alive.
     _memory_manager: Option<MemoryManager<M>>,
@@ -119,9 +123,6 @@ pub struct StableStorage<M: Memory> {
     // chunk pointer cache. This cache reduces chunk search overhead when reading a file,
     // or writing a file over existing data. (the new files still need insert new pointers into the treemap, hence it is rather slow)
     pub(crate) ptr_cache: PtrCache,
-
-    // only use it with non-mounted files. This reduces metadata search overhead, when the same file is .
-    meta_cache: MetadataCache,
 }
 
 impl<M: Memory> StableStorage<M> {
@@ -201,6 +202,59 @@ impl<M: Memory> StableStorage<M> {
         Self::new_with_custom_memories(memories)
     }
 
+    // support deprecated storage, recover stored mounted file metadata
+    // we have to use a custom node here,
+    fn init_size_from_cache_journal(&mut self, journal: &VirtualMemory<M>) {
+        // re-define old Metadata type for correct reading
+        #[derive(Clone, Default, PartialEq)]
+        pub struct MetadataLegacy {
+            pub node: Node,
+            pub file_type: FileType,
+            pub link_count: u64,
+            pub size: FileSize,
+            pub times: Times,
+            pub first_dir_entry: Option<DirEntryIndex>,
+            pub last_dir_entry: Option<DirEntryIndex>,
+            pub chunk_type: Option<ChunkType>,
+        }
+
+        // try recover stored mounted metadata (if any)
+        if journal.size() > 0 {
+            let mut mounted_node = 0u64;
+            let mut mounted_meta = MetadataLegacy::default();
+
+            read_obj(journal, MOUNTED_META_PTR, &mut mounted_node);
+
+            read_obj(journal, MOUNTED_META_PTR + 8, &mut mounted_meta);
+
+            let meta_read = Metadata {
+                node: mounted_meta.node,
+                file_type: FileType::RegularFile,
+                link_count: mounted_meta.link_count,
+                size: mounted_meta.size,
+                times: mounted_meta.times,
+                first_dir_entry: mounted_meta.first_dir_entry,
+                last_dir_entry: mounted_meta.last_dir_entry,
+                chunk_type: mounted_meta.chunk_type,
+                maximum_size_allowed: None,
+            };
+
+            if mounted_node != u64::MAX && mounted_node == mounted_meta.node {
+                // immediately store the recovered metadata
+                self.meta_provider.put_metadata(
+                    mounted_node,
+                    true,
+                    &meta_read,
+                    None,
+                    &mut self.v2_filechunk,
+                );
+
+                // reset cached metadata
+                write_obj(journal, MOUNTED_META_PTR, &(u64::MAX as Node));
+            }
+        }
+    }
+
     fn new_with_custom_memories(memories: StorageMemories<M>) -> Self {
         let default_header_value = Header {
             version: FS_VERSION,
@@ -208,55 +262,42 @@ impl<M: Memory> StableStorage<M> {
         };
 
         let v2_allocator = ChunkPtrAllocator::new(memories.v2_allocator_memory).unwrap();
-        let cache_journal = CacheJournal::new(memories.cache_journal).unwrap();
+        let ptr_cache = PtrCache::new();
+        let v2_chunk_ptr = BTreeMap::init(memories.v2_chunk_ptr_memory);
+
+        let meta_provider =
+            MetadataProvider::new(memories.metadata_memory, memories.mounted_meta_memory);
 
         let mut result = Self {
             header: Cell::init(memories.header_memory, default_header_value).unwrap(),
-            metadata: BTreeMap::init(memories.metadata_memory),
             direntry: BTreeMap::init(memories.direntry_memory),
             filechunk: BTreeMap::init(memories.filechunk_memory),
-            mounted_meta: BTreeMap::init(memories.mounted_meta_memory),
 
-            v2_chunk_ptr: BTreeMap::init(memories.v2_chunk_ptr_memory),
-            v2_chunks: memories.v2_chunks_memory,
-            v2_allocator,
-
-            cache_journal,
+            v2_filechunk: V2FileChunks {
+                v2_chunk_ptr,
+                v2_chunks: memories.v2_chunks_memory,
+                v2_allocator,
+            },
 
             // transient runtime data
             _memory_manager: None,
             active_mounts: HashMap::new(),
+
             // default chunk type is V2
             chunk_type: ChunkType::V2,
-            ptr_cache: PtrCache::new(),
 
-            meta_cache: MetadataCache::new(),
+            ptr_cache,
+
+            meta_provider,
         };
+
+        // init mounted drive
+        result.init_size_from_cache_journal(&memories.cache_journal);
 
         let version = result.header.get().version;
 
         if version != FS_VERSION {
             panic!("Unsupported file system version");
-        }
-
-        match result.get_metadata(ROOT_NODE) {
-            Ok(_) => {}
-            Err(Error::NotFound) => {
-                let metadata = Metadata {
-                    node: ROOT_NODE,
-                    file_type: FileType::Directory,
-                    link_count: 1,
-                    size: 0,
-                    times: Times::default(),
-                    first_dir_entry: None,
-                    last_dir_entry: None,
-                    chunk_type: None,
-                };
-                result.put_metadata(ROOT_NODE, metadata);
-            }
-            Err(err) => {
-                unreachable!("Unexpected error while loading root metadata: {:?}", err);
-            }
         }
 
         result
@@ -312,7 +353,7 @@ impl<M: Memory> StableStorage<M> {
             last_address,
             self.chunk_size() as FileSize,
             &mut self.ptr_cache,
-            &mut self.v2_chunk_ptr,
+            &mut self.v2_filechunk.v2_chunk_ptr,
         );
 
         let write_iter: Vec<_> = write_iter.collect();
@@ -335,23 +376,25 @@ impl<M: Memory> StableStorage<M> {
                 ptr
             } else {
                 // insert new chunk
-                let ptr = self.v2_allocator.allocate();
+                let ptr = self.v2_filechunk.v2_allocator.allocate();
 
-                grow_memory(&self.v2_chunks, ptr + chunk_size as FileSize);
+                grow_memory(&self.v2_filechunk.v2_chunks, ptr + chunk_size as FileSize);
 
                 // fill new chunk with zeroes (appart from the area that will be overwritten)
 
                 // fill before written content
-                self.v2_chunks.write(ptr, &ZEROES[0..chunk_offset as usize]);
+                self.v2_filechunk
+                    .v2_chunks
+                    .write(ptr, &ZEROES[0..chunk_offset as usize]);
 
                 // fill after written content
-                self.v2_chunks.write(
+                self.v2_filechunk.v2_chunks.write(
                     ptr + chunk_offset + to_write as FileSize,
                     &ZEROES[0..(chunk_size - chunk_offset as usize - to_write as usize)],
                 );
 
                 // register new chunk pointer
-                self.v2_chunk_ptr.insert((node, index), ptr);
+                self.v2_filechunk.v2_chunk_ptr.insert((node, index), ptr);
 
                 //
                 self.ptr_cache
@@ -362,7 +405,9 @@ impl<M: Memory> StableStorage<M> {
 
             // growing here should not be required as the grow is called during
             // grow_memory(&self.v2_chunks, chunk_ptr + offset + buf.len() as FileSize);
-            self.v2_chunks.write(chunk_ptr + chunk_offset, write_buf);
+            self.v2_filechunk
+                .v2_chunks
+                .write(chunk_ptr + chunk_offset, write_buf);
 
             chunk_offset = 0;
             size_written += to_write;
@@ -471,7 +516,7 @@ impl<M: Memory> StableStorage<M> {
             file_size,
             chunk_size as FileSize,
             &mut self.ptr_cache,
-            &mut self.v2_chunk_ptr,
+            &mut self.v2_filechunk.v2_chunk_ptr,
         );
 
         for ((nd, _idx), cached_chunk) in read_iter {
@@ -491,7 +536,9 @@ impl<M: Memory> StableStorage<M> {
             let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
 
             if let CachedChunkPtr::ChunkExists(cptr) = cached_chunk {
-                self.v2_chunks.read(cptr + chunk_offset, read_buf);
+                self.v2_filechunk
+                    .v2_chunks
+                    .read(cptr + chunk_offset, read_buf);
             } else {
                 // fill read buffer with 0
                 read_buf.iter_mut().for_each(|m| *m = 0)
@@ -505,16 +552,6 @@ impl<M: Memory> StableStorage<M> {
         Ok(size_read)
     }
 
-    fn flush_mounted_meta(&mut self) {
-        let node = self.cache_journal.read_mounted_meta_node();
-
-        if let Some(node) = node {
-            let mut meta: Metadata = Metadata::default();
-            self.cache_journal.read_mounted_meta(&mut meta);
-            self.mounted_meta.insert(node, meta);
-        }
-    }
-
     fn use_v2(&mut self, metadata: &Metadata, node: u64) -> bool {
         // decide if we use v2 chunks for reading/writing
         let use_v2 = match metadata.chunk_type {
@@ -525,7 +562,11 @@ impl<M: Memory> StableStorage<M> {
             None => {
                 if metadata.size > 0 {
                     // try to find any v2 node, othersize use v1
-                    let ptr = self.v2_chunk_ptr.range((node, 0)..(node + 1, 0)).next();
+                    let ptr = self
+                        .v2_filechunk
+                        .v2_chunk_ptr
+                        .range((node, 0)..(node + 1, 0))
+                        .next();
 
                     ptr.is_some()
                 } else {
@@ -534,6 +575,91 @@ impl<M: Memory> StableStorage<M> {
             }
         };
         use_v2
+    }
+
+    fn validate_metadata_update(
+        old_meta: Option<&Metadata>,
+        new_meta: &Metadata,
+    ) -> Result<(), Error> {
+        if let Some(old_meta) = old_meta {
+            if old_meta.node != new_meta.node {
+                return Err(Error::IllegalByteSequence);
+            }
+        }
+
+        if let Some(max_size) = new_meta.maximum_size_allowed {
+            if new_meta.size > max_size {
+                return Err(Error::FileTooLarge);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn resize_file_internal(&mut self, node: Node, new_size: FileSize) -> Result<(), Error> {
+        if self.is_mounted(node) {
+            // for the mounted node we only update file size in the metadata (no need to delete chunks)
+            return Ok(());
+        }
+
+        // delete v1 chunks
+        let chunk_size = FILE_CHUNK_SIZE_V1;
+
+        let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
+
+        let range = (node, first_deletable_index)..(node + 1, 0);
+
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
+
+        for (k, _v) in self.filechunk.range(range) {
+            chunks.push(k);
+        }
+
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+            self.filechunk.remove(&(node, idx));
+        }
+
+        // fill with zeros the last chunk memory above the file size
+        if first_deletable_index > 0 {
+            let offset = new_size as FileSize % chunk_size as FileSize;
+
+            self.write_filechunk_v1(
+                node,
+                first_deletable_index - 1,
+                offset,
+                &ZEROES[0..(chunk_size - offset as usize)],
+            );
+        }
+
+        // delete v2 chunks
+
+        let chunk_size = self.chunk_size();
+
+        let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
+
+        let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_INDEX);
+        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
+        for (k, _v) in self.v2_filechunk.v2_chunk_ptr.range(range) {
+            chunks.push(k);
+        }
+
+        for (nd, idx) in chunks.into_iter() {
+            assert!(nd == node);
+            let removed = self.v2_filechunk.v2_chunk_ptr.remove(&(node, idx));
+
+            if let Some(removed) = removed {
+                self.v2_filechunk.v2_allocator.free(removed);
+            }
+        }
+
+        // fill with zeros the last chunk memory above the file size
+        if first_deletable_index > 0 {
+            let offset = new_size as FileSize % chunk_size as FileSize;
+            self.write_chunks_v2(node, new_size, &ZEROES[0..(chunk_size - offset as usize)])?;
+        }
+
+        Ok(())
     }
 }
 
@@ -563,52 +689,58 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Get the metadata associated with the node.
     fn get_metadata(&self, node: Node) -> Result<Metadata, Error> {
-        if self.is_mounted(node) {
-            if self.cache_journal.read_mounted_meta_node() == Some(node) {
-                let mut meta = Metadata::default();
-                self.cache_journal.read_mounted_meta(&mut meta);
-
-                return Ok(meta);
-            }
-
-            self.mounted_meta.get(&node).ok_or(Error::NotFound)
-        } else {
-            let meta = self.meta_cache.get(node);
-
-            if let Some(meta) = meta {
-                return Ok(meta);
-            }
-
-            let meta = self.metadata.get(&node).ok_or(Error::NotFound);
-
-            if let Ok(ref meta) = meta {
-                self.meta_cache.update(node, meta);
-            }
-
-            meta
-        }
+        self.meta_provider
+            .get_metadata(
+                node,
+                self.is_mounted(node),
+                &self.v2_filechunk.v2_chunk_ptr,
+                &self.v2_filechunk.v2_chunks,
+            )
+            .map(|x| x.0)
+            .ok_or(Error::BadFileDescriptor)
     }
 
     // Update the metadata associated with the node.
-    fn put_metadata(&mut self, node: Node, metadata: Metadata) {
-        assert_eq!(node, metadata.node, "Node does not match medatada.node!");
+    fn put_metadata(&mut self, node: Node, metadata: &Metadata) -> Result<(), Error> {
+        let is_mounted = self.is_mounted(node);
 
-        if self.is_mounted(node) {
-            // flush changes if the last node was different
-            if self.cache_journal.read_mounted_meta_node() != Some(node) {
-                self.flush_mounted_meta();
+        let meta_rec = self.meta_provider.get_metadata(
+            node,
+            is_mounted,
+            &self.v2_filechunk.v2_chunk_ptr,
+            &self.v2_filechunk.v2_chunks,
+        );
+
+        let (old_meta, meta_ptr) = match meta_rec.as_ref() {
+            Some((m, p)) => (Some(m), *p),
+            None => (None, None),
+        };
+
+        Self::validate_metadata_update(old_meta, metadata)?;
+
+        if let Some(old_meta) = old_meta {
+            // if the size was reduced, we need to delete the file chunks above the file size
+            if metadata.size < old_meta.size {
+                self.resize_file_internal(node, metadata.size)?;
             }
-
-            self.cache_journal.write_mounted_meta(&node, &metadata)
-        } else {
-            self.meta_cache.update(node, &metadata);
-            self.metadata.insert(node, metadata);
         }
+
+        self.meta_provider.put_metadata(
+            node,
+            is_mounted,
+            metadata,
+            meta_ptr,
+            &mut self.v2_filechunk,
+        );
+
+        Ok(())
     }
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
-        self.direntry.get(&(node, index)).ok_or(Error::NotFound)
+        self.direntry
+            .get(&(node, index))
+            .ok_or(Error::BadFileDescriptor)
     }
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
@@ -625,7 +757,8 @@ impl<M: Memory> Storage for StableStorage<M> {
     fn read(&mut self, node: Node, offset: FileSize, buf: &mut [u8]) -> Result<FileSize, Error> {
         let metadata = self.get_metadata(node)?;
 
-        let file_size = metadata.size;
+        let max_size = metadata.maximum_size_allowed.unwrap_or(MAX_FILE_SIZE);
+        let file_size = metadata.size.min(max_size);
 
         if offset >= file_size {
             return Ok(0);
@@ -656,6 +789,12 @@ impl<M: Memory> Storage for StableStorage<M> {
     // Write file at the current file cursor, the cursor position will NOT be updated after writing.
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
+
+        let max_size = metadata.maximum_size_allowed.unwrap_or(MAX_FILE_SIZE);
+
+        if offset + buf.len() as FileSize > max_size {
+            return Err(Error::FileTooLarge);
+        }
 
         let written_size = if let Some(memory) = self.get_mounted_memory(node) {
             self.write_mounted(memory, offset, buf);
@@ -691,67 +830,42 @@ impl<M: Memory> Storage for StableStorage<M> {
         let end = offset + buf.len() as FileSize;
         if end > metadata.size {
             metadata.size = end;
-            self.put_metadata(node, metadata);
+            self.put_metadata(node, &metadata)?;
         }
 
         Ok(written_size)
     }
 
+    fn resize_file(&mut self, node: Node, new_size: FileSize) -> Result<(), Error> {
+        let mut meta = self.get_metadata(node)?;
+
+        meta.size = new_size;
+
+        self.put_metadata(node, &meta)
+    }
+
     //
     fn rm_file(&mut self, node: Node) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::CannotRemoveMountedMemoryFile);
+            return Err(Error::DeviceOrResourceBusy);
         }
 
-        // delete v1 chunks
-        let range = (node, 0)..(node + 1, 0);
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
-        for (k, _v) in self.filechunk.range(range) {
-            chunks.push(k);
-        }
+        self.resize_file(node, 0)?;
 
-        for (nd, idx) in chunks.into_iter() {
-            assert!(nd == node);
-            self.filechunk.remove(&(node, idx));
-        }
-
-        // delete v2 chunks
-        let range = (node, 0)..(node + 1, 0);
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
-        for (k, _v) in self.v2_chunk_ptr.range(range) {
-            chunks.push(k);
-        }
-
-        for (nd, idx) in chunks.into_iter() {
-            assert!(nd == node);
-            let removed = self.v2_chunk_ptr.remove(&(node, idx));
-
-            if let Some(removed) = removed {
-                self.v2_allocator.free(removed);
-            }
-        }
-
-        // clear cache
-        self.ptr_cache.clear();
-
-        // remove metadata
-        self.mounted_meta.remove(&node);
-        self.metadata.remove(&node);
-
-        let mounted_meta_node = self.cache_journal.read_mounted_meta_node();
-        if mounted_meta_node == Some(node) {
-            // reset cached mounted metadata
-            self.cache_journal.reset_mounted_meta()
-        }
-
-        self.meta_cache.clear();
+        self.meta_provider.remove_metadata(
+            node,
+            &mut self.ptr_cache,
+            &mut self.filechunk,
+            &mut self.v2_filechunk.v2_chunk_ptr,
+            &mut self.v2_filechunk.v2_allocator,
+        );
 
         Ok(())
     }
 
     fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error> {
         if self.is_mounted(node) {
-            return Err(Error::MemoryFileIsMountedAlready);
+            return Err(Error::DeviceOrResourceBusy);
         }
 
         // do extra meta preparation
@@ -768,7 +882,7 @@ impl<M: Memory> Storage for StableStorage<M> {
             file_meta.size = 0;
 
             // update mounted metadata
-            self.put_metadata(node, file_meta);
+            self.put_metadata(node, &file_meta)?;
         };
 
         Ok(())
@@ -777,7 +891,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     fn unmount_node(&mut self, node: Node) -> Result<Box<dyn Memory>, Error> {
         let memory = self.active_mounts.remove(&node);
 
-        memory.ok_or(Error::MemoryFileIsNotMounted)
+        memory.ok_or(Error::NoSuchDevice)
     }
 
     fn is_mounted(&self, node: Node) -> bool {
@@ -819,7 +933,7 @@ impl<M: Memory> Storage for StableStorage<M> {
 
         self.mount_node(node, memory)?;
 
-        self.put_metadata(node, meta);
+        self.put_metadata(node, &meta)?;
 
         Ok(())
     }
@@ -855,7 +969,7 @@ impl<M: Memory> Storage for StableStorage<M> {
             remainder -= to_read;
         }
 
-        self.put_metadata(node, meta);
+        self.put_metadata(node, &meta)?;
 
         self.mount_node(node, memory)?;
 
@@ -863,11 +977,13 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     fn set_chunk_size(&mut self, chunk_size: ChunkSize) -> Result<(), Error> {
-        self.v2_allocator.set_chunk_size(chunk_size as usize)
+        self.v2_filechunk
+            .v2_allocator
+            .set_chunk_size(chunk_size as usize)
     }
 
     fn chunk_size(&self) -> usize {
-        self.v2_allocator.chunk_size()
+        self.v2_filechunk.v2_allocator.chunk_size()
     }
 
     fn set_chunk_type(&mut self, chunk_type: ChunkType) {
@@ -879,7 +995,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     }
 
     fn flush(&mut self, _node: Node) {
-        self.flush_mounted_meta();
+        // nothing to flush, the system immediately stores data on write
     }
 }
 
@@ -896,19 +1012,22 @@ mod tests {
     fn read_and_write_filechunk() {
         let mut storage = StableStorage::new(DefaultMemoryImpl::default());
         let node = storage.new_node();
-        storage.put_metadata(
-            node,
-            Metadata {
+        storage
+            .put_metadata(
                 node,
-                file_type: FileType::RegularFile,
-                link_count: 1,
-                size: 10,
-                times: Times::default(),
-                first_dir_entry: Some(42),
-                last_dir_entry: Some(24),
-                chunk_type: Some(storage.chunk_type()),
-            },
-        );
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 10,
+                    times: Times::default(),
+                    first_dir_entry: Some(42),
+                    last_dir_entry: Some(24),
+                    chunk_type: Some(storage.chunk_type()),
+                    maximum_size_allowed: None,
+                },
+            )
+            .unwrap();
         let metadata = storage.get_metadata(node).unwrap();
         assert_eq!(metadata.node, node);
         assert_eq!(metadata.file_type, FileType::RegularFile);
@@ -944,5 +1063,323 @@ mod tests {
         );
         assert_eq!(direntry.next_entry, Some(42));
         assert_eq!(direntry.prev_entry, Some(24));
+    }
+
+    fn new_file<M: Memory>(storage: &mut StableStorage<M>) -> Node {
+        let node = storage.new_node();
+
+        storage
+            .put_metadata(
+                node,
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 0,
+                    times: Times::default(),
+                    first_dir_entry: None,
+                    last_dir_entry: None,
+                    chunk_type: Some(storage.chunk_type()),
+                    maximum_size_allowed: None,
+                },
+            )
+            .unwrap();
+
+        node
+    }
+
+    #[test]
+    fn read_beyond_file_size() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+
+        let node = new_file(&mut storage);
+
+        storage.write(node, 0, b"hello").unwrap();
+
+        let mut buf = [0u8; 10];
+        let bytes_read = storage.read(node, 3, &mut buf).unwrap();
+
+        assert_eq!(bytes_read, 2);
+        assert_eq!(&buf[..2], b"lo");
+
+        assert_eq!(buf[2..], [0; 8]);
+    }
+
+    #[test]
+    fn switch_chunk_types() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+
+        storage.set_chunk_type(ChunkType::V1);
+
+        let node_v1 = new_file(&mut storage);
+
+        storage.write(node_v1, 0, b"v1_data").unwrap();
+
+        storage.set_chunk_type(ChunkType::V2);
+
+        let node_v2 = new_file(&mut storage);
+
+        // Write data
+        storage.write(node_v2, 0, b"v2_data").unwrap();
+
+        // Confirm reads
+        let mut buf_v1 = [0u8; 7];
+        storage.read(node_v1, 0, &mut buf_v1).unwrap();
+        assert_eq!(&buf_v1, b"v1_data");
+        let meta = storage.get_metadata(node_v1).unwrap();
+        assert_eq!(meta.chunk_type.unwrap(), ChunkType::V1);
+
+        let mut buf_v2 = [0u8; 7];
+        storage.read(node_v2, 0, &mut buf_v2).unwrap();
+        assert_eq!(&buf_v2, b"v2_data");
+        let meta = storage.get_metadata(node_v2).unwrap();
+        assert_eq!(meta.chunk_type.unwrap(), ChunkType::V2);
+    }
+
+    #[test]
+    fn resize_file_shrink_and_grow() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        let node = new_file(&mut storage);
+
+        storage.write(node, 0, b"1234567890").unwrap();
+        let mut buf = [0u8; 10];
+        storage.read(node, 0, &mut buf).unwrap();
+        assert_eq!(&buf, b"1234567890");
+
+        // Shrink to 5 bytes
+        storage.resize_file(node, 5).unwrap();
+
+        let meta = storage.get_metadata(node).unwrap();
+        assert_eq!(meta.size, 5); // Check the metadata reflects new size
+
+        // Reading the file now
+        let mut buf_small = [0u8; 10];
+        let bytes_read = storage.read(node, 0, &mut buf_small).unwrap();
+        assert_eq!(bytes_read, 5);
+        assert_eq!(&buf_small[..5], b"12345");
+        assert_eq!(&buf_small[5..], [0; 5]);
+
+        // check zero fill
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.size = 10;
+        storage.put_metadata(node, &meta).unwrap();
+
+        // Confirm new bytes are zeroed or remain uninitialized, depending on design
+        let mut buf_grow = [0u8; 10];
+        storage.read(node, 0, &mut buf_grow).unwrap();
+        // First 5 bytes should remain "12345", rest must be zero:
+        assert_eq!(&buf_grow[..5], b"12345");
+        assert_eq!(&buf_grow[5..], [0; 5]);
+    }
+
+    #[test]
+    fn resize_file_shrink_deletes_v2_chunks() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        let node = new_file(&mut storage);
+
+        let chunk_size = storage.chunk_size() as FileSize;
+
+        // write something into the second chunk
+        storage.write(node, chunk_size + 4, b"1234567890").unwrap();
+
+        // write something into the first chunk
+        storage.write(node, 4, b"1234567890").unwrap();
+
+        let mut buf = [0u8; 10];
+        // read second chunk
+        storage.read(node, chunk_size + 9, &mut buf).unwrap();
+
+        assert_eq!(&buf, b"67890\0\0\0\0\0");
+
+        let chunks: Vec<_> = storage
+            .v2_filechunk
+            .v2_chunk_ptr
+            .range((node, 0)..(node, 5))
+            .collect();
+        assert_eq!(chunks.len(), 2);
+
+        // Shrink to 5 bytes
+        storage.resize_file(node, 5).unwrap();
+
+        let meta = storage.get_metadata(node).unwrap();
+
+        // only one chunk should be present
+        assert_eq!(meta.size, 5); // Check the metadata reflects new size
+
+        let chunks: Vec<_> = storage
+            .v2_filechunk
+            .v2_chunk_ptr
+            .range((node, 0)..(node, 5))
+            .collect();
+        assert_eq!(chunks.len(), 1);
+
+        // for 0 size, all chunks have to be deleted
+        storage.resize_file(node, 0).unwrap();
+        let chunks: Vec<_> = storage
+            .v2_filechunk
+            .v2_chunk_ptr
+            .range((node, 0)..(node, 5))
+            .collect();
+        assert_eq!(chunks.len(), 0);
+    }
+
+    #[test]
+    fn resize_file_shrink_deletes_v1_chunks() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        storage.set_chunk_type(ChunkType::V1);
+
+        let node = new_file(&mut storage);
+
+        let chunk_size = FILE_CHUNK_SIZE_V1 as FileSize;
+
+        // write something into the second chunk
+        storage.write(node, chunk_size + 4, b"1234567890").unwrap();
+
+        // write something into the first chunk
+        storage.write(node, 4, b"1234567890").unwrap();
+
+        let mut buf = [0u8; 10];
+        // read second chunk
+        storage.read(node, chunk_size + 9, &mut buf).unwrap();
+
+        assert_eq!(&buf, b"67890\0\0\0\0\0");
+
+        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node, 5)).collect();
+        assert_eq!(chunks.len(), 2);
+
+        // Shrink to 5 bytes
+        storage.resize_file(node, 5).unwrap();
+
+        let meta = storage.get_metadata(node).unwrap();
+
+        // only one chunk should be present
+        assert_eq!(meta.size, 5); // Check the metadata reflects new size
+
+        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node, 5)).collect();
+        assert_eq!(chunks.len(), 1);
+
+        // for 0 size, all chunks have to be deleted
+        storage.resize_file(node, 0).unwrap();
+        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node, 5)).collect();
+        assert_eq!(chunks.len(), 0);
+    }
+
+    #[test]
+    fn remove_file_chunks_v2() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+
+        let chunk_size = storage.chunk_size() as FileSize;
+
+        // some other files present
+        let node_other = new_file(&mut storage);
+        storage.write(node_other, 0, b"some data").unwrap();
+
+        let node = new_file(&mut storage);
+
+        // write into 5 chunks + 1 metadata chunk, expect to find 6 chunks
+        storage.write(node, 0, b"some data").unwrap();
+        storage.write(node, chunk_size, b"some data").unwrap();
+        storage.write(node, chunk_size * 2, b"some data").unwrap();
+        // write into two chunks with one call
+        storage
+            .write(node, chunk_size * 5 - 2, b"some data")
+            .unwrap();
+
+        // some other files present
+        let node_other2 = new_file(&mut storage);
+        storage.write(node_other2, 0, b"some data").unwrap();
+
+        // check chunk count
+        let chunks: Vec<_> = storage
+            .v2_filechunk
+            .v2_chunk_ptr
+            .range((node, 0)..(node + 1, 0))
+            .collect();
+
+        // chunks of the given node
+        assert_eq!(chunks.len(), 6);
+
+        // check the allocator is also holding 6 chunks of the main file, and 4 chunks from the two other files
+        assert_eq!(
+            storage.v2_filechunk.v2_allocator.get_current_max_ptr(),
+            (6 + 4) * chunk_size
+        );
+
+        // Remove file
+        storage.rm_file(node).unwrap();
+
+        // Confirm reading fails or returns NotFound
+        let mut buf = [0u8; 9];
+        let res = storage.read(node, 0, &mut buf);
+        assert!(matches!(res, Err(Error::BadFileDescriptor)));
+
+        // Confirm metadata is removed
+        let meta_res = storage.get_metadata(node);
+        assert!(matches!(meta_res, Err(Error::BadFileDescriptor)));
+
+        // check there are no chunks left after deleting the node
+        let chunks: Vec<_> = storage
+            .v2_filechunk
+            .v2_chunk_ptr
+            .range((node, 0)..(node + 1, 0))
+            .collect();
+
+        assert_eq!(chunks.len(), 0);
+    }
+
+    #[test]
+    fn remove_file_chunks_v1() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        storage.set_chunk_type(ChunkType::V1);
+
+        let chunk_size = FILE_CHUNK_SIZE_V1 as FileSize;
+
+        // some other files present
+        let node_other = new_file(&mut storage);
+        storage.write(node_other, 0, b"some data").unwrap();
+
+        let node = new_file(&mut storage);
+
+        // write into 5 chunks
+        storage.write(node, 0, b"some data").unwrap();
+        storage.write(node, chunk_size, b"some data").unwrap();
+        storage.write(node, chunk_size * 2, b"some data").unwrap();
+        // write into two chunks with one call
+        storage
+            .write(node, chunk_size * 5 - 2, b"some data")
+            .unwrap();
+
+        // some other files present
+        let node_other2 = new_file(&mut storage);
+        storage.write(node_other2, 0, b"some data").unwrap();
+
+        // check chunk count
+        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node + 1, 0)).collect();
+
+        // chunks of the given node
+        assert_eq!(chunks.len(), 5);
+
+        // check the allocator is holding three chunks for 3 stored metadata
+        assert_eq!(
+            storage.v2_filechunk.v2_allocator.get_current_max_ptr(),
+            storage.chunk_size() as FileSize * 3
+        );
+
+        // Remove file
+        storage.rm_file(node).unwrap();
+
+        // Confirm reading fails or returns NotFound
+        let mut buf = [0u8; 9];
+        let res = storage.read(node, 0, &mut buf);
+        assert!(matches!(res, Err(Error::BadFileDescriptor)));
+
+        // Confirm metadata is removed
+        let meta_res = storage.get_metadata(node);
+        assert!(matches!(meta_res, Err(Error::BadFileDescriptor)));
+
+        // check there are no chunks left after deleting the node
+        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node + 1, 0)).collect();
+
+        assert_eq!(chunks.len(), 0);
     }
 }
