@@ -1440,7 +1440,6 @@ mod tests {
     fn remove_dir_recurse_test() {
         let mut fs = test_fs();
         let root_fd = fs.root_fd();
-
         // create test directory structure:
         // /subdir
         // /subdir/file1.txt

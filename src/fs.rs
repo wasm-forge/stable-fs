@@ -119,7 +119,16 @@ impl FileSystem {
             return Ok(());
         }
 
-        self.flush(fd)?;
+        // flush if regular file
+        match self.fd_table.get(fd) {
+            Some(FdEntry::File(file)) => {
+                self.storage.flush(file.node);
+            }
+            Some(FdEntry::Dir(_dir)) => {
+                // directories do not need flush
+            }
+            None => Err(Error::BadFileDescriptor)?,
+        };
 
         self.fd_table.close(fd).ok_or(Error::BadFileDescriptor)?;
 
