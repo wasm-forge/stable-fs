@@ -29,7 +29,7 @@ pub type FileChunkIndex = u32;
 pub type FileChunkPtr = u64;
 
 // An array filled with 0 used to fill memory with 0 via copy.
-pub const ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
+pub static ZEROES: [u8; MAX_FILE_CHUNK_SIZE_V2] = [0u8; MAX_FILE_CHUNK_SIZE_V2];
 
 // A handle used for writing files in chunks.
 #[derive(Debug, PartialEq, Eq)]
