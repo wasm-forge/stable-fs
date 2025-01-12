@@ -540,6 +540,8 @@ impl FileSystem {
 #[cfg(test)]
 mod tests {
 
+    use std::fs;
+
     use crate::{
         error::Error,
         fs::{DstBuf, FdFlags, SrcBuf},
@@ -1339,10 +1341,11 @@ mod tests {
     use ic_stable_structures::DefaultMemoryImpl;
 
     pub fn generate_random_file_structure(
-        op_count: u32, // number of operations to do
-        cur_rand: u64, // current random seed
-        depth: u32,    // current folder depth
-        parent_fd: Fd, // host fd
+        min_count: u32, // op count at wich to stop producing more operations
+        op_count: u32,  // number of operations to do
+        cur_rand: u64,  // current random seed
+        depth: u32,     // current folder depth
+        parent_fd: Fd,  // host fd
         fs: &mut FileSystem,
     ) -> Result<u32, crate::error::Error> {
         let mut op_count = op_count;
@@ -1471,6 +1474,7 @@ mod tests {
                         )?;
 
                         let res = generate_random_file_structure(
+                            min_count,
                             op_count,
                             cur_rand,
                             depth + 1,
@@ -1585,14 +1589,27 @@ mod tests {
     }
 
     use ic_stable_structures::memory_manager::VirtualMemory;
+    use ic_stable_structures::Memory;
     use ic_stable_structures::VectorMemory;
+
+    pub fn new_vector_memory() -> VectorMemory {
+        use std::{cell::RefCell, rc::Rc};
+
+        Rc::new(RefCell::new(Vec::new()))
+    }
+
+    pub fn new_vector_memory_init(v: Vec<u8>) -> VectorMemory {
+        use std::{cell::RefCell, rc::Rc};
+
+        Rc::new(RefCell::new(v))
+    }
 
     #[test]
     fn test_generator() {
         //let memory = DefaultMemoryImpl::default();
-        let memory: VirtualMemory<M> = VectorMemory::default();
+        let memory = new_vector_memory();
 
-        let storage = StableStorage::new(memory);
+        let storage = StableStorage::new(memory.clone());
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
 
         let root_fd = fs
@@ -1600,7 +1617,7 @@ mod tests {
             .unwrap();
 
         // generate random file structure.
-        generate_random_file_structure(1000, 35, 0, root_fd, &mut fs).unwrap();
+        generate_random_file_structure(0, 1000, 35, 0, root_fd, &mut fs).unwrap();
         fs.close(root_fd).unwrap();
 
         // test deletion
@@ -1613,19 +1630,36 @@ mod tests {
         println!("{}", files);
 
         // store memory into file
-        let size = memory.size();
-        static PAGE_SIZE: usize = 65536;
 
-        let mut contents = Vec::with_capacity(size * PAGE_SIZE);
-
-        memory.read();
+        let v = memory.borrow();
 
         // try to delete the generated folder
         //fs.remove_recursive(fs.root_fd(), "root_dir").unwrap();
         //fs.remove_file(fs.root_fd(), "root_dir/file4.txt").unwrap();
         //fs.remove_dir(fs.root_fd(), "root_dir").unwrap();
+
+        fs::create_dir_all("./tests/res/").unwrap();
+        fs::write("./tests/res/memory-v0_4-op35_1000.bin", &*v).unwrap();
+        fs::write("./tests/res/structure-v0_4-op35_1000.txt", &files).unwrap();
     }
 
     #[test]
-    fn test_reading_structure() {}
+    fn test_reading_structure() {
+        let v = fs::read("./tests/res/memory-v0_4-op35_1000.bin").unwrap();
+        let memory = new_vector_memory_init(v);
+
+        let v_files = fs::read("./tests/res/structure-v0_4-op35_1000.txt").unwrap();
+        let files_old = std::str::from_utf8(&v_files).unwrap();
+
+        let storage = StableStorage::new(memory);
+
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+        let files = list_all_files_as_string(&mut fs).unwrap();
+
+        assert_eq!(files, files_old);
+
+        println!("------------------------------------------");
+        println!("FILE STRUCTURE");
+        println!("{}", files);
+    }
 }

@@ -1,12 +1,14 @@
 use ic_stable_structures::{
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory}, BTreeMap, Cell, Memory
+    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
+    BTreeMap, Cell, Memory,
 };
 
 use crate::error::Error;
 
 use super::{
     types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata, Node, Times
+        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Header, Metadata,
+        Node, Times,
     },
     Storage,
 };
@@ -32,7 +34,8 @@ impl<M: Memory> StableStorage<M> {
     pub fn new(memory: M) -> Self {
         let memory_manager = MemoryManager::init(memory);
 
-        let mut storage = Self::new_with_memory_manager(&memory_manager, DEFAULT_FIRST_MEMORY_INDEX);
+        let mut storage =
+            Self::new_with_memory_manager(&memory_manager, DEFAULT_FIRST_MEMORY_INDEX);
 
         storage._memory_manager = Some(memory_manager);
 
@@ -68,7 +71,6 @@ impl<M: Memory> StableStorage<M> {
         direntry: VirtualMemory<M>,
         filechunk: VirtualMemory<M>,
     ) -> Self {
-
         let default_header_value = Header {
             version: FS_VERSION,
             next_node: ROOT_NODE + 1,
@@ -83,7 +85,7 @@ impl<M: Memory> StableStorage<M> {
         };
 
         let version = result.header.get().version;
-        
+
         if version != FS_VERSION {
             panic!("Unsupported file system version");
         }
@@ -119,7 +121,6 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Generate the next available node ID.
     fn new_node(&mut self) -> Node {
-
         let mut header = self.header.get().clone();
 
         self.metadata.last_key_value();
