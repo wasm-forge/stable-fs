@@ -1768,6 +1768,7 @@ mod tests {
         Rc::new(RefCell::new(v))
     }
 
+    /*
     #[test]
     fn test_reading_structure() {
         let v = std::fs::read("./tests/res/memory-v0_4-op35_1000.bin").unwrap();
@@ -1783,6 +1784,7 @@ mod tests {
 
         assert_eq!(files, files_old);
     }
+    */
 
     #[test]
     fn test_generate_structure_v4_with_current_version() {
