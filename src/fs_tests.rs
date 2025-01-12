@@ -1509,7 +1509,7 @@ mod tests {
         let mut op_count = op_count;
         let mut cur_rand = cur_rand;
 
-        while op_count > 0 {
+        while op_count > min_count {
             op_count -= 1;
 
             cur_rand = next_rand(cur_rand);
