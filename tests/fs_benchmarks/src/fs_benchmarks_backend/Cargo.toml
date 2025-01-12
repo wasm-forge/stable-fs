@@ -1,0 +1,26 @@
+[package]
+name = "fs_benchmarks_backend"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+canbench-rs = { version = "0.1.4", optional = true }
+candid = "0.10"
+ic-cdk = "0.17"
+ic-cdk-timers = "0.11" # Feel free to remove this dependency if you don't need timers
+ic-stable-structures = "0.6"
+
+
+stable-fs = {path="../../../../../stable-fs"}
+#stable-fs = "=0.6.4"
+#stable-fs = "=0.6.3"
+#stable-fs = "=0.6.2"
+#stable-fs = "=0.6.1"
+#stable-fs = "0.5"
+#stable-fs = "0.4"
+

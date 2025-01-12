@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "src/fs_benchmarks_backend"
+]
+resolver = "2"

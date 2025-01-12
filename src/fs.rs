@@ -305,7 +305,7 @@ impl FileSystem {
                     return Err(Error::NotFound);
                 }
                 if flags.contains(OpenFlags::DIRECTORY) {
-                    return Err(Error::InvalidFileType);
+                    return self.create_dir(parent, path, stat, ctime);
                 }
                 self.create_file(parent, path, stat, ctime)
             }
@@ -314,7 +314,7 @@ impl FileSystem {
     }
 
     // Opens a file and return its new file descriptor.
-    pub fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
+    fn open(&mut self, node: Node, stat: FdStat, flags: OpenFlags) -> Result<Fd, Error> {
         if flags.contains(OpenFlags::EXCLUSIVE) {
             return Err(Error::FileAlreadyExists);
         }
@@ -451,6 +451,90 @@ impl FileSystem {
     pub(crate) fn get_test_file(&self, fd: Fd) -> File {
         self.get_file(fd).unwrap()
     }
+
+    pub(crate) fn list_dir_internal(
+        &mut self,
+        dir_fd: Fd,
+        file_type: Option<FileType>,
+    ) -> Result<Vec<(Node, String)>, Error> {
+        let mut res = vec![];
+
+        let meta = self.metadata(dir_fd)?;
+
+        let mut entry_index = meta.first_dir_entry;
+
+        while let Some(index) = entry_index {
+            let entry = self.storage.get_direntry(meta.node, index)?;
+
+            // here we assume the entry value name is correct UTF-8
+            let filename = unsafe {
+                std::str::from_utf8_unchecked(&entry.name.bytes[..(entry.name.length as usize)])
+            }
+            .to_string();
+
+            if let Some(file_type) = file_type {
+                let meta = self.metadata_from_node(entry.node)?;
+
+                if meta.file_type == file_type {
+                    res.push((entry.node, filename));
+                }
+            } else {
+                res.push((entry.node, filename));
+            }
+
+            entry_index = entry.next_entry;
+        }
+
+        Ok(res)
+    }
+
+    /// A convenience method to recursively remove a directory (and all subdirectories/files within) or delete a file, if the entry is a file.
+    pub fn remove_recursive(&mut self, parent: Fd, path: &str) -> Result<(), Error> {
+        let meta = self.open_metadata(parent, path)?;
+
+        if meta.file_type == FileType::RegularFile {
+            return self.remove_file(parent, path);
+        }
+
+        // Open the target directory. We use `OpenFlags::DIRECTORY` to ensure
+        //    the path is interpreted as a directory (or fail if it doesn't exist).
+        let dir_fd =
+            self.open_or_create(parent, path, FdStat::default(), OpenFlags::DIRECTORY, 0)?;
+
+        let result = (|| {
+            // Find all directory children
+            let children = self.list_dir_internal(dir_fd, None)?;
+
+            // For each child, figure out if it's a subdirectory or file and remove accordingly.
+            for (child_node, child_name) in children {
+                let child_meta = self.storage.get_metadata(child_node)?;
+
+                match child_meta.file_type {
+                    FileType::Directory => {
+                        // Recurse into the subdirectory.
+                        self.remove_recursive(dir_fd, &child_name)?;
+                    }
+                    FileType::RegularFile => {
+                        // Remove the file.
+                        self.remove_file(dir_fd, &child_name)?;
+                    }
+                    FileType::SymbolicLink => {
+                        unimplemented!("Symbolic links are not supported yet");
+                    }
+                }
+            }
+
+            Ok(())
+        })();
+
+        // close the folder itself before its deletion
+        self.close(dir_fd)?;
+
+        // Now that it is empty, remove the directory entry from its parent.
+        self.remove_dir(parent, path)?;
+
+        result
+    }
 }
 
 #[cfg(test)]
@@ -463,11 +547,11 @@ mod tests {
             structure_helpers::find_node,
             types::{FdStat, OpenFlags},
         },
-        storage::types::FileType,
+        storage::types::{FileSize, FileType},
         test_utils::{read_text_file, test_fs, test_fs_transient, write_text_fd, write_text_file},
     };
 
-    use super::{Fd, FileSystem};
+    use super::{Fd, FileSystem, Whence};
 
     #[test]
     fn get_root_info() {
@@ -1241,4 +1325,307 @@ mod tests {
 
         assert!(res.is_err());
     }
+
+    // deterministic 32-bit pseudo-random number provider
+    fn next_rand(cur_rand: u64) -> u64 {
+        let a: u64 = 1103515245;
+        let c: u64 = 12345;
+        let m: u64 = 1 << 31;
+
+        (a.wrapping_mul(cur_rand).wrapping_add(c)) % m
+    }
+
+    use crate::storage::stable::StableStorage;
+    use ic_stable_structures::DefaultMemoryImpl;
+
+    pub fn generate_random_file_structure(
+        op_count: u32, // number of operations to do
+        cur_rand: u64, // current random seed
+        depth: u32,    // current folder depth
+        parent_fd: Fd, // host fd
+        fs: &mut FileSystem,
+    ) -> Result<u32, crate::error::Error> {
+        let mut op_count = op_count;
+        let mut cur_rand = cur_rand;
+
+        while op_count > 0 {
+            op_count -= 1;
+
+            cur_rand = next_rand(cur_rand);
+            let action = cur_rand % 10; // e.g., 0..9
+
+            match action {
+                0 => {
+                    // create a file using open
+                    let filename = format!("file{}.txt", op_count);
+
+                    let fd = fs.open_or_create(
+                        parent_fd,
+                        &filename,
+                        FdStat::default(),
+                        OpenFlags::CREATE,
+                        op_count as u64,
+                    )?;
+
+                    fs.seek(fd, op_count as i64 * 100, Whence::SET)?;
+
+                    fs.write(fd, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10])?;
+
+                    fs.close(fd)?;
+                }
+                1 => {
+                    // create a file using create_open_file
+                    let filename = format!("file{}.txt", op_count);
+
+                    let fd =
+                        fs.create_file(parent_fd, &filename, FdStat::default(), op_count as u64);
+
+                    if fd.is_err() {
+                        continue;
+                    }
+
+                    let fd = fd?;
+
+                    let write_content1 = "12345";
+                    let write_content2 = "67890";
+
+                    let src = [
+                        SrcBuf {
+                            buf: write_content1.as_ptr(),
+                            len: write_content1.len(),
+                        },
+                        SrcBuf {
+                            buf: write_content2.as_ptr(),
+                            len: write_content2.len(),
+                        },
+                    ];
+
+                    fs.write_vec_with_offset(fd, src.as_ref(), op_count as FileSize * 1000)?;
+
+                    fs.close(fd)?;
+                }
+
+                2 => {
+                    // create a directory using mkdir.
+                    let dirname = format!("dir{}", op_count);
+
+                    // function might fail because of the naming conflict
+                    let fd =
+                        fs.create_dir(parent_fd, &dirname, FdStat::default(), op_count as u64)?;
+                    fs.close(fd)?;
+                }
+                3 => {
+                    // create a directory using create_open_directory.
+                    let dirname = format!("dir{}", op_count);
+
+                    let fd =
+                        fs.create_dir(parent_fd, &dirname, FdStat::default(), op_count as u64)?;
+                    fs.close(fd)?;
+                }
+                4 => {
+                    // create or open a directory using open
+                    let dirname = format!("dir_o{}", op_count);
+
+                    let fd =
+                        fs.create_dir(parent_fd, &dirname, FdStat::default(), op_count as u64)?;
+
+                    fs.close(fd)?;
+                }
+
+                5 => {
+                    // remove a random folder item
+                    let files = fs.list_dir_internal(parent_fd, None)?;
+
+                    if !files.is_empty() {
+                        let cur_rand = next_rand(cur_rand);
+                        let (node, name) = &files[cur_rand as usize % files.len()];
+
+                        let meta = fs.metadata_from_node(*node)?;
+
+                        match meta.file_type {
+                            FileType::Directory => {
+                                let _ = fs.remove_dir(parent_fd, name);
+                            }
+                            FileType::RegularFile => {
+                                let _ = fs.remove_file(parent_fd, name);
+                            }
+                            FileType::SymbolicLink => panic!("Symlink are not supported!"),
+                        }
+                    }
+                }
+
+                6 => {
+                    // enter subfolder
+                    let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
+
+                    if !dirs.is_empty() {
+                        let cur_rand = next_rand(cur_rand);
+                        let (_node, name) = &dirs[cur_rand as usize % dirs.len()];
+
+                        let dir_fd = fs.open_or_create(
+                            parent_fd,
+                            name,
+                            FdStat::default(),
+                            OpenFlags::empty(),
+                            op_count as u64,
+                        )?;
+
+                        let res = generate_random_file_structure(
+                            op_count,
+                            cur_rand,
+                            depth + 1,
+                            dir_fd,
+                            fs,
+                        );
+
+                        fs.close(dir_fd)?;
+
+                        op_count = res?;
+                    }
+                }
+
+                7 => {
+                    // exit the current folder
+                    if depth > 0 {
+                        return Ok(op_count);
+                    }
+                }
+
+                8 => {
+                    let dirs = fs.list_dir_internal(parent_fd, Some(FileType::Directory))?;
+
+                    // Random open/close a file (or directory)
+                    if !dirs.is_empty() {
+                        let cur_rand = next_rand(cur_rand);
+                        let (_node, filename) = &dirs[cur_rand as usize % dirs.len()];
+
+                        let fd = fs.open_or_create(
+                            parent_fd,
+                            filename,
+                            FdStat::default(),
+                            OpenFlags::empty(),
+                            op_count as u64,
+                        )?;
+
+                        fs.close(fd)?;
+                    }
+                }
+
+                9 => {
+                    // occasionly increate counter to cause naming conflicts and provoce errors
+                    // don't allow random errors for now
+                    //op_count += 2;
+                }
+
+                _ => {
+                    panic!("Incorrect action {action}");
+                }
+            }
+        }
+
+        Ok(op_count)
+    }
+
+    fn list_all_files_as_string(fs: &mut FileSystem) -> Result<String, crate::error::Error> {
+        let mut paths = Vec::new();
+
+        scan_directory(fs, fs.root_fd(), "", &mut paths)?;
+        Ok(paths.join("\n"))
+    }
+
+    fn scan_directory(
+        fs: &mut FileSystem,
+        dir_fd: u32,
+        current_path: &str,
+        collected_paths: &mut Vec<String>,
+    ) -> Result<(), crate::error::Error> {
+        let meta = fs.metadata(dir_fd)?;
+
+        // add current folder as well
+        let entry_path = if current_path.is_empty() {
+            format!("/. {}", meta.size)
+        } else {
+            format!("{}/. {}", current_path, meta.size)
+        };
+        collected_paths.push(entry_path);
+
+        let entries = fs.list_dir_internal(dir_fd, None)?;
+
+        for (entry_node, filename) in entries {
+            let meta = fs.metadata_from_node(entry_node)?;
+
+            let entry_path = if current_path.is_empty() {
+                format!("/{} {}", filename, meta.size)
+            } else {
+                format!("{}/{} {}", current_path, filename, meta.size)
+            };
+
+            match meta.file_type {
+                FileType::Directory => {
+                    let child_fd = fs.open_or_create(
+                        dir_fd,
+                        &filename,
+                        FdStat::default(),
+                        OpenFlags::DIRECTORY,
+                        0,
+                    )?;
+
+                    scan_directory(fs, child_fd, &entry_path, collected_paths)?;
+
+                    fs.close(child_fd)?;
+                }
+                FileType::RegularFile => {
+                    collected_paths.push(entry_path);
+                }
+                FileType::SymbolicLink => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    use ic_stable_structures::memory_manager::VirtualMemory;
+    use ic_stable_structures::VectorMemory;
+
+    #[test]
+    fn test_generator() {
+        //let memory = DefaultMemoryImpl::default();
+        let memory: VirtualMemory<M> = VectorMemory::default();
+
+        let storage = StableStorage::new(memory);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+
+        let root_fd = fs
+            .create_dir(fs.root_fd(), "root_dir", FdStat::default(), 0)
+            .unwrap();
+
+        // generate random file structure.
+        generate_random_file_structure(1000, 35, 0, root_fd, &mut fs).unwrap();
+        fs.close(root_fd).unwrap();
+
+        // test deletion
+
+        // get all files
+        let files = list_all_files_as_string(&mut fs).unwrap();
+
+        println!("------------------------------------------");
+        println!("FILE STRUCTURE");
+        println!("{}", files);
+
+        // store memory into file
+        let size = memory.size();
+        static PAGE_SIZE: usize = 65536;
+
+        let mut contents = Vec::with_capacity(size * PAGE_SIZE);
+
+        memory.read();
+
+        // try to delete the generated folder
+        //fs.remove_recursive(fs.root_fd(), "root_dir").unwrap();
+        //fs.remove_file(fs.root_fd(), "root_dir/file4.txt").unwrap();
+        //fs.remove_dir(fs.root_fd(), "root_dir").unwrap();
+    }
+
+    #[test]
+    fn test_reading_structure() {}
 }

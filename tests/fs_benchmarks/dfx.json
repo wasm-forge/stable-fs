@@ -1,0 +1,17 @@
+{
+  "canisters": {
+    "fs_benchmarks_backend": {
+      "candid": "src/fs_benchmarks_backend/fs_benchmarks_backend.did",
+      "package": "fs_benchmarks_backend",
+      "type": "rust"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
