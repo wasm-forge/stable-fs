@@ -1498,7 +1498,7 @@ mod tests {
         (a.wrapping_mul(cur_rand).wrapping_add(c)) % m
     }
 
-    pub fn generate_random_file_structure(
+    pub fn generate_random_file_structure_v4(
         min_count: u32, // op count at wich to stop producing more operations
         op_count: u32,  // number of operations to do
         cur_rand: u64,  // current random seed
@@ -1647,7 +1647,7 @@ mod tests {
                             op_count as u64,
                         )?;
 
-                        let res = generate_random_file_structure(
+                        let res = generate_random_file_structure_v4(
                             min_count,
                             op_count,
                             cur_rand,
@@ -1769,45 +1769,6 @@ mod tests {
     }
 
     #[test]
-    fn test_generator() {
-        //let memory = DefaultMemoryImpl::default();
-        let memory = new_vector_memory();
-
-        let storage = StableStorage::new(memory.clone());
-        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
-
-        let root_fd = fs
-            .create_open_directory(fs.root_fd(), "root_dir", FdStat::default(), 0)
-            .unwrap();
-
-        // generate random file structure.
-        generate_random_file_structure(0, 1000, 35, 0, root_fd, &mut fs).unwrap();
-        fs.close(root_fd).unwrap();
-
-        // test deletion
-
-        // get all files
-        let files = list_all_files_as_string(&mut fs).unwrap();
-
-        println!("------------------------------------------");
-        println!("FILE STRUCTURE");
-        println!("{}", files);
-
-        // store memory into file
-
-        let v = memory.borrow();
-
-        // try to delete the generated folder
-        //fs.remove_recursive(fs.root_fd(), "root_dir").unwrap();
-        //fs.remove_file(fs.root_fd(), "root_dir/file4.txt").unwrap();
-        //fs.remove_dir(fs.root_fd(), "root_dir").unwrap();
-
-        std::fs::create_dir_all("./tests/res/").unwrap();
-        std::fs::write("./tests/res/memory-v0_7-op35_1000.bin", &*v).unwrap();
-        std::fs::write("./tests/res/structure-v0_7-op35_1000.txt", &files).unwrap();
-    }
-
-    #[test]
     fn test_reading_structure() {
         let v = std::fs::read("./tests/res/memory-v0_4-op35_1000.bin").unwrap();
         let memory = new_vector_memory_init(v);
@@ -1821,9 +1782,32 @@ mod tests {
         let files = list_all_files_as_string(&mut fs).unwrap();
 
         assert_eq!(files, files_old);
+    }
 
-        println!("------------------------------------------");
-        println!("FILE STRUCTURE");
-        println!("{}", files);
+    #[test]
+    fn test_generate_structure_v4_with_current_version() {
+        // read old version
+        let v = std::fs::read("./tests/res/memory-v0_4-op35_1000.bin").unwrap();
+        let memory = new_vector_memory_init(v);
+        let storage = StableStorage::new(memory);
+
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+        let files_v4 = list_all_files_as_string(&mut fs).unwrap();
+
+        // generate new version
+        let memory = new_vector_memory();
+        let storage = StableStorage::new(memory.clone());
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+        let root_fd = fs
+            .create_open_directory(fs.root_fd(), "root_dir", FdStat::default(), 0)
+            .unwrap();
+
+        // generate random file structure.
+        generate_random_file_structure_v4(0, 1000, 35, 0, root_fd, &mut fs).unwrap();
+        fs.close(root_fd).unwrap();
+
+        let files_v7 = list_all_files_as_string(&mut fs).unwrap();
+
+        assert_eq!(files_v4, files_v7);
     }
 }
