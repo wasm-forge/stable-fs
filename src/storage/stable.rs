@@ -697,7 +697,7 @@ impl<M: Memory> Storage for StableStorage<M> {
                 &self.v2_filechunk.v2_chunks,
             )
             .map(|x| x.0)
-            .ok_or(Error::BadFileDescriptor)
+            .ok_or(Error::NoSuchFileOrDirectory)
     }
 
     // Update the metadata associated with the node.
@@ -740,7 +740,7 @@ impl<M: Memory> Storage for StableStorage<M> {
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
         self.direntry
             .get(&(node, index))
-            .ok_or(Error::BadFileDescriptor)
+            .ok_or(Error::NoSuchFileOrDirectory)
     }
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
@@ -1311,11 +1311,11 @@ mod tests {
         // Confirm reading fails or returns NotFound
         let mut buf = [0u8; 9];
         let res = storage.read(node, 0, &mut buf);
-        assert!(matches!(res, Err(Error::BadFileDescriptor)));
+        assert!(matches!(res, Err(Error::NoSuchFileOrDirectory)));
 
         // Confirm metadata is removed
         let meta_res = storage.get_metadata(node);
-        assert!(matches!(meta_res, Err(Error::BadFileDescriptor)));
+        assert!(matches!(meta_res, Err(Error::NoSuchFileOrDirectory)));
 
         // check there are no chunks left after deleting the node
         let chunks: Vec<_> = storage
@@ -1371,11 +1371,11 @@ mod tests {
         // Confirm reading fails or returns NotFound
         let mut buf = [0u8; 9];
         let res = storage.read(node, 0, &mut buf);
-        assert!(matches!(res, Err(Error::BadFileDescriptor)));
+        assert!(matches!(res, Err(Error::NoSuchFileOrDirectory)));
 
         // Confirm metadata is removed
         let meta_res = storage.get_metadata(node);
-        assert!(matches!(meta_res, Err(Error::BadFileDescriptor)));
+        assert!(matches!(meta_res, Err(Error::NoSuchFileOrDirectory)));
 
         // check there are no chunks left after deleting the node
         let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node + 1, 0)).collect();

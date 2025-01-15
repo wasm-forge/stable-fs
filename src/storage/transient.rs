@@ -136,9 +136,11 @@ impl Storage for TransientStorage {
         let meta = if self.is_mounted(node) {
             self.mounted_meta
                 .get(&node)
-                .ok_or(Error::BadFileDescriptor)?
+                .ok_or(Error::NoSuchFileOrDirectory)?
         } else {
-            self.metadata.get(&node).ok_or(Error::BadFileDescriptor)?
+            self.metadata
+                .get(&node)
+                .ok_or(Error::NoSuchFileOrDirectory)?
         };
 
         Ok(meta.clone())
@@ -168,7 +170,7 @@ impl Storage for TransientStorage {
         let value = self
             .direntry
             .get(&(node, index))
-            .ok_or(Error::BadFileDescriptor)?;
+            .ok_or(Error::NoSuchFileOrDirectory)?;
         Ok(value.clone())
     }
 
@@ -321,7 +323,7 @@ impl Storage for TransientStorage {
         let mut meta = self
             .metadata
             .get(&node)
-            .ok_or(Error::BadFileDescriptor)?
+            .ok_or(Error::NoSuchFileOrDirectory)?
             .clone();
 
         self.active_mounts.insert(node, memory);

@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.7.1]
+
+- Update dependencies
+- Error code corrections
+
+
+## [v0.7.0]
+
+- Update dependencies
+- Switched to using WASI error enum
+- API improvements
+- Some missing WASI functions (advice, allocate) are now part of the file system API
+- Additional file structure tests added
+- File size limit support added
+- Helper function to remove files and folders recursively
+- Metadata stored inside V2 chunks with caching for faster access times
+- Corrected issues with the root folder Fd
+
 ## [v0.6.4]
 
 - Upgrade Pocket-ic client version to V5.0.
@@ -43,7 +61,9 @@
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
 
-[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.6.4...main
+[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.7.1...main
+[v0.7.1]: https://github.com/wasm-forge/stable-fs/compare/v0.7.0...v0.7.1
+[v0.7.0]: https://github.com/wasm-forge/stable-fs/compare/v0.6.4...v0.7.0
 [v0.6.4]: https://github.com/wasm-forge/stable-fs/compare/v0.6.3...v0.6.4
 [v0.6.3]: https://github.com/wasm-forge/stable-fs/compare/v0.6.2...v0.6.3
 [v0.6.2]: https://github.com/wasm-forge/stable-fs/compare/v0.6.1...v0.6.2
