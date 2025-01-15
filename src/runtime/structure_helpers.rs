@@ -103,7 +103,7 @@ pub fn create_hard_link(
     let found = find_node(parent_dir_node, new_path, names_cache, storage);
 
     match found {
-        Err(Error::BadFileDescriptor) => {}
+        Err(Error::NoSuchFileOrDirectory) => {}
         Ok(_) => return Err(Error::FileExists),
         Err(err) => return Err(err),
     }
@@ -239,7 +239,7 @@ pub fn create_path<'a>(
 
                     last_file_type = meta.file_type;
                 }
-                Err(Error::BadFileDescriptor) => {
+                Err(Error::NoSuchFileOrDirectory) => {
                     needs_folder_creation = true;
                 }
                 Err(x) => {
@@ -285,7 +285,7 @@ pub fn find_entry_index(
         }
     }
 
-    Err(Error::BadFileDescriptor)
+    Err(Error::NoSuchFileOrDirectory)
 }
 
 //  Add new directory entry

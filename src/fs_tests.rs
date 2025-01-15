@@ -388,7 +388,7 @@ mod tests {
             let err = fs
                 .open(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
                 .unwrap_err();
-            assert_eq!(err, Error::BadFileDescriptor);
+            assert_eq!(err, Error::NoSuchFileOrDirectory);
         }
     }
 
@@ -1157,7 +1157,7 @@ mod tests {
             // check we don't increase cache when the file is opened but not created
             let fd2 = fs.open(root_fd, filename, FdStat::default(), OpenFlags::empty(), 12);
 
-            assert_eq!(fd2, Err(Error::BadFileDescriptor));
+            assert_eq!(fd2, Err(Error::NoSuchFileOrDirectory));
             assert_eq!(fs.names_cache.get_nodes().len(), 0);
         }
     }
@@ -1475,7 +1475,7 @@ mod tests {
         // assert we get the right file descriptor back
         assert_eq!(
             result.unwrap_err(),
-            Error::BadFileDescriptor,
+            Error::NoSuchFileOrDirectory,
             "Unexpected error type"
         );
 

@@ -47,7 +47,7 @@ impl Dir {
         let found = find_node(self.node, path, names_cache, storage);
 
         match found {
-            Err(Error::BadFileDescriptor) => {}
+            Err(Error::NoSuchFileOrDirectory) => {}
             Ok(_) => return Err(Error::FileExists),
             Err(err) => return Err(err),
         }
@@ -95,7 +95,7 @@ impl Dir {
     ) -> Result<File, Error> {
         let found = find_node(self.node, path, names_cache, storage);
         match found {
-            Err(Error::BadFileDescriptor) => {}
+            Err(Error::NoSuchFileOrDirectory) => {}
             Ok(_) => return Err(Error::FileExists),
             Err(err) => return Err(err),
         }
@@ -320,7 +320,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(
             root_fd,
@@ -365,7 +365,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(
             dir1_fd,
@@ -409,7 +409,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(
             dir1_fd,
@@ -453,7 +453,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(
             root_fd,
@@ -497,7 +497,7 @@ mod tests {
             123,
         );
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(
             dir1_fd,
@@ -537,7 +537,7 @@ mod tests {
 
         let res = fs.open(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn rename_a_folder_using_subfolders() {
+    fn rename_a_folder_having_subfolders() {
         let mut fs = test_fs();
 
         let root_fd = fs.root_fd();
@@ -571,7 +571,7 @@ mod tests {
 
         let res = fs.open(root_fd, "dir1", FdStat::default(), OpenFlags::empty(), 123);
 
-        assert_eq!(res, Err(Error::BadFileDescriptor));
+        assert_eq!(res, Err(Error::NoSuchFileOrDirectory));
 
         let res = fs.open(dir2_fd, "dir3", FdStat::default(), OpenFlags::empty(), 123);
 

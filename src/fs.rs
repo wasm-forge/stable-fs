@@ -504,9 +504,9 @@ impl FileSystem {
         match find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref()) {
             Ok(node) => self.open_internal(node, stat, flags),
 
-            Err(Error::BadFileDescriptor) => {
+            Err(Error::NoSuchFileOrDirectory) => {
                 if !flags.contains(OpenFlags::CREATE) {
-                    return Err(Error::BadFileDescriptor);
+                    return Err(Error::NoSuchFileOrDirectory);
                 }
 
                 if flags.contains(OpenFlags::DIRECTORY) {
