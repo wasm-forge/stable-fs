@@ -2,6 +2,7 @@ use crate::runtime::types::Whence;
 
 #[cfg(test)]
 mod tests {
+
     use crate::fs::FileSystem;
     use crate::runtime::types::Fd;
     use crate::storage::types::Node;
@@ -1785,6 +1786,71 @@ mod tests {
         assert_eq!(files, files_old);
     }
     */
+
+    #[test]
+    fn test_file_content_upgrade_from_stable_fs_v0_4() {
+        let file_name = "some_folder/some_file.txt";
+        let old_content = "some content";
+        let new_content = "other content";
+
+        // read old version
+        let v = std::fs::read("./tests/res/memory-v0.4-some_file_content.bin").unwrap();
+        let memory = new_vector_memory_init(v);
+        let storage = StableStorage::new(memory);
+
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+
+        let fd = fs
+            .open(
+                fs.root_fd(),
+                file_name,
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
+
+        let mut buf = [0; 12];
+        fs.read(fd, &mut buf).unwrap();
+
+        fs.close(fd).unwrap();
+
+        assert_eq!(&buf, old_content.as_bytes());
+
+        // overwrite some other data
+        let fd = fs
+            .open(
+                fs.root_fd(),
+                file_name,
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
+
+        fs.write(fd, new_content.as_bytes()).unwrap();
+        fs.close(fd).unwrap();
+
+        // check updated file
+        let fd = fs
+            .open(
+                fs.root_fd(),
+                file_name,
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
+
+        let mut buf = [0; 13];
+        let size = fs.read(fd, &mut buf).unwrap();
+
+        assert_eq!(size, 13);
+
+        fs.close(fd).unwrap();
+
+        assert_eq!(&buf, new_content.as_bytes());
+    }
 
     #[test]
     fn test_generate_structure_v4_with_current_version() {

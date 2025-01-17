@@ -565,7 +565,7 @@ impl<M: Memory> StableStorage<M> {
                     let ptr = self
                         .v2_filechunk
                         .v2_chunk_ptr
-                        .range((node, 0)..(node + 1, 0))
+                        .range((node, 0)..(node, MAX_FILE_CHUNK_INDEX))
                         .next();
 
                     ptr.is_some()
