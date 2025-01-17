@@ -1,7 +1,8 @@
 # Changelog
 
 ## [v0.7.2]
--
+- Fix upgrading from chunks v1 to v2
+
 
 ## [v0.7.1]
 
@@ -64,7 +65,7 @@
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
 
-[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.7.1...main
+[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.7.2...main
 [v0.7.2]: https://github.com/wasm-forge/stable-fs/compare/v0.7.1...v0.7.2
 [v0.7.1]: https://github.com/wasm-forge/stable-fs/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/wasm-forge/stable-fs/compare/v0.6.4...v0.7.0
