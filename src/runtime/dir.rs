@@ -145,7 +145,9 @@ impl Dir {
 #[cfg(test)]
 mod tests {
 
-    use crate::{error::Error, fs::OpenFlags, runtime::types::FdStat, test_utils::test_stable_fs_v2};
+    use crate::{
+        error::Error, fs::OpenFlags, runtime::types::FdStat, test_utils::test_stable_fs_v2,
+    };
 
     #[test]
     fn remove_middle_file() {
