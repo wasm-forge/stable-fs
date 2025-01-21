@@ -1945,11 +1945,9 @@ mod tests {
             len: content.len(),
         }];
 
-        let read = fs
-            .read_vec_with_offset(fd, &read_content, offset as u64)
-            .unwrap();
+        let read = fs.read_vec_with_offset(fd, &read_content, offset).unwrap();
 
-        let min = std::cmp::min(read, len as u64) as usize;
+        let min = std::cmp::min(read, len) as usize;
 
         content[..min].to_string()
     }
