@@ -23,14 +23,14 @@ mod tests {
             types::{FileSize, FileType},
         },
         test_utils::{
-            new_vector_memory, read_text_file, test_fs, test_fs_setups, test_fs_transient,
-            write_text_fd, write_text_file,
+            new_vector_memory, read_text_file, test_fs_setups, test_fs_transient,
+            test_stable_fs_v2, write_text_fd, write_text_file,
         },
     };
 
     #[test]
     fn get_root_info() {
-        let fs = test_fs();
+        let fs = test_stable_fs_v2();
 
         let fd = fs.root_fd();
         let path = fs.root_path();
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn create_file() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let file = fs
             .open(
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn create_dir() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs
             .create_open_directory(fs.root_fd(), "test", FdStat::default(), 0)
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn create_file_creates_a_few_files() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs.root_fd();
 
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn close_file_fd_reused() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs.root_fd();
 
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn set_stat_get_stat() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let dir = fs.root_fd();
 
         let fd1 = fs
@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn link_seek_tell() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let dir = fs.root_fd();
 
         let root_fd = 3i32;
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn renaming_folder_with_contents() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let root_fd = fs.root_fd();
 
         let file_name = String::from("dir1/dir2/file.txt");
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn empty_path_support() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let root_fd = fs.root_fd();
 
         write_text_file(&mut fs, root_fd, "f1/f2/text.txt", "content123", 100).unwrap();
@@ -809,7 +809,7 @@ mod tests {
     fn writing_into_mounted_memory() {
         let memory: VectorMemory = new_vector_memory();
 
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -857,7 +857,7 @@ mod tests {
     fn deleting_mounted_file_fails() {
         let memory: VectorMemory = new_vector_memory();
 
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -1168,7 +1168,7 @@ mod tests {
     fn get_stat_of_a_file_that_doesnt_exist() {
         let filename = "tmp/test.txt";
 
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -1439,7 +1439,7 @@ mod tests {
 
     #[test]
     fn remove_dir_recurse_test() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let root_fd = fs.root_fd();
         // create test directory structure:
         // /subdir
@@ -1877,5 +1877,131 @@ mod tests {
         let files_v7 = list_all_files_as_string(&mut fs).unwrap();
 
         assert_eq!(files_v4, files_v7);
+    }
+
+    #[test]
+    fn test_metadata_stays_solid_after_file_truncate() {
+        let filename = "truncate_test.txt";
+
+        for mut fs in test_fs_setups(filename) {
+            let root_fd = fs.root_fd();
+
+            // Step 1: Create a file and write some content.
+            let fd = fs
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 42)
+                .unwrap();
+
+            let content = "This is some sample text for testing file truncation.";
+            fs.write(fd, content.as_bytes()).unwrap();
+
+            // let's store some metadata information (also for the mounted file)
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.times.accessed = 47;
+            fs.set_metadata(fd, metadata).unwrap();
+
+            // Verify the initial file size matches the written content.
+            let metadata = fs.metadata(fd).unwrap();
+            assert_eq!(metadata.size as usize, content.len());
+
+            // Step 2: open file with truncation, its creation time is preserved
+            let fd = fs
+                .open(
+                    root_fd,
+                    filename,
+                    FdStat::default(),
+                    OpenFlags::TRUNCATE,
+                    487,
+                )
+                .unwrap();
+
+            // Verify the metadata was not changed.
+            let metadata = fs.metadata(fd).unwrap();
+
+            assert_eq!(metadata.size as usize, 0);
+            assert_eq!(metadata.times.accessed as usize, 47);
+
+            // Close the file.
+            fs.close(fd).unwrap();
+        }
+    }
+
+    fn write_text(fs: &mut FileSystem, fd: Fd, text: &str, offset: FileSize) {
+        let text = text.to_string();
+
+        let write_content = [SrcBuf {
+            buf: text.as_ptr(),
+            len: text.len(),
+        }];
+
+        fs.write_vec_with_offset(fd, &write_content, offset)
+            .unwrap();
+    }
+
+    pub fn read_text(fs: &mut FileSystem, fd: Fd, len: FileSize, offset: FileSize) -> String {
+        let mut content = (0..len).map(|_| ".").collect::<String>();
+
+        let read_content = [DstBuf {
+            buf: content.as_mut_ptr(),
+            len: content.len(),
+        }];
+
+        let read = fs
+            .read_vec_with_offset(fd, &read_content, offset as u64)
+            .unwrap();
+
+        let min = std::cmp::min(read, len as u64) as usize;
+
+        content[..min].to_string()
+    }
+
+    #[test]
+    fn test_resize_drops_chunk_pointers() {
+        let filename = "test.txt";
+
+        for mut fs in test_fs_setups("") {
+            let root_fd = fs.root_fd();
+
+            // Step 1: Create a file and write some content.
+            let fd = fs
+                .open(root_fd, filename, FdStat::default(), OpenFlags::CREATE, 42)
+                .unwrap();
+
+            let offset_step = 1024 * 64; // 64K - guarantees different chunks of every setup
+
+            // write some data in different chunks
+            write_text(&mut fs, fd, "1", 0);
+            write_text(&mut fs, fd, "2", offset_step);
+            write_text(&mut fs, fd, "3", 2 * offset_step);
+            write_text(&mut fs, fd, "4", 3 * offset_step);
+
+            // resize to 0 (all data chunks are deleted)
+            let mut metadata = fs.metadata(fd).unwrap();
+            metadata.size = 0;
+            fs.set_metadata(fd, metadata).unwrap();
+
+            // write data in another order
+            write_text(&mut fs, fd, "7", 2 * offset_step);
+            write_text(&mut fs, fd, "6", offset_step);
+            write_text(&mut fs, fd, "5", 0);
+            write_text(&mut fs, fd, "8", 3 * offset_step);
+
+            // write some more data
+            write_text(&mut fs, fd, "9", 4 * offset_step);
+            write_text(&mut fs, fd, "A", 5 * offset_step);
+            write_text(&mut fs, fd, "B", 6 * offset_step);
+            write_text(&mut fs, fd, "C", 7 * offset_step);
+
+            // read chunks
+            let r5 = read_text(&mut fs, fd, 1, 0);
+            let r6 = read_text(&mut fs, fd, 1, offset_step);
+            let r7 = read_text(&mut fs, fd, 1, offset_step * 2);
+            let r8 = read_text(&mut fs, fd, 1, offset_step * 3);
+
+            // check correctness
+            assert_eq!("5", r5);
+            assert_eq!("6", r6);
+            assert_eq!("7", r7);
+            assert_eq!("8", r8);
+        }
     }
 }

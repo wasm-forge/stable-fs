@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.7.3]
+- Refactor chunk handling, constant names
+- Fix chunk caching error
+
+
 ## [v0.7.2]
 - Fix upgrading from chunks v1 to v2
 

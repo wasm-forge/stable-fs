@@ -11,7 +11,7 @@ pub fn new_vector_memory() -> VectorMemory {
 }
 
 #[cfg(test)]
-pub fn test_fs() -> FileSystem {
+pub fn test_stable_fs_v2() -> FileSystem {
     let memory = DefaultMemoryImpl::default();
 
     let storage = StableStorage::new(memory);
@@ -19,7 +19,7 @@ pub fn test_fs() -> FileSystem {
 }
 
 #[cfg(test)]
-pub fn test_fs_v1() -> FileSystem {
+pub fn test_stable_fs_v1() -> FileSystem {
     use crate::fs::ChunkType;
     use crate::storage::Storage;
 
@@ -55,15 +55,15 @@ pub fn test_fs_setups(virtual_file_name: &str) -> Vec<FileSystem> {
     use crate::runtime::types::ChunkSize;
 
     let mut result = vec![
-        test_fs(),
-        test_fs_v1(),
+        test_stable_fs_v2(),
+        test_stable_fs_v1(),
         test_fs_custom_chunk_size(ChunkSize::CHUNK4K),
         test_fs_custom_chunk_size(ChunkSize::CHUNK64K),
         test_fs_transient(),
     ];
 
     if !virtual_file_name.is_empty() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         fs.mount_memory_file(virtual_file_name, Box::new(new_vector_memory()))
             .unwrap();

@@ -10,10 +10,10 @@ pub const MAX_FILE_CHUNK_SIZE_V2: usize = 65536;
 pub const MAX_FILE_NAME: usize = 255;
 
 // maximum chunk index. (reserve last 10 chunks for custom needs)
-pub const MAX_FILE_CHUNK_INDEX: u32 = u32::MAX - 10;
+pub const MAX_FILE_CHUNK_COUNT: u32 = u32::MAX - 10;
 
 // maximum file size supported by the file system.
-pub const MAX_FILE_SIZE: u64 = (MAX_FILE_CHUNK_INDEX as u64) * FILE_CHUNK_SIZE_V1 as u64;
+pub const MAX_FILE_SIZE: u64 = (MAX_FILE_CHUNK_COUNT as u64) * FILE_CHUNK_SIZE_V1 as u64;
 
 // The unique identifier of a node, which can be a file or a directory.
 // Also known as inode in WASI and other file systems.

@@ -139,14 +139,14 @@ impl File {
 mod tests {
     use crate::{
         fs::OpenFlags,
-        test_utils::{test_fs, test_fs_setups},
+        test_utils::{test_stable_fs_v2, test_fs_setups},
     };
 
     use super::*;
 
     #[test]
     fn seek_and_tell() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let fd = fs
             .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn read_and_write_cursor() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let fd = fs
             .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn read_and_write_offset() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let fd = fs
             .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn read_and_write_small_and_big_buffer() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
         let fd = fs
             .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
             .unwrap();
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn read_and_write_offset_chunk() {
-        for mut fs in [test_fs()] {
+        for mut fs in [test_stable_fs_v2()] {
             //test_fs_setups("test") {
             let fd = fs
                 .open(

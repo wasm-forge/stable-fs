@@ -28,7 +28,7 @@ use super::{
     ptr_cache::PtrCache,
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
-        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_INDEX, MAX_FILE_SIZE,
+        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_COUNT, MAX_FILE_SIZE,
     },
     Storage,
 };
@@ -430,7 +430,7 @@ impl<M: Memory> StableStorage<M> {
 
         let mut chunk_offset = offset - start_index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize;
 
-        let range = (node, start_index)..(node + 1, 0);
+        let range = (node, start_index)..(node, MAX_FILE_CHUNK_COUNT);
 
         let mut size_read: FileSize = 0;
         let mut remainder = file_size - offset;
@@ -565,7 +565,7 @@ impl<M: Memory> StableStorage<M> {
                     let ptr = self
                         .v2_filechunk
                         .v2_chunk_ptr
-                        .range((node, 0)..(node, MAX_FILE_CHUNK_INDEX))
+                        .range((node, 0)..(node, MAX_FILE_CHUNK_COUNT))
                         .next();
 
                     ptr.is_some()
@@ -582,6 +582,14 @@ impl<M: Memory> StableStorage<M> {
         new_meta: &Metadata,
     ) -> Result<(), Error> {
         if let Some(old_meta) = old_meta {
+            // do not allow changing file type
+            if old_meta.file_type != new_meta.file_type {
+                return Err(Error::FunctionNotSupported);
+            }
+        }
+
+        if let Some(old_meta) = old_meta {
+            // changing node is not allowed
             if old_meta.node != new_meta.node {
                 return Err(Error::IllegalByteSequence);
             }
@@ -597,6 +605,8 @@ impl<M: Memory> StableStorage<M> {
     }
 
     fn resize_file_internal(&mut self, node: Node, new_size: FileSize) -> Result<(), Error> {
+        // anyone calling this function should also clear pointer cache for this node
+
         if self.is_mounted(node) {
             // for the mounted node we only update file size in the metadata (no need to delete chunks)
             return Ok(());
@@ -607,7 +617,7 @@ impl<M: Memory> StableStorage<M> {
 
         let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
 
-        let range = (node, first_deletable_index)..(node + 1, 0);
+        let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
 
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
 
@@ -638,7 +648,7 @@ impl<M: Memory> StableStorage<M> {
 
         let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
 
-        let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_INDEX);
+        let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
         for (k, _v) in self.v2_filechunk.v2_chunk_ptr.range(range) {
             chunks.push(k);
@@ -721,6 +731,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         if let Some(old_meta) = old_meta {
             // if the size was reduced, we need to delete the file chunks above the file size
             if metadata.size < old_meta.size {
+                self.ptr_cache.clear();
                 self.resize_file_internal(node, metadata.size)?;
             }
         }
@@ -1293,7 +1304,7 @@ mod tests {
         let chunks: Vec<_> = storage
             .v2_filechunk
             .v2_chunk_ptr
-            .range((node, 0)..(node + 1, 0))
+            .range((node, 0)..(node, u32::MAX))
             .collect();
 
         // chunks of the given node
@@ -1321,7 +1332,7 @@ mod tests {
         let chunks: Vec<_> = storage
             .v2_filechunk
             .v2_chunk_ptr
-            .range((node, 0)..(node + 1, 0))
+            .range((node, 0)..(node, MAX_FILE_CHUNK_COUNT))
             .collect();
 
         assert_eq!(chunks.len(), 0);
@@ -1354,7 +1365,10 @@ mod tests {
         storage.write(node_other2, 0, b"some data").unwrap();
 
         // check chunk count
-        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node + 1, 0)).collect();
+        let chunks: Vec<_> = storage
+            .filechunk
+            .range((node, 0)..(node, MAX_FILE_CHUNK_COUNT))
+            .collect();
 
         // chunks of the given node
         assert_eq!(chunks.len(), 5);
@@ -1378,7 +1392,10 @@ mod tests {
         assert!(matches!(meta_res, Err(Error::NoSuchFileOrDirectory)));
 
         // check there are no chunks left after deleting the node
-        let chunks: Vec<_> = storage.filechunk.range((node, 0)..(node + 1, 0)).collect();
+        let chunks: Vec<_> = storage
+            .filechunk
+            .range((node, 0)..(node, MAX_FILE_CHUNK_COUNT))
+            .collect();
 
         assert_eq!(chunks.len(), 0);
     }

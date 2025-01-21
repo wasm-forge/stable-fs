@@ -145,11 +145,11 @@ impl Dir {
 #[cfg(test)]
 mod tests {
 
-    use crate::{error::Error, fs::OpenFlags, runtime::types::FdStat, test_utils::test_fs};
+    use crate::{error::Error, fs::OpenFlags, runtime::types::FdStat, test_utils::test_stable_fs_v2};
 
     #[test]
     fn remove_middle_file() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs.root_fd();
 
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn create_dir_file_creation_time() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs.root_fd();
 
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn remove_last_file() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs.root_fd();
 
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn find_entry_index_finds_by_exact_name() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let dir = fs.root_fd();
 
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn create_hard_link() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let parent_fd = fs.root_fd();
 
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn create_directory_hard_link_fails() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn open_file_from_a_subfolder() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn rename_a_file() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn rename_a_file_with_subfolders() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn rename_a_file_with_subfolders2() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn rename_a_file_using_path_with_subfolders() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn rename_a_folder() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn rename_a_folder_having_subfolders() {
-        let mut fs = test_fs();
+        let mut fs = test_stable_fs_v2();
 
         let root_fd = fs.root_fd();
 

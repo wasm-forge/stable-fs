@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-use super::types::{Header, FILE_CHUNK_SIZE_V1};
+use super::types::{Header, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_COUNT};
 
 // The root node ID.
 const ROOT_NODE: Node = 0;
@@ -210,7 +210,7 @@ impl Storage for TransientStorage {
             let mut chunk_offset =
                 offset - start_index as FileSize * FILE_CHUNK_SIZE_V1 as FileSize;
 
-            let range = (node, start_index)..(node + 1, 0);
+            let range = (node, start_index)..(node, MAX_FILE_CHUNK_COUNT);
 
             let mut size_read: FileSize = 0;
             let mut remainder = file_size - offset;
@@ -272,7 +272,7 @@ impl Storage for TransientStorage {
 
         let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
 
-        let range = (node, 0)..(node + 1, 0);
+        let range = (node, 0)..(node, MAX_FILE_CHUNK_COUNT);
 
         // delete v1 chunks
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();

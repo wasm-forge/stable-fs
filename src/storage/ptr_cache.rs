@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::types::{FileChunkIndex, FileChunkPtr, Node, MAX_FILE_CHUNK_INDEX};
+use super::types::{FileChunkIndex, FileChunkPtr, Node, MAX_FILE_CHUNK_COUNT};
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 
@@ -50,7 +50,7 @@ impl PtrCache {
     ) {
         let to_index = to_index.min(from_index + MAX_CACHE_CHUNKS);
         let to_index = to_index.max(from_index + MIN_CACHE_CHUNKS);
-        let to_index = to_index.min(MAX_FILE_CHUNK_INDEX);
+        let to_index = to_index.min(MAX_FILE_CHUNK_COUNT);
 
         if from_index >= to_index {
             return;
