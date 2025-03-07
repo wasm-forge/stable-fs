@@ -648,7 +648,7 @@ mod test_env {
                 }
 
                 9 => {
-                    // occasionly increate counter to cause naming conflicts and provoce errors
+                    // occasionly increate counter to cause naming conflicts and provoke errors
                     op_count += 2;
                 }
 

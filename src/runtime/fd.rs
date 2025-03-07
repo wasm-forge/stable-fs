@@ -7,6 +7,10 @@ use crate::{
     storage::types::Node,
 };
 
+// stdio descriptors
+//pub const STDIN_FD: Fd = 0;
+//pub const STDOUT_FD: Fd = 1;
+pub const STDERR_FD: Fd = 2;
 // file descriptor used for the main root entry
 pub const ROOT_FD: Fd = 3;
 // number of file descriptors reserved for standard streams

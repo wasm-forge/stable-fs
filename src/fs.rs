@@ -5,7 +5,7 @@ use crate::{
     filename_cache::FilenameCache,
     runtime::{
         dir::Dir,
-        fd::{FdEntry, FdTable},
+        fd::{FdEntry, FdTable, STDERR_FD},
         file::File,
         structure_helpers::{create_hard_link, find_node, rm_dir_entry},
     },
@@ -388,6 +388,21 @@ impl FileSystem {
 
     // Get the metadata for a given file descriptor
     pub fn metadata(&self, fd: Fd) -> Result<Metadata, Error> {
+        // return fake metadata for the std channels, it is read-only
+        if fd <= STDERR_FD {
+            return Ok(Metadata {
+                node: u64::MAX, // return fake, unusable node here
+                file_type: FileType::RegularFile,
+                link_count: 0,
+                size: 0,
+                times: crate::storage::types::Times::default(),
+                first_dir_entry: None,
+                last_dir_entry: None,
+                chunk_type: None,
+                maximum_size_allowed: None,
+            });
+        }
+
         let node = self.get_node(fd)?;
         self.storage.get_metadata(node)
     }
