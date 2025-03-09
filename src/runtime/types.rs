@@ -1,21 +1,93 @@
+#![allow(dead_code)]
+
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 // file descriptor
 pub type Fd = u32;
 
+pub type Rights = u64;
+/// The right to invoke `fd_datasync`.
+/// If `path_open` is set, includes the right to invoke
+/// `path_open` with `fdflags::dsync`.
+pub const RIGHTS_FD_DATASYNC: Rights = 1 << 0;
+/// The right to invoke `fd_read` and `sock_recv`.
+/// If `rights::fd_seek` is set, includes the right to invoke `fd_pread`.
+pub const RIGHTS_FD_READ: Rights = 1 << 1;
+/// The right to invoke `fd_seek`. This flag implies `rights::fd_tell`.
+pub const RIGHTS_FD_SEEK: Rights = 1 << 2;
+/// The right to invoke `fd_fdstat_set_flags`.
+pub const RIGHTS_FD_FDSTAT_SET_FLAGS: Rights = 1 << 3;
+/// The right to invoke `fd_sync`.
+/// If `path_open` is set, includes the right to invoke
+/// `path_open` with `fdflags::rsync` and `fdflags::dsync`.
+pub const RIGHTS_FD_SYNC: Rights = 1 << 4;
+/// The right to invoke `fd_seek` in such a way that the file offset
+/// remains unaltered (i.e., `whence::cur` with offset zero), or to
+/// invoke `fd_tell`.
+pub const RIGHTS_FD_TELL: Rights = 1 << 5;
+/// The right to invoke `fd_write` and `sock_send`.
+/// If `rights::fd_seek` is set, includes the right to invoke `fd_pwrite`.
+pub const RIGHTS_FD_WRITE: Rights = 1 << 6;
+/// The right to invoke `fd_advise`.
+pub const RIGHTS_FD_ADVISE: Rights = 1 << 7;
+/// The right to invoke `fd_allocate`.
+pub const RIGHTS_FD_ALLOCATE: Rights = 1 << 8;
+/// The right to invoke `path_create_directory`.
+pub const RIGHTS_PATH_CREATE_DIRECTORY: Rights = 1 << 9;
+/// If `path_open` is set, the right to invoke `path_open` with `oflags::creat`.
+pub const RIGHTS_PATH_CREATE_FILE: Rights = 1 << 10;
+/// The right to invoke `path_link` with the file descriptor as the
+/// source directory.
+pub const RIGHTS_PATH_LINK_SOURCE: Rights = 1 << 11;
+/// The right to invoke `path_link` with the file descriptor as the
+/// target directory.
+pub const RIGHTS_PATH_LINK_TARGET: Rights = 1 << 12;
+/// The right to invoke `path_open`.
+pub const RIGHTS_PATH_OPEN: Rights = 1 << 13;
+/// The right to invoke `fd_readdir`.
+pub const RIGHTS_FD_READDIR: Rights = 1 << 14;
+/// The right to invoke `path_readlink`.
+pub const RIGHTS_PATH_READLINK: Rights = 1 << 15;
+/// The right to invoke `path_rename` with the file descriptor as the source directory.
+pub const RIGHTS_PATH_RENAME_SOURCE: Rights = 1 << 16;
+/// The right to invoke `path_rename` with the file descriptor as the target directory.
+pub const RIGHTS_PATH_RENAME_TARGET: Rights = 1 << 17;
+/// The right to invoke `path_filestat_get`.
+pub const RIGHTS_PATH_FILESTAT_GET: Rights = 1 << 18;
+/// The right to change a file's size (there is no `path_filestat_set_size`).
+/// If `path_open` is set, includes the right to invoke `path_open` with `oflags::trunc`.
+pub const RIGHTS_PATH_FILESTAT_SET_SIZE: Rights = 1 << 19;
+/// The right to invoke `path_filestat_set_times`.
+pub const RIGHTS_PATH_FILESTAT_SET_TIMES: Rights = 1 << 20;
+/// The right to invoke `fd_filestat_get`.
+pub const RIGHTS_FD_FILESTAT_GET: Rights = 1 << 21;
+/// The right to invoke `fd_filestat_set_size`.
+pub const RIGHTS_FD_FILESTAT_SET_SIZE: Rights = 1 << 22;
+/// The right to invoke `fd_filestat_set_times`.
+pub const RIGHTS_FD_FILESTAT_SET_TIMES: Rights = 1 << 23;
+/// The right to invoke `path_symlink`.
+pub const RIGHTS_PATH_SYMLINK: Rights = 1 << 24;
+/// The right to invoke `path_remove_directory`.
+pub const RIGHTS_PATH_REMOVE_DIRECTORY: Rights = 1 << 25;
+/// The right to invoke `path_unlink_file`.
+pub const RIGHTS_PATH_UNLINK_FILE: Rights = 1 << 26;
+/// If `rights::fd_read` is set, includes the right to invoke `poll_oneoff` to subscribe to `eventtype::fd_read`.
+/// If `rights::fd_write` is set, includes the right to invoke `poll_oneoff` to subscribe to `eventtype::fd_write`.
+pub const RIGHTS_POLL_FD_READWRITE: Rights = 1 << 27;
+
 #[derive(Copy, Clone, Debug)]
 pub struct FdStat {
     pub flags: FdFlags,
-    pub rights_base: u64,
-    pub rights_inheriting: u64,
+    pub rights_base: Rights,
+    pub rights_inheriting: Rights,
 }
 
 impl Default for FdStat {
     fn default() -> Self {
         Self {
             flags: FdFlags::empty(),
-            rights_base: (1 << 27) - 1, // allow anything for now
+            rights_base: (1 << 27) - 1, // allow anything by default
             rights_inheriting: (1 << 27) - 1,
         }
     }

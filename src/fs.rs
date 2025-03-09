@@ -8,6 +8,7 @@ use crate::{
         fd::{FdEntry, FdTable, STDERR_FD},
         file::File,
         structure_helpers::{create_hard_link, find_node, rm_dir_entry},
+        types::{RIGHTS_FD_READ, RIGHTS_FD_WRITE},
     },
     storage::{
         types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
@@ -275,6 +276,18 @@ impl FileSystem {
         self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
     }
 
+    // Get all directory entries for a given directory file descriptor.
+    // if special entries are also included, the entries "." and ".." are also added in the beginning of the list
+    pub fn get_direntries(
+        &self,
+        fd: Fd,
+        initial_index: Option<DirEntryIndex>,
+    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
+        let dir = self.get_dir(fd)?;
+
+        self.storage.get_direntries(dir.node, initial_index)
+    }
+
     fn get_node_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
         self.storage.get_direntry(node, index)
     }
@@ -286,22 +299,24 @@ impl FileSystem {
     // Read file's `fd` contents into `dst`.
     pub fn read(&mut self, fd: Fd, dst: &mut [u8]) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
+
+        if file.stat.rights_base & RIGHTS_FD_READ == 0 {
+            return Err(Error::InvalidArgument);
+        }
+
         let read_size = file.read_with_cursor(dst, self.storage.as_mut())?;
         self.put_file(fd, file);
         Ok(read_size)
     }
 
-    // Write `src` contents into a file.
-    pub fn write(&mut self, fd: Fd, src: &[u8]) -> Result<FileSize, Error> {
-        let mut file = self.get_file(fd)?;
-        let written_size = file.write_with_cursor(src, self.storage.as_mut())?;
-        self.put_file(fd, file);
-        Ok(written_size)
-    }
-
     // Read file into a vector of buffers.
     pub fn read_vec(&mut self, fd: Fd, dst: DstIoVec) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
+
+        if file.stat.rights_base & RIGHTS_FD_READ == 0 {
+            return Err(Error::InvalidArgument);
+        }
+
         let mut read_size = 0;
         for buf in dst {
             let buf = unsafe { std::slice::from_raw_parts_mut(buf.buf, buf.len) };
@@ -320,6 +335,11 @@ impl FileSystem {
         offset: FileSize,
     ) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
+
+        if file.stat.rights_base & RIGHTS_FD_READ == 0 {
+            return Err(Error::InvalidArgument);
+        }
+
         let mut read_size = 0;
 
         for buf in dst {
@@ -333,15 +353,47 @@ impl FileSystem {
         Ok(read_size)
     }
 
+    // Write `src` contents into a file.
+    pub fn write(&mut self, fd: Fd, src: &[u8]) -> Result<FileSize, Error> {
+        let buf = SrcBuf {
+            buf: src.as_ptr(),
+            len: src.len(),
+        };
+
+        self.write_vec(fd, &[buf])
+    }
+
     // Write a vector of buffers into a file at a given offset, the file cursor is updated.
     pub fn write_vec(&mut self, fd: Fd, src: SrcIoVec) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
+
+        if file.stat.rights_base & RIGHTS_FD_WRITE == 0 {
+            return Err(Error::InvalidArgument);
+        }
+
+        let is_append = file.stat.flags.contains(FdFlags::APPEND);
+
+        // in the append mode, we always write to the end of file
+        let offset = if is_append {
+            let meta = self.metadata_from_node(file.node)?;
+            meta.size
+        } else {
+            file.cursor
+        };
+
         let mut written_size = 0;
         for buf in src {
             let buf = unsafe { std::slice::from_raw_parts(buf.buf, buf.len) };
-            let size = file.write_with_cursor(buf, self.storage.as_mut())?;
+
+            let size = file.write_with_offset(written_size + offset, buf, self.storage.as_mut())?;
             written_size += size;
         }
+
+        // if not in append mode, update file cursor
+        if !is_append {
+            file.cursor += written_size;
+        }
+
         self.put_file(fd, file);
         Ok(written_size)
     }
@@ -354,6 +406,21 @@ impl FileSystem {
         offset: FileSize,
     ) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
+
+        if file.stat.rights_base & RIGHTS_FD_WRITE == 0 {
+            return Err(Error::InvalidArgument);
+        }
+
+        let is_append = file.stat.flags.contains(FdFlags::APPEND);
+
+        // in the append mode, we always write to the end of file
+        let offset = if is_append {
+            let meta = self.metadata_from_node(file.node)?;
+            meta.size
+        } else {
+            offset
+        };
+
         let mut written_size = 0;
         for buf in src {
             let buf = unsafe { std::slice::from_raw_parts(buf.buf, buf.len) };
@@ -362,6 +429,7 @@ impl FileSystem {
 
             written_size += size;
         }
+
         self.put_file(fd, file);
         Ok(written_size)
     }
@@ -369,6 +437,7 @@ impl FileSystem {
     // Position file cursor to a given position.
     pub fn seek(&mut self, fd: Fd, delta: i64, whence: Whence) -> Result<FileSize, Error> {
         let mut file = self.get_file(fd)?;
+
         let pos = file.seek(delta, whence, self.storage.as_mut())?;
         self.put_file(fd, file);
         Ok(pos)
@@ -377,6 +446,7 @@ impl FileSystem {
     // Get the current file cursor position.
     pub fn tell(&mut self, fd: Fd) -> Result<FileSize, Error> {
         let file = self.get_file(fd)?;
+
         let pos = file.tell();
         Ok(pos)
     }
@@ -417,6 +487,10 @@ impl FileSystem {
 
     pub fn set_file_size(&mut self, fd: Fd, new_size: FileSize) -> Result<(), Error> {
         let file = self.get_file(fd)?;
+
+        if file.stat.rights_base & RIGHTS_FD_WRITE == 0 {
+            return Err(Error::InvalidArgument);
+        }
 
         let mut metadata = self.storage.get_metadata(file.node)?;
 

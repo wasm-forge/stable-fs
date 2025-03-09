@@ -28,7 +28,9 @@ use super::{
     ptr_cache::PtrCache,
     types::{
         DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
-        Header, Metadata, Node, Times, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_COUNT, MAX_FILE_SIZE,
+        Header, Metadata, Node, Times, DUMMY_DOT_DOT_ENTRY, DUMMY_DOT_DOT_ENTRY_INDEX,
+        DUMMY_DOT_ENTRY, DUMMY_DOT_ENTRY_INDEX, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_COUNT,
+        MAX_FILE_ENTRY_INDEX, MAX_FILE_SIZE,
     },
     Storage,
 };
@@ -752,6 +754,45 @@ impl<M: Memory> Storage for StableStorage<M> {
         self.direntry
             .get(&(node, index))
             .ok_or(Error::NoSuchFileOrDirectory)
+    }
+
+    fn get_direntries(
+        &self,
+        node: Node,
+        initial_index: Option<DirEntryIndex>,
+    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
+        let mut res = Vec::new();
+
+        if initial_index.is_none() {
+            let mut dot_entry = DUMMY_DOT_ENTRY;
+            dot_entry.1.node = node;
+            res.push(dot_entry);
+            res.push(DUMMY_DOT_DOT_ENTRY);
+        }
+
+        let initial_index = initial_index.unwrap_or(0);
+
+        if initial_index == DUMMY_DOT_ENTRY_INDEX {
+            let mut dot_entry = DUMMY_DOT_ENTRY;
+            dot_entry.1.node = node;
+            res.push(dot_entry);
+            res.push(DUMMY_DOT_DOT_ENTRY);
+        }
+
+        if initial_index == DUMMY_DOT_DOT_ENTRY_INDEX {
+            res.push(DUMMY_DOT_DOT_ENTRY);
+        }
+
+        let max_index = MAX_FILE_ENTRY_INDEX;
+
+        for ((_node, index), entry) in self
+            .direntry
+            .range((node, initial_index)..(node, max_index))
+        {
+            res.push((index, entry));
+        }
+
+        Ok(res)
     }
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.

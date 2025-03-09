@@ -118,6 +118,14 @@ impl Storage for DummyStorage {
     fn resize_file(&mut self, _node: Node, _new_size: FileSize) -> Result<(), Error> {
         panic!("Not supported")
     }
+
+    fn get_direntries(
+        &self,
+        _node: Node,
+        _initial_index: Option<DirEntryIndex>,
+    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]

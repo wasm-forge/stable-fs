@@ -49,6 +49,14 @@ pub trait Storage {
 
     // Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error>;
+
+    // Retrieve the DirEntry instancec given the parent Node.
+    fn get_direntries(
+        &self,
+        node: Node,
+        initial_index: Option<DirEntryIndex>,
+    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error>;
+
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry);
     // Remove the DirEntry instance given the Node and DirEntryIndex.

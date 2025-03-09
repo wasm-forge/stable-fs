@@ -78,7 +78,7 @@ impl File {
         self.cursor
     }
 
-    // Read file at the given cursor position, the cursor position will be updated after reading.
+    // Read file at the cursor position, the cursor position will be updated after reading.
     pub fn read_with_cursor(
         &mut self,
         buf: &mut [u8],
@@ -89,18 +89,7 @@ impl File {
         Ok(read_size)
     }
 
-    // Write file at the current file cursor, the cursor position will be updated after reading.
-    pub fn write_with_cursor(
-        &mut self,
-        buf: &[u8],
-        storage: &mut dyn Storage,
-    ) -> Result<FileSize, Error> {
-        let written_size = self.write_with_offset(self.cursor, buf, storage)?;
-        self.cursor += written_size;
-        Ok(written_size)
-    }
-
-    // Read file at the current file cursor, the cursor position will NOT be updated after reading.
+    // Read file from a given offset, the cursor position will NOT be updated after reading.
     pub fn read_with_offset(
         &self,
         offset: FileSize,
@@ -116,7 +105,7 @@ impl File {
         Ok(read_size as FileSize)
     }
 
-    // Write file at the current file cursor, the cursor position will NOT be updated after reading.
+    // Write file to a given offset, the cursor position will NOT be updated after reading.
     pub fn write_with_offset(
         &self,
         offset: FileSize,
@@ -184,29 +173,6 @@ mod tests {
         let pos = file.seek(1001, Whence::SET, storage).unwrap();
         assert_eq!(pos, 1001);
         assert_eq!(file.tell(), 1001);
-    }
-
-    #[test]
-    fn read_and_write_cursor() {
-        let mut fs = test_stable_fs_v2();
-        let fd = fs
-            .create_open_file(fs.root_fd(), "test", FdStat::default(), 0)
-            .unwrap();
-
-        let mut file = fs.get_test_file(fd);
-        let storage = fs.get_test_storage();
-
-        for i in 0..1000 {
-            let buf = [(i % 256) as u8; 16];
-            file.write_with_cursor(&buf, storage).unwrap();
-        }
-        file.seek(-1000 * 16, Whence::END, storage).unwrap();
-        for i in 0..1000 {
-            let mut buf = [0; 16];
-            file.read_with_cursor(&mut buf, storage).unwrap();
-            let expected = [(i % 256) as u8; 16];
-            assert_eq!(buf, expected);
-        }
     }
 
     #[test]

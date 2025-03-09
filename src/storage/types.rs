@@ -9,11 +9,54 @@ pub const MAX_FILE_CHUNK_SIZE_V2: usize = 65536;
 
 pub const MAX_FILE_NAME: usize = 255;
 
-// maximum chunk index. (reserve last 10 chunks for custom needs)
+// maximal chunk index. (reserve last 10 chunks for custom needs)
 pub const MAX_FILE_CHUNK_COUNT: u32 = u32::MAX - 10;
 
-// maximum file size supported by the file system.
+// maximal file size supported by the file system.
 pub const MAX_FILE_SIZE: u64 = (MAX_FILE_CHUNK_COUNT as u64) * FILE_CHUNK_SIZE_V1 as u64;
+
+// maximal file entry index
+pub const MAX_FILE_ENTRY_INDEX: u32 = u32::MAX - 10;
+
+// special "." entry index
+pub const DUMMY_DOT_ENTRY_INDEX: u32 = u32::MAX - 5;
+// special ".." entry index
+pub const DUMMY_DOT_DOT_ENTRY_INDEX: u32 = u32::MAX - 4;
+
+pub const DUMMY_DOT_ENTRY: (DirEntryIndex, DirEntry) = (
+    DUMMY_DOT_ENTRY_INDEX,
+    DirEntry {
+        name: FileName {
+            length: 1,
+            bytes: {
+                let mut arr = [0u8; 255];
+                arr[0] = b'.';
+                arr
+            },
+        },
+        node: 0,
+        next_entry: None,
+        prev_entry: None,
+    },
+);
+
+pub const DUMMY_DOT_DOT_ENTRY: (DirEntryIndex, DirEntry) = (
+    DUMMY_DOT_DOT_ENTRY_INDEX,
+    DirEntry {
+        name: FileName {
+            length: 2,
+            bytes: {
+                let mut arr = [0u8; 255];
+                arr[0] = b'.';
+                arr[1] = b'.';
+                arr
+            },
+        },
+        node: 0,
+        next_entry: None,
+        prev_entry: None,
+    },
+);
 
 // The unique identifier of a node, which can be a file or a directory.
 // Also known as inode in WASI and other file systems.
