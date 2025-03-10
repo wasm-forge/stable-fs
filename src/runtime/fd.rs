@@ -103,11 +103,6 @@ impl FdTable {
             return Ok(());
         }
 
-        // renumbering between special file descriptors is not allowed
-        if dst < FIRST_AVAILABLE_FD || src < FIRST_AVAILABLE_FD {
-            return Err(Error::OperationNotPermitted);
-        }
-
         // cannot do renumbering between a file and a folder
         let src_entry: Option<&FdEntry> = self.table.get(&src);
         let dst_entry: Option<&FdEntry> = self.table.get(&dst);
@@ -130,9 +125,7 @@ impl FdTable {
         // quietly close the destination file descriptor
         if let Some(_old_dst_entry) = self.close(dst) {
             // dst should not be reused by anyone else, so we must undo the fd marked for reusal
-            let removed = self.free_fds.pop().unwrap();
-            // sanity check that the removed fd was indeer dst
-            assert_eq!(removed, dst);
+            self.free_fds.retain(|value| *value != dst);
         }
 
         self.insert(dst, old_entry);

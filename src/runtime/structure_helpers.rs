@@ -206,9 +206,9 @@ pub fn create_dir_entry(
 // ctime              creation time to be used
 // storage            file system storage
 // returns the node of the last created folder part, return error if creation failed
-pub fn create_path<'a>(
+pub fn create_path(
     parent_node: Node,
-    path: &'a str,
+    path: &str,
     leaf_type: Option<FileType>,
     ctime: u64,
     storage: &mut dyn Storage,
