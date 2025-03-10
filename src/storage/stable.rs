@@ -842,6 +842,11 @@ impl<M: Memory> Storage for StableStorage<M> {
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
 
+        // do not attempt to write 0 bytes to avoid file resize (when writing above file size)
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
         let max_size = metadata.maximum_size_allowed.unwrap_or(MAX_FILE_SIZE);
 
         if offset + buf.len() as FileSize > max_size {

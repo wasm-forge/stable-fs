@@ -339,7 +339,7 @@ fn create_1000_files() {
     let path1 = "./files1";
     let path2 = "files2//";
     let path3 = "files3";
-    let path4 = "/files4";
+    let path4 = ".//files4";
 
     fns::create_files(&pic, path1, file_count);
     fns::create_files(&pic, path2, file_count);

@@ -23,12 +23,45 @@ struct EntryFindResult {
     next_entry: Option<DirEntryIndex>,
 }
 
+fn get_path_parts(path: &str) -> Result<(Vec<String>, bool), Error> {
+    // we do not allow absolute paths in wasi
+    if path.starts_with("/") {
+        return Err(Error::OperationNotPermitted);
+    }
+
+    let split = path.split('/');
+
+    let mut must_be_dir = false;
+
+    let mut parts = Vec::new();
+
+    for part in split {
+        if part == ".." {
+            if parts.is_empty() {
+                return Err(Error::OperationNotPermitted);
+            }
+
+            parts.pop();
+        }
+
+        if part.is_empty() || part == "." || part == ".." {
+            must_be_dir = true;
+            continue;
+        }
+
+        parts.push(part.to_string());
+        must_be_dir = false;
+    }
+
+    Ok((parts, must_be_dir))
+}
+
 fn find_node_with_index(
     parent_dir_node: Node,
     path: &str,
     storage: &dyn Storage,
 ) -> Result<EntryFindResult, Error> {
-    let parts = path.split('/');
+    let (parts, _must_be_dir) = get_path_parts(path)?;
 
     let mut parent_dir_node = parent_dir_node;
     let mut cur_node = parent_dir_node;
@@ -37,14 +70,6 @@ fn find_node_with_index(
     let mut next_entry_index = None;
 
     for part in parts {
-        if part.is_empty() || part == "." {
-            continue;
-        }
-
-        if part == ".." {
-            return Err(Error::InvalidArgument);
-        }
-
         parent_dir_node = cur_node;
         cur_entry_index = find_entry_index(parent_dir_node, part.as_bytes(), storage)?;
         let entry = storage.get_direntry(cur_node, cur_entry_index)?;
@@ -187,25 +212,17 @@ pub fn create_path<'a>(
     leaf_type: Option<FileType>,
     ctime: u64,
     storage: &mut dyn Storage,
-) -> Result<(Node, &'a str), Error> {
-    let parts = path.split('/');
+) -> Result<(Node, String), Error> {
+    let (parts, _must_be_dir) = get_path_parts(path)?;
 
     let mut parent_node = parent_node;
     let mut cur_node = parent_node;
 
     let mut needs_folder_creation = false;
-    let mut last_name = path;
+    let mut last_name: String = "".to_string();
     let mut last_file_type = FileType::Directory;
 
     for part in parts {
-        if part.is_empty() || part == "." {
-            continue;
-        }
-
-        if part == ".." {
-            return Err(Error::InvalidArgument);
-        }
-
         if needs_folder_creation {
             // last_name contains the folder name to create
             if last_file_type != FileType::Directory {
@@ -222,7 +239,6 @@ pub fn create_path<'a>(
             )?;
         }
 
-        last_name = part;
         parent_node = cur_node;
 
         let path_element = part.as_bytes();
@@ -247,6 +263,8 @@ pub fn create_path<'a>(
                 }
             }
         }
+
+        last_name = part;
     }
 
     if needs_folder_creation {
@@ -271,17 +289,11 @@ pub fn find_entry_index(
     path_element: &[u8],
     storage: &dyn Storage,
 ) -> Result<DirEntryIndex, Error> {
-    let mut next_index = storage.get_metadata(dir_entry_node)?.first_dir_entry;
-
-    while let Some(index) = next_index {
-        if let Ok(dir_entry) = storage.get_direntry(dir_entry_node, index) {
-            if dir_entry.name.length as usize == path_element.len()
-                && &dir_entry.name.bytes[0..path_element.len()] == path_element
-            {
-                return Ok(index);
-            }
-
-            next_index = dir_entry.next_entry;
+    for (index, dir_entry) in storage.get_direntries(dir_entry_node, Some(0))? {
+        if dir_entry.name.length as usize == path_element.len()
+            && &dir_entry.name.bytes[0..path_element.len()] == path_element
+        {
+            return Ok(index);
         }
     }
 
@@ -509,6 +521,61 @@ mod tests {
             Storage,
         },
     };
+
+    use super::get_path_parts;
+
+    #[test]
+    fn process_path() {
+        assert_eq!(
+            get_path_parts("./a/b/c"),
+            Ok((
+                vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                false
+            ))
+        );
+        assert_eq!(
+            get_path_parts("a/b/../c"),
+            Ok((vec!["a".to_string(), "c".to_string()], false))
+        );
+        assert_eq!(
+            get_path_parts("./a/./b/.///../c"),
+            Ok((vec!["a".to_string(), "c".to_string()], false))
+        );
+        assert_eq!(
+            get_path_parts("a/b/../c/"),
+            Ok((vec!["a".to_string(), "c".to_string()], true))
+        );
+
+        assert_eq!(get_path_parts("a/b/../"), Ok((vec!["a".to_string()], true)));
+        assert_eq!(get_path_parts("a/b/../../."), Ok((vec![], true)));
+
+        assert_eq!(
+            get_path_parts(".///////a"),
+            Ok((vec!["a".to_string()], false))
+        );
+
+        assert_eq!(get_path_parts(""), Ok((vec![], true))); // case considered the same as "."
+        assert_eq!(get_path_parts("."), Ok((vec![], true)));
+
+        assert_eq!(get_path_parts("./"), Ok((vec![], true)));
+
+        assert_eq!(get_path_parts("./.."), Err(Error::OperationNotPermitted));
+        assert_eq!(
+            get_path_parts("../a/b/.."),
+            Err(Error::OperationNotPermitted)
+        );
+
+        assert_eq!(get_path_parts("/"), Err(Error::OperationNotPermitted));
+        assert_eq!(get_path_parts("/a"), Err(Error::OperationNotPermitted));
+        assert_eq!(get_path_parts("//a"), Err(Error::OperationNotPermitted));
+
+        assert_eq!(
+            get_path_parts("a/b/../../../c"),
+            Err(Error::OperationNotPermitted)
+        );
+
+        // TODO: do we want to require "/a/b/../b" to be folder?
+    }
 
     #[test]
     fn get_chunk_infos_parital() {

@@ -788,7 +788,7 @@ mod tests {
         let content = read_text_file(&mut fs, root_fd, "f1//f2/text.txt", 6, 10);
         assert_eq!(content, "t123conten");
 
-        let content = read_text_file(&mut fs, root_fd, "/f1//f2/text.txt", 5, 10);
+        let content = read_text_file(&mut fs, root_fd, "./f1//f2/text.txt", 5, 10);
         assert_eq!(content, "nt123conte");
 
         write_text_file(&mut fs, root_fd, "text.txt", "abc", 100).unwrap();
@@ -796,10 +796,10 @@ mod tests {
         let content = read_text_file(&mut fs, root_fd, "text.txt", 0, 6);
         assert_eq!(content, "abcabc");
 
-        let content = read_text_file(&mut fs, root_fd, "/text.txt", 0, 6);
+        let content = read_text_file(&mut fs, root_fd, "./text.txt", 0, 6);
         assert_eq!(content, "abcabc");
 
-        let content = read_text_file(&mut fs, root_fd, "///////text.txt", 0, 6);
+        let content = read_text_file(&mut fs, root_fd, ".///////text.txt", 0, 6);
         assert_eq!(content, "abcabc");
 
         // This test should not crash with an error
@@ -964,7 +964,7 @@ mod tests {
             write_text_fd(&mut fs, fd2, "123", 1).unwrap();
             write_text_fd(&mut fs, fd1, "xyz", 1).unwrap();
 
-            let content = read_text_file(&mut fs, root_fd, "/f1/f2/text.txt", 0, 9);
+            let content = read_text_file(&mut fs, root_fd, "./f1/f2/text.txt", 0, 9);
 
             assert_eq!("123xyz", content);
         }

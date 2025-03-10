@@ -51,13 +51,15 @@ impl File {
             }
             Whence::CUR => {
                 let back = if delta < 0 {
-                    (-delta).try_into().map_err(|_| Error::InvalidSeek)?
+                    (-delta).try_into().map_err(|_| Error::InvalidArgument)?
                 } else {
                     0
                 };
                 let fwd = if delta >= 0 { delta as FileSize } else { 0 };
-                if back > self.cursor {
-                    return Err(Error::InvalidSeek);
+
+                if self.cursor < back {
+                    // seeking before zero position
+                    return Err(Error::InvalidArgument);
                 }
                 self.cursor + fwd - back
             }
@@ -155,7 +157,7 @@ mod tests {
         assert_eq!(file.tell(), 1);
 
         let err = file.seek(-2, Whence::CUR, storage).unwrap_err();
-        assert_eq!(err, Error::InvalidSeek);
+        assert_eq!(err, Error::InvalidArgument);
         assert_eq!(file.tell(), 1);
 
         let pos = file.seek(0, Whence::END, storage).unwrap();

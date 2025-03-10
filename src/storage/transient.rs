@@ -432,6 +432,12 @@ impl Storage for TransientStorage {
 
     fn write(&mut self, node: Node, offset: FileSize, buf: &[u8]) -> Result<FileSize, Error> {
         let mut metadata = self.get_metadata(node)?;
+
+        // do not attempt to write 0 bytes to avoid file resize (when writing above file size)
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
         let end = offset + buf.len() as FileSize;
 
         if let Some(max_size) = metadata.maximum_size_allowed {

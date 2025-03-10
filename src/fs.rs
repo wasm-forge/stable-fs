@@ -277,7 +277,7 @@ impl FileSystem {
     }
 
     // Get all directory entries for a given directory file descriptor.
-    // if special entries are also included, the entries "." and ".." are also added in the beginning of the list
+    // if the initial_index is None, the entries "." and ".." are also added in the beginning of the list
     pub fn get_direntries(
         &self,
         fd: Fd,
@@ -301,7 +301,7 @@ impl FileSystem {
         let mut file = self.get_file(fd)?;
 
         if file.stat.rights_base & RIGHTS_FD_READ == 0 {
-            return Err(Error::InvalidArgument);
+            return Err(Error::OperationNotPermitted);
         }
 
         let read_size = file.read_with_cursor(dst, self.storage.as_mut())?;
@@ -314,7 +314,7 @@ impl FileSystem {
         let mut file = self.get_file(fd)?;
 
         if file.stat.rights_base & RIGHTS_FD_READ == 0 {
-            return Err(Error::InvalidArgument);
+            return Err(Error::OperationNotPermitted);
         }
 
         let mut read_size = 0;
@@ -337,7 +337,7 @@ impl FileSystem {
         let file = self.get_file(fd)?;
 
         if file.stat.rights_base & RIGHTS_FD_READ == 0 {
-            return Err(Error::InvalidArgument);
+            return Err(Error::OperationNotPermitted);
         }
 
         let mut read_size = 0;
@@ -368,7 +368,7 @@ impl FileSystem {
         let mut file = self.get_file(fd)?;
 
         if file.stat.rights_base & RIGHTS_FD_WRITE == 0 {
-            return Err(Error::InvalidArgument);
+            return Err(Error::OperationNotPermitted);
         }
 
         let is_append = file.stat.flags.contains(FdFlags::APPEND);
@@ -389,10 +389,8 @@ impl FileSystem {
             written_size += size;
         }
 
-        // if not in append mode, update file cursor
-        if !is_append {
-            file.cursor += written_size;
-        }
+        // always update cursor position after write
+        file.cursor = written_size + offset;
 
         self.put_file(fd, file);
         Ok(written_size)
@@ -408,7 +406,7 @@ impl FileSystem {
         let file = self.get_file(fd)?;
 
         if file.stat.rights_base & RIGHTS_FD_WRITE == 0 {
-            return Err(Error::InvalidArgument);
+            return Err(Error::OperationNotPermitted);
         }
 
         let is_append = file.stat.flags.contains(FdFlags::APPEND);
@@ -489,6 +487,8 @@ impl FileSystem {
         let file = self.get_file(fd)?;
 
         if file.stat.rights_base & RIGHTS_FD_WRITE == 0 {
+            // in this case setting size without write permission
+            // is the invalid argument error
             return Err(Error::InvalidArgument);
         }
 
@@ -590,7 +590,9 @@ impl FileSystem {
     ) -> Result<Fd, Error> {
         let dir = self.get_dir(parent_fd)?;
 
-        match find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref()) {
+        let res = find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref());
+
+        match res {
             Ok(node) => self.open_internal(node, stat, flags),
 
             Err(Error::NoSuchFileOrDirectory) => {
@@ -620,7 +622,7 @@ impl FileSystem {
             }
             FileType::RegularFile => {
                 if flags.contains(OpenFlags::DIRECTORY) {
-                    return Err(Error::InvalidArgument);
+                    return Err(Error::OperationNotPermitted);
                 }
 
                 let file = File::new(node, stat, self.storage.as_mut())?;

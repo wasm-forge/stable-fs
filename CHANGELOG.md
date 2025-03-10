@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.8]
+- improved Wasi compliance
+- return entires . and .. by dir list
+- faster folder iteration
+
 ## [v0.7.3]
 - Refactor chunk handling, constant names
 - Fix chunk caching error
