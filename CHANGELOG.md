@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.8]
+## [v0.8.0]
 - improved Wasi compliance
 - return entires . and .. by dir list
 - faster folder iteration
