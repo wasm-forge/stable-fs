@@ -2,13 +2,20 @@
 
 ## [v0.8.0]
 - improved Wasi compliance
-- return entires . and .. by dir list
-- faster folder iteration
+- change edition to 2024
+- update dependencies
+- bug fixes
+- faster file look-up
+- file read-write access control
+- fixed writing in append-mode
+- switch to pocket-ic 7.0/8.0
+- support for '..' in paths
+- return '.' and '..' during folder file list
+
 
 ## [v0.7.3]
 - Refactor chunk handling, constant names
 - Fix chunk caching error
-
 
 ## [v0.7.2]
 - Fix upgrading from chunks v1 to v2
