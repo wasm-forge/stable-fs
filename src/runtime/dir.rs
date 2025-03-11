@@ -5,8 +5,8 @@ use crate::{
     filename_cache::FilenameCache,
     runtime::file::File,
     storage::{
-        types::{DirEntry, DirEntryIndex, FileType, Node},
         Storage,
+        types::{DirEntry, DirEntryIndex, FileType, Node},
     },
 };
 

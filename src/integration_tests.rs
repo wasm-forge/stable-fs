@@ -68,7 +68,7 @@ fn upgrade_canister(pic: &PocketIc) {
 
 mod fns {
 
-    use candid::{decode_args, decode_one, encode_one, Principal};
+    use candid::{Principal, decode_args, decode_one, encode_one};
     use pocket_ic::PocketIc;
 
     use super::active_canister;
@@ -547,6 +547,8 @@ fn check_metadata_binary() {
     let bin = fns::check_metadata_binary(&pic);
 
     // object memory is prefilled with 0xfa explicitly in fns::check_metadata_binary to ensure stable test
-    assert_eq!(&bin,
-        "030000000000000004fafafafafafafa06000000000000000800000000000000410000000000000042000000000000004300000000000000010000000c000000010000000d00000002fafafafafafafa0100000000000000abcd000000000000");
+    assert_eq!(
+        &bin,
+        "030000000000000004fafafafafafafa06000000000000000800000000000000410000000000000042000000000000004300000000000000010000000c000000010000000d00000002fafafafafafafa0100000000000000abcd000000000000"
+    );
 }

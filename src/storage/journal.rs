@@ -1,4 +1,4 @@
-use ic_stable_structures::{memory_manager::VirtualMemory, Memory};
+use ic_stable_structures::{Memory, memory_manager::VirtualMemory};
 
 use crate::error::Error;
 

@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use super::allocator::ChunkPtrAllocator;
-use super::stable::{V2FileChunks, ROOT_NODE};
+use super::stable::{ROOT_NODE, V2FileChunks};
 use super::types::{FileChunk, FileChunkIndex, FileChunkPtr, FileType, Times};
 use super::types::{Metadata, Node};
 use crate::fs::FileSize;
 use crate::runtime::structure_helpers::{grow_memory, read_obj, write_obj};
 use crate::storage::ptr_cache::PtrCache;
 use crate::storage::types::ZEROES;
-use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 use ic_stable_structures::Memory;
+use ic_stable_structures::memory_manager::VirtualMemory;
 use std::cell::RefCell;
 use std::rc::Rc;
 

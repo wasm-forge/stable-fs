@@ -1,4 +1,4 @@
-use ic_stable_structures::{memory_manager::VirtualMemory, Memory};
+use ic_stable_structures::{Memory, memory_manager::VirtualMemory};
 
 use crate::{
     error::Error,
@@ -8,7 +8,7 @@ use crate::{
     },
 };
 
-use super::types::{FileChunkPtr, DEFAULT_FILE_CHUNK_SIZE_V2};
+use super::types::{DEFAULT_FILE_CHUNK_SIZE_V2, FileChunkPtr};
 
 // index for the first u64 containing chunk pointers
 const FIRST_PTR_IDX: u64 = 16; // lower numbers are reserved
@@ -225,8 +225,8 @@ impl<M: Memory> ChunkPtrAllocator<M> {
 #[cfg(test)]
 mod tests {
     use ic_stable_structures::{
-        memory_manager::{MemoryId, MemoryManager},
         Memory,
+        memory_manager::{MemoryId, MemoryManager},
     };
 
     use crate::storage::types::FileSize;
@@ -520,11 +520,15 @@ mod tests {
 
         assert!(allocator.set_chunk_size(0).is_err());
         assert!(allocator.set_chunk_size(1).is_err());
-        assert!(allocator
-            .set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 + 1)
-            .is_err());
-        assert!(allocator
-            .set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 * 3)
-            .is_err());
+        assert!(
+            allocator
+                .set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 + 1)
+                .is_err()
+        );
+        assert!(
+            allocator
+                .set_chunk_size(DEFAULT_FILE_CHUNK_SIZE_V2 * 3)
+                .is_err()
+        );
     }
 }

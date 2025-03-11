@@ -184,9 +184,9 @@ mod test_env {
     use crate::test_utils::FileSystem;
     use crate::test_utils::SrcBuf;
     use crate::test_utils::StableStorage;
+    use ic_stable_structures::DefaultMemoryImpl;
     use ic_stable_structures::memory_manager::MemoryId;
     use ic_stable_structures::memory_manager::MemoryManager;
-    use ic_stable_structures::DefaultMemoryImpl;
     use std::cell::RefCell;
 
     const SEGMENT_SIZE: usize = 1000usize;

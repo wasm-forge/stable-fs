@@ -3,8 +3,8 @@ use std::{collections::HashMap, ops::Range};
 use crate::storage::types::ZEROES;
 use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
 use ic_stable_structures::{
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     BTreeMap, Cell, Memory,
+    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
 };
 
 use crate::{
@@ -22,17 +22,17 @@ use crate::{
 };
 
 use super::{
+    Storage,
     allocator::ChunkPtrAllocator,
     chunk_iterator::ChunkV2Iterator,
     metadata_provider::MetadataProvider,
     ptr_cache::PtrCache,
     types::{
-        DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileChunkPtr, FileSize, FileType,
-        Header, Metadata, Node, Times, DUMMY_DOT_DOT_ENTRY, DUMMY_DOT_DOT_ENTRY_INDEX,
-        DUMMY_DOT_ENTRY, DUMMY_DOT_ENTRY_INDEX, FILE_CHUNK_SIZE_V1, MAX_FILE_CHUNK_COUNT,
-        MAX_FILE_ENTRY_INDEX, MAX_FILE_SIZE,
+        DUMMY_DOT_DOT_ENTRY, DUMMY_DOT_DOT_ENTRY_INDEX, DUMMY_DOT_ENTRY, DUMMY_DOT_ENTRY_INDEX,
+        DirEntry, DirEntryIndex, FILE_CHUNK_SIZE_V1, FileChunk, FileChunkIndex, FileChunkPtr,
+        FileSize, FileType, Header, MAX_FILE_CHUNK_COUNT, MAX_FILE_ENTRY_INDEX, MAX_FILE_SIZE,
+        Metadata, Node, Times,
     },
-    Storage,
 };
 
 pub const ROOT_NODE: Node = 0;

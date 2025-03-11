@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use super::types::{FileChunkIndex, FileChunkPtr, Node, MAX_FILE_CHUNK_COUNT};
-use ic_stable_structures::memory_manager::VirtualMemory;
+use super::types::{FileChunkIndex, FileChunkPtr, MAX_FILE_CHUNK_COUNT, Node};
 use ic_stable_structures::BTreeMap;
+use ic_stable_structures::memory_manager::VirtualMemory;
 
 const CACHE_CAPACITY: usize = 10000;
 // for short reads and writes it is better to cache some more chunks than the minimum required

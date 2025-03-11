@@ -11,8 +11,8 @@ use crate::{
         types::{RIGHTS_FD_READ, RIGHTS_FD_WRITE},
     },
     storage::{
-        types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
         Storage,
+        types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
     },
 };
 

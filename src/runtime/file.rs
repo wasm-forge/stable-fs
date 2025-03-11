@@ -2,8 +2,8 @@ use crate::{
     error::Error,
     runtime::types::{FdFlags, FdStat, Whence},
     storage::{
-        types::{FileSize, FileType, Node},
         Storage,
+        types::{FileSize, FileType, Node},
     },
 };
 

@@ -1,8 +1,8 @@
 use crate::{error::Error, fs::ChunkSize, fs::ChunkType};
 
 use super::{
-    types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
     Storage,
+    types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
 };
 
 pub struct DummyStorage {}

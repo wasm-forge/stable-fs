@@ -5,11 +5,11 @@ use crate::{
     error::Error,
     filename_cache::FilenameCache,
     storage::{
+        Storage,
         types::{
             ChunkHandle, DirEntry, DirEntryIndex, FileChunkIndex, FileName, FileSize, FileType,
             Metadata, Node, Times,
         },
-        Storage,
     },
 };
 
@@ -547,9 +547,9 @@ mod tests {
         filename_cache::FilenameCache,
         runtime::structure_helpers::{create_path, find_node, get_chunk_infos},
         storage::{
-            stable::StableStorage,
-            types::{ChunkHandle, FileChunkIndex, FileSize, FileType, FILE_CHUNK_SIZE_V1},
             Storage,
+            stable::StableStorage,
+            types::{ChunkHandle, FILE_CHUNK_SIZE_V1, FileChunkIndex, FileSize, FileType},
         },
     };
 

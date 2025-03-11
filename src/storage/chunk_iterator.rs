@@ -1,11 +1,11 @@
-use crate::storage::types::FileChunkIndex;
-use crate::storage::types::FileChunkPtr;
 use crate::storage::FileSize;
 use crate::storage::Node;
+use crate::storage::types::FileChunkIndex;
+use crate::storage::types::FileChunkPtr;
 use ic_stable_structures;
-use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::BTreeMap;
 use ic_stable_structures::Memory;
+use ic_stable_structures::memory_manager::VirtualMemory;
 
 use super::ptr_cache::CachedChunkPtr;
 use super::ptr_cache::PtrCache;
@@ -80,11 +80,11 @@ impl<M: Memory> Iterator for ChunkV2Iterator<'_, M> {
 #[cfg(test)]
 mod tests {
     use crate::fs::FileSize;
+    use crate::storage::Storage;
     use crate::storage::chunk_iterator::ChunkV2Iterator;
     use crate::storage::ptr_cache::CachedChunkPtr;
     use crate::storage::stable::StableStorage;
     use crate::storage::types::{FileType, Metadata, Node, Times};
-    use crate::storage::Storage;
     use crate::test_utils::new_vector_memory;
     use ic_stable_structures::Memory;
 
