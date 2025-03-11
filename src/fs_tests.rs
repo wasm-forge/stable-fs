@@ -389,7 +389,19 @@ mod tests {
             let err = fs
                 .open(dir, "test.txt", FdStat::default(), OpenFlags::empty(), 0)
                 .unwrap_err();
+
             assert_eq!(err, Error::NoSuchFileOrDirectory);
+        }
+    }
+
+    #[test]
+    fn create_and_remove_directory() {
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let dir = fs.root_fd();
+
+            fs.mkdir(dir, "dir", FdStat::default(), 0)
+                .expect("creating directory");
+            fs.remove_dir(dir, "dir").expect("removing empty directory");
         }
     }
 

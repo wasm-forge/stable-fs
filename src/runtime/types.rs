@@ -87,8 +87,8 @@ impl Default for FdStat {
     fn default() -> Self {
         Self {
             flags: FdFlags::empty(),
-            rights_base: (1 << 27) - 1, // allow anything by default
-            rights_inheriting: (1 << 27) - 1,
+            rights_base: (1 << 28) - 1, // allow anything by default appart from sockets
+            rights_inheriting: (1 << 28) - 1, // allow anything appart from sockets
         }
     }
 }

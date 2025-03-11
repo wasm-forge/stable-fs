@@ -115,27 +115,55 @@ pub fn find_node(
 }
 
 // Create a hard link to an existing node
+#[allow(clippy::too_many_arguments)]
 pub fn create_hard_link(
     parent_dir_node: Node,
     new_path: &str,
     src_dir_node: Node,
     src_path: &str,
     is_renaming: bool,
+    node_refcount: &BTreeMap<Node, usize>,
     names_cache: &mut FilenameCache,
     storage: &mut dyn Storage,
 ) -> Result<(), Error> {
-    // Check if the node exists already.
-    let found = find_node(parent_dir_node, new_path, names_cache, storage);
+    // Get the node and metadata, the node must exist in the source folder.
+    let src_node: Node = find_node(src_dir_node, src_path, names_cache, storage)?;
+    let mut metadata = storage.get_metadata(src_node)?;
 
-    match found {
+    match find_node(parent_dir_node, new_path, names_cache, storage) {
         Err(Error::NoSuchFileOrDirectory) => {}
-        Ok(_) => return Err(Error::FileExists),
+        Ok(dst_node) => {
+            let dst_meta = storage.get_metadata(dst_node)?;
+
+            if dst_meta.file_type != metadata.file_type {
+                // cannot rename folder into a file
+                if dst_meta.file_type == FileType::RegularFile {
+                    return Err(Error::NotADirectoryOrSymbolicLink);
+                }
+
+                // cannot rename file into a folder
+                return Err(Error::PermissionDenied);
+            }
+
+            // cannot rename over an existing non-empty folder
+            if dst_meta.file_type == FileType::Directory && dst_meta.size > 0 {
+                return Err(Error::DirectoryNotEmpty);
+            }
+
+            // if the operation is allowed so far, try to delete the existing destination entry
+            rm_dir_entry(
+                parent_dir_node,
+                new_path,
+                None,
+                false, // this is not a renaming, just deletion
+                node_refcount,
+                names_cache,
+                storage,
+            )?;
+        }
         Err(err) => return Err(err),
     }
 
-    // Get the node and metadata, the node must exist in the source folder.
-    let node: Node = find_node(src_dir_node, src_path, names_cache, storage)?;
-    let mut metadata = storage.get_metadata(node)?;
     let ctime = metadata.times.created;
 
     //
@@ -147,9 +175,9 @@ pub fn create_hard_link(
     }
 
     metadata.link_count += 1;
-    storage.put_metadata(node, &metadata)?;
+    storage.put_metadata(src_node, &metadata)?;
 
-    add_dir_entry(dir_node, node, leaf_name.as_bytes(), storage)?;
+    add_dir_entry(dir_node, src_node, leaf_name.as_bytes(), storage)?;
 
     Ok(())
 }
@@ -357,6 +385,7 @@ pub fn rm_dir_entry(
     parent_dir_node: Node,
     path: &str,
     expect_dir: Option<bool>,
+    is_renaming: bool,
     node_refcount: &BTreeMap<Node, usize>,
     names_cache: &mut FilenameCache,
     storage: &mut dyn Storage,
@@ -386,7 +415,9 @@ pub fn rm_dir_entry(
                 return Err(Error::IsDirectory);
             }
 
-            if removed_metadata.link_count == 1 && removed_metadata.size > 0 {
+            if !is_renaming && removed_metadata.size > 0 {
+                // we cannot delete a folder that contains something,
+                // first the contents need to be deleted
                 return Err(Error::DirectoryNotEmpty);
             }
         }

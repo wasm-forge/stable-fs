@@ -161,8 +161,8 @@ impl FileSystem {
 
     pub(crate) fn get_file(&self, fd: Fd) -> Result<File, Error> {
         match self.fd_table.get(fd) {
-            Some(FdEntry::File(file)) => Ok(file.clone()),
             Some(FdEntry::Dir(_)) => Err(Error::BadFileDescriptor),
+            Some(FdEntry::File(file)) => Ok(file.clone()),
             None => Err(Error::BadFileDescriptor),
         }
     }
@@ -174,7 +174,7 @@ impl FileSystem {
     pub(crate) fn get_dir(&self, fd: Fd) -> Result<Dir, Error> {
         match self.fd_table.get(fd) {
             Some(FdEntry::Dir(dir)) => Ok(dir.clone()),
-            Some(FdEntry::File(_)) => Err(Error::BadFileDescriptor),
+            Some(FdEntry::File(_)) => Err(Error::NotADirectoryOrSymbolicLink),
             None => Err(Error::BadFileDescriptor),
         }
     }
@@ -593,7 +593,14 @@ impl FileSystem {
         let res = find_node(dir.node, path, &mut self.names_cache, self.storage.as_ref());
 
         match res {
-            Ok(node) => self.open_internal(node, stat, flags),
+            Ok(node) => {
+                // exclusive create is an error, if the file exists already
+                if flags.contains(OpenFlags::CREATE) && flags.contains(OpenFlags::EXCLUSIVE) {
+                    return Err(Error::FileExists);
+                }
+
+                self.open_internal(node, stat, flags)
+            }
 
             Err(Error::NoSuchFileOrDirectory) => {
                 if !flags.contains(OpenFlags::CREATE) {
@@ -833,6 +840,7 @@ impl FileSystem {
             src_dir.node,
             old_path,
             false,
+            self.fd_table.node_refcount(),
             &mut self.names_cache,
             self.storage.as_mut(),
         )?;
@@ -847,7 +855,7 @@ impl FileSystem {
         self.open_internal(node, FdStat::default(), OpenFlags::empty())
     }
 
-    // Rename a file.
+    // Rename a file or a directory.
     pub fn rename(
         &mut self,
         old_fd: Fd,
@@ -865,15 +873,17 @@ impl FileSystem {
             src_dir.node,
             old_path,
             true,
+            self.fd_table.node_refcount(),
             &mut self.names_cache,
             self.storage.as_mut(),
         )?;
 
-        // now unlink the older version
+        // now unlink the older entry
         let (node, _metadata) = rm_dir_entry(
             src_dir.node,
             old_path,
             None,
+            true,
             self.fd_table.node_refcount(),
             &mut self.names_cache,
             self.storage.as_mut(),

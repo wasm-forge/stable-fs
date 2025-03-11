@@ -69,19 +69,19 @@ fn upgrade_canister(pic: &PocketIc) {
 mod fns {
 
     use candid::{decode_args, decode_one, encode_one, Principal};
-    use pocket_ic::{PocketIc, WasmResult};
+    use pocket_ic::PocketIc;
 
     use super::active_canister;
 
     pub(crate) fn greet(pic: &PocketIc, arg: &str) -> String {
-        let Ok(WasmResult::Reply(response)) = pic.query_call(
-            active_canister(),
-            Principal::anonymous(),
-            "greet",
-            encode_one(arg).unwrap(),
-        ) else {
-            panic!("Expected reply");
-        };
+        let response = pic
+            .query_call(
+                active_canister(),
+                Principal::anonymous(),
+                "greet",
+                encode_one(arg).unwrap(),
+            )
+            .expect("Expected reply");
 
         let result: String = decode_one(&response).unwrap();
         result
@@ -117,13 +117,9 @@ mod fns {
             )
             .unwrap();
 
-        if let WasmResult::Reply(response) = response {
-            let result: (u64, u64) = decode_args(&response).unwrap();
+        let result: (u64, u64) = decode_args(&response).unwrap();
 
-            result
-        } else {
-            panic!("unintended call failure!");
-        }
+        result
     }
 
     pub(crate) fn read_text(pic: &PocketIc, filename: &str, offset: i64, size: u64) -> String {
@@ -136,13 +132,9 @@ mod fns {
             )
             .unwrap();
 
-        if let WasmResult::Reply(response) = response {
-            let result: String = decode_one(&response).unwrap();
+        let result: String = decode_one(&response).unwrap();
 
-            result
-        } else {
-            panic!("unintended call failure!");
-        }
+        result
     }
 
     pub(crate) fn read_bytes(pic: &PocketIc, filename: &str, offset: i64, size: u64) -> (u64, u64) {
@@ -155,13 +147,9 @@ mod fns {
             )
             .unwrap();
 
-        if let WasmResult::Reply(response) = response {
-            let result: (u64, u64) = decode_args(&response).unwrap();
+        let result: (u64, u64) = decode_args(&response).unwrap();
 
-            result
-        } else {
-            panic!("unintended call failure!");
-        }
+        result
     }
 
     pub(crate) fn create_files(pic: &PocketIc, path: &str, count: u64) {
@@ -184,13 +172,9 @@ mod fns {
             )
             .unwrap();
 
-        if let WasmResult::Reply(response) = response {
-            let result: Vec<String> = decode_one(&response).unwrap();
+        let result: Vec<String> = decode_one(&response).unwrap();
 
-            result
-        } else {
-            panic!("unintended call failure!");
-        }
+        result
     }
 
     pub(crate) fn check_metadata_binary(pic: &PocketIc) -> String {
@@ -203,13 +187,9 @@ mod fns {
             )
             .unwrap();
 
-        if let WasmResult::Reply(response) = response {
-            let result: String = decode_one(&response).unwrap();
+        let result: String = decode_one(&response).unwrap();
 
-            result
-        } else {
-            panic!("unintended call failure!");
-        }
+        result
     }
 }
 
