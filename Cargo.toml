@@ -10,7 +10,6 @@ repository = "https://github.com/wasm-forge/stable-fs"
 [dependencies]
 bitflags = "2.9.0"
 ic-cdk = "0.17.1"
-
 ic-stable-structures = "0.6.8"
 
 serde = "1.0.219"
