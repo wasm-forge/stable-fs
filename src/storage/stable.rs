@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Range};
 
 use crate::storage::types::ZEROES;
-use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
+use ic_cdk::stable::WASM_PAGE_SIZE_IN_BYTES;
 use ic_stable_structures::{
     BTreeMap, Cell, Memory,
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -556,7 +556,7 @@ impl<M: Memory> StableStorage<M> {
 
     fn use_v2(&mut self, metadata: &Metadata, node: u64) -> bool {
         // decide if we use v2 chunks for reading/writing
-        let use_v2 = match metadata.chunk_type {
+        match metadata.chunk_type {
             Some(ChunkType::V2) => true,
             Some(ChunkType::V1) => false,
 
@@ -575,8 +575,7 @@ impl<M: Memory> StableStorage<M> {
                     self.chunk_type() == ChunkType::V2
                 }
             }
-        };
-        use_v2
+        }
     }
 
     fn validate_metadata_update(

@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.9.0]
+- switch to ic-cdk v0.18.3
+- switch to pocket-ic v9.0
+- update dependencies
+
 ## [v0.8.0]
 - improved Wasi compliance
 - change edition to 2024
@@ -8,7 +13,7 @@
 - faster file look-up
 - file read-write access control
 - fixed writing in append-mode
-- switch to pocket-ic 7.0/8.0
+- switch to pocket-ic v7.0
 - support for '..' in paths
 - return '.' and '..' during folder file list
 

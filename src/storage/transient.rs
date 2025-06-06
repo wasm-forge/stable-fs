@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
+use ic_cdk::stable::WASM_PAGE_SIZE_IN_BYTES;
 use ic_stable_structures::Memory;
 
 use crate::{
