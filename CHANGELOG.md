@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.9.0]
+## [v0.8.1]
 - switch to ic-cdk v0.18.3
 - switch to pocket-ic v9.0
 - update dependencies
