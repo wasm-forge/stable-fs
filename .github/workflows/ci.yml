@@ -1,4 +1,4 @@
-name: Tests
+name: Continuous Integration
 
 on: [push, pull_request]
 
@@ -42,22 +42,18 @@ jobs:
       - name: Clippy
         run: cargo clippy --tests --benches -- -D clippy::all
 
-      - name: Install pocket-ic
-        run: scripts/download-pocket-ic.sh
-
       - name: Install wasi2ic
         run: cargo install wasi2ic
 
       - name: Build test projects
         run: ./scripts/build_tests.sh
-        
+
       - name: Run tests
         run: cargo test -- --color always
 
-
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
-        
+
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
