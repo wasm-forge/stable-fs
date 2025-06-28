@@ -88,7 +88,7 @@ mod tests {
 
         for i in 0..CACHE_CAPACITY + 7 {
             let parent = i as Node;
-            let filename = format!("file_{}", i);
+            let filename = format!("file_{i}");
             let node = i as Node + 5;
 
             cache.add((parent, filename.clone()), node);

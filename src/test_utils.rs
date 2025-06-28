@@ -319,7 +319,7 @@ mod test_env {
                     let fd = (*fs)
                         .open(
                             root_fd,
-                            &format!("{}{}", filename, i),
+                            &format!("{filename}{i}"),
                             FdStat::default(),
                             OpenFlags::CREATE,
                             42,
@@ -385,7 +385,7 @@ mod test_env {
                     let fd = (*fs)
                         .open(
                             root_fd,
-                            &format!("{}{}", filename, i),
+                            &format!("{filename}{i}"),
                             FdStat::default(),
                             OpenFlags::CREATE,
                             42,
@@ -482,7 +482,7 @@ mod test_env {
             match action {
                 0 => {
                     // create a file using open
-                    let filename = format!("file{}.txt", op_count);
+                    let filename = format!("file{op_count}.txt");
 
                     let fd = fs.open(
                         parent_fd,
@@ -500,7 +500,7 @@ mod test_env {
                 }
                 1 => {
                     // create a file using create_open_file
-                    let filename = format!("file{}.txt", op_count);
+                    let filename = format!("file{op_count}.txt");
 
                     let fd = fs.create_open_file(
                         parent_fd,
@@ -536,14 +536,14 @@ mod test_env {
 
                 2 => {
                     // create a directory using mkdir.
-                    let dirname = format!("dir{}", op_count);
+                    let dirname = format!("dir{op_count}");
 
                     // function might fail because of the naming conflict
                     let _ = fs.mkdir(parent_fd, &dirname, FdStat::default(), op_count as u64);
                 }
                 3 => {
                     // create a directory using create_open_directory.
-                    let dirname = format!("dir{}", op_count);
+                    let dirname = format!("dir{op_count}");
 
                     let fd = fs.create_open_directory(
                         parent_fd,
@@ -555,7 +555,7 @@ mod test_env {
                 }
                 4 => {
                     // create or open a directory using open
-                    let dirname = format!("dir_o{}", op_count);
+                    let dirname = format!("dir_o{op_count}");
 
                     let fd = fs.open(
                         parent_fd,
@@ -741,7 +741,7 @@ mod test_env {
 
         println!("------------------------------------------");
         println!("FILE STRUCTURE");
-        println!("{}", files);
+        println!("{files}");
 
         // try to delete the generated folder
         //fs.remove_recursive(fs.root_fd(), "root_dir").unwrap();

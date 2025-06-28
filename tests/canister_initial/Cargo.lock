@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "stable-fs"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bitflags",
  "ciborium",

@@ -146,17 +146,11 @@ impl<M: Memory> StableStorage<M> {
         memory_indices: Range<u8>,
     ) -> StableStorage<M> {
         if memory_indices.end - memory_indices.start < MEMORY_INDEX_COUNT {
-            panic!(
-                "The memory index range must include at least {} incides",
-                MEMORY_INDEX_COUNT
-            );
+            panic!("The memory index range must include at least {MEMORY_INDEX_COUNT} incides");
         }
 
         if memory_indices.end > MAX_MEMORY_INDEX {
-            panic!(
-                "Last memory index must be less than or equal to {}",
-                MAX_MEMORY_INDEX
-            );
+            panic!("Last memory index must be less than or equal to {MAX_MEMORY_INDEX}");
         }
 
         let header_memory = memory_manager.get(MemoryId::new(

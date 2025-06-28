@@ -197,19 +197,16 @@ impl<M: Memory> ChunkPtrAllocator<M> {
     #[cfg(test)]
     fn check_free(&self, ptr: FileChunkPtr) {
         if ptr % self.chunk_size() as u64 != 0 {
-            panic!(
-                "Pointer released {} must be a multiple of FILE_CHUNK_SIZE!",
-                ptr
-            );
+            panic!("Pointer released {ptr} must be a multiple of FILE_CHUNK_SIZE!");
         }
 
         if self.read_u64(MAX_PTR_IDX) <= ptr {
-            panic!("Address {} was never allocated!", ptr);
+            panic!("Address {ptr} was never allocated!");
         }
 
         for p in self.available_ptrs() {
             if p == ptr {
-                panic!("Second free of address {}", ptr);
+                panic!("Second free of address {ptr}");
             }
         }
     }

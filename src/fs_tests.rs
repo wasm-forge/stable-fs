@@ -759,7 +759,7 @@ mod tests {
             let file_count: u8 = 25;
 
             for i in 0..file_count {
-                let filename = format!("{}/my_file_{}.txt", dir_name, i);
+                let filename = format!("{dir_name}/my_file_{i}.txt");
                 let content = format!("{i}");
                 let times = SIZE_OF_FILE / content.len();
 
@@ -769,7 +769,7 @@ mod tests {
 
             // read files
             for i in 0..file_count {
-                let filename = format!("{}/my_file_{}.txt", dir_name, i);
+                let filename = format!("{dir_name}/my_file_{i}.txt");
                 let expected_content = format!("{i}{i}{i}");
 
                 let text_read = read_text_file(
@@ -836,7 +836,7 @@ mod tests {
 
         memory.read(0, &mut buf);
 
-        println!("{:?}", buf);
+        println!("{buf:?}");
     }
 
     #[test]
@@ -1193,8 +1193,7 @@ mod tests {
         let (filetype, stat) = fs.get_stat(dir_fd).unwrap();
 
         println!(
-            "root = {root_fd}, dir_fd = {dir_fd}, file_fd = {file_fd}, type = {:?}, stat = {:?}",
-            filetype, stat
+            "root = {root_fd}, dir_fd = {dir_fd}, file_fd = {file_fd}, type = {filetype:?}, stat = {stat:?}"
         );
 
         let opened_fd = fs.open(
@@ -1205,7 +1204,7 @@ mod tests {
             0,
         );
 
-        println!("opened_fd = {:?}", opened_fd);
+        println!("opened_fd = {opened_fd:?}");
     }
 
     #[test]
@@ -1531,7 +1530,7 @@ mod tests {
             match action {
                 0 => {
                     // create a file using open
-                    let filename = format!("file{}.txt", op_count);
+                    let filename = format!("file{op_count}.txt");
 
                     let fd = fs.open(
                         parent_fd,
@@ -1549,7 +1548,7 @@ mod tests {
                 }
                 1 => {
                     // create a file using create_open_file
-                    let filename = format!("file{}.txt", op_count);
+                    let filename = format!("file{op_count}.txt");
 
                     let fd = fs.create_open_file(
                         parent_fd,
@@ -1585,7 +1584,7 @@ mod tests {
 
                 2 => {
                     // create a directory using mkdir.
-                    let dirname = format!("dir{}", op_count);
+                    let dirname = format!("dir{op_count}");
 
                     // function might fail because of the naming conflict
                     let fd = fs.create_open_directory(
@@ -1598,7 +1597,7 @@ mod tests {
                 }
                 3 => {
                     // create a directory using create_open_directory.
-                    let dirname = format!("dir{}", op_count);
+                    let dirname = format!("dir{op_count}");
 
                     let fd = fs.create_open_directory(
                         parent_fd,
@@ -1610,7 +1609,7 @@ mod tests {
                 }
                 4 => {
                     // create or open a directory using open
-                    let dirname = format!("dir_o{}", op_count);
+                    let dirname = format!("dir_o{op_count}");
 
                     let fd = fs.create_open_directory(
                         parent_fd,
