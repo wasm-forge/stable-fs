@@ -93,7 +93,9 @@ pub fn write_text_file(
 
     let file_fd = fs.open(parent_fd, path, FdStat::default(), OpenFlags::CREATE, 0)?;
 
-    write_text_fd(fs, file_fd, content, times)
+    write_text_fd(fs, file_fd, content, times)?;
+
+    fs.close(file_fd)
 }
 
 #[cfg(test)]

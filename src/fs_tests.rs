@@ -930,10 +930,10 @@ mod tests {
 
             fs.unmount_memory_file(file_name).unwrap();
 
+            // init new memory into a file
             fs.mount_memory_file(file_name, Box::new(memory2.clone()))
                 .unwrap();
 
-            // init new memory into a file
             fs.init_memory_file(file_name).unwrap();
 
             let mut buf1 = [0u8; 10];
@@ -945,6 +945,66 @@ mod tests {
 
                 assert_eq!(buf1, buf2);
             }
+        }
+    }
+
+    #[test]
+    fn test_mounts() {
+        let dir_fd = 3;
+
+        for mut fs in test_fs_setups("") {
+            let memory = new_vector_memory();
+            let file_name = "file.txt";
+            let hello_message = "Hello host".to_string();
+            let hello_message2 = "1234Hello from regular file".to_string();
+
+            fs.mount_memory_file(file_name, Box::new(memory.clone()))
+                .unwrap();
+
+            // write something into a host memory file
+            write_text_file(&mut fs, dir_fd, file_name, &hello_message, 1).unwrap();
+
+            // the memory should contain the file now
+            let v: Vec<u8> = memory.borrow().clone();
+            assert_eq!(&v[0..hello_message.len()], hello_message.as_bytes());
+
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, hello_message);
+
+            // unmount file, the file.txt should become empty
+            fs.unmount_memory_file(file_name).unwrap();
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, "".to_string());
+
+            // mount again, the old content should recover
+            fs.mount_memory_file(file_name, Box::new(memory.clone()))
+                .unwrap();
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, hello_message);
+
+            // store mounted contents into the host file, check the host file content is renewed
+            fs.store_memory_file(file_name).unwrap();
+            fs.unmount_memory_file(file_name).unwrap();
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, hello_message);
+
+            // write some other content message,
+            // check there is a new content now
+            write_text_file(&mut fs, dir_fd, file_name, &hello_message2, 1).unwrap();
+
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, hello_message2);
+
+            // after mounting, we still have the old content
+            fs.mount_memory_file(file_name, Box::new(memory.clone()))
+                .unwrap();
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, hello_message);
+
+            // initializing should recover the data from the host file to the mounted memory
+            fs.init_memory_file(file_name).unwrap();
+            let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
+            assert_eq!(str, hello_message2);
         }
     }
 
