@@ -4,10 +4,8 @@ use pocket_ic::PocketIc;
 use std::sync::Once;
 use std::{cell::RefCell, fs};
 
-const BACKEND_WASM: &str =
-    "tests/canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend.wasm";
-const BACKEND_WASM_UPGRADED: &str =
-    "tests/canister_upgraded/target/wasm32-unknown-unknown/release/canister_upgraded_backend.wasm";
+const BACKEND_WASM: &str = "test_canisters/canister_initial/target/wasm32-unknown-unknown/release/canister_initial_backend.wasm";
+const BACKEND_WASM_UPGRADED: &str = "test_canisters/canister_upgraded/target/wasm32-unknown-unknown/release/canister_upgraded_backend.wasm";
 
 thread_local!(
     static ACTIVE_CANISTER: RefCell<Option<Principal>> = const { RefCell::new(None) };

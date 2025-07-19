@@ -111,8 +111,8 @@ impl<M: Memory> MetadataProvider<M> {
 
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
 
-        for (k, _v) in filechunk.range(range) {
-            chunks.push(k);
+        for en in filechunk.range(range) {
+            chunks.push(*en.key());
         }
 
         for (nd, idx) in chunks.into_iter() {
@@ -127,7 +127,8 @@ impl<M: Memory> MetadataProvider<M> {
 
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
 
-        for (k, _v) in v2_chunk_ptr.range(range) {
+        for en in v2_chunk_ptr.range(range) {
+            let k = *en.key();
             chunks.push((k.0, k.1));
         }
 

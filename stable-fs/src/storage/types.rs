@@ -101,6 +101,10 @@ impl ic_stable_structures::Storable for FileChunk {
         std::borrow::Cow::Borrowed(&self.bytes)
     }
 
+    fn into_bytes(self) -> Vec<u8> {
+        self.bytes.to_vec()
+    }
+
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
         Self {
             bytes: bytes.as_ref().try_into().unwrap(),
@@ -124,6 +128,12 @@ impl ic_stable_structures::Storable for Header {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(&self, &mut buf).unwrap();
+        buf
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
@@ -152,6 +162,12 @@ impl ic_stable_structures::Storable for Metadata {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(&self, &mut buf).unwrap();
+        buf
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
@@ -274,6 +290,12 @@ impl ic_stable_structures::Storable for DirEntry {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = vec![];
+        ciborium::ser::into_writer(&self, &mut buf).unwrap();
+        buf
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {

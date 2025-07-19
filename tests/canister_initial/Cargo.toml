@@ -1,6 +1,0 @@
-[workspace]
-members = [
-    "src/canister_initial_backend"
-]
-resolver = "2"
-

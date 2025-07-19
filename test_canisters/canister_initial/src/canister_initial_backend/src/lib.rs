@@ -5,8 +5,7 @@ use ic_stable_structures::{
     DefaultMemoryImpl, Memory,
 };
 
-use hex;
-use ic_cdk::api::stable::WASM_PAGE_SIZE_IN_BYTES;
+use ic_cdk::{export_candid, stable::WASM_PAGE_SIZE_IN_BYTES};
 use ic_stable_structures::VectorMemory;
 use serde::Deserialize;
 use serde::Serialize;
@@ -28,7 +27,7 @@ use stable_fs::{
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
-    format!("Hello, {}!", name)
+    format!("Hello, {name}!")
 }
 
 #[ic_cdk::query]
@@ -67,7 +66,7 @@ thread_local! {
 }
 
 thread_local! {
-    static BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+    static BUFFER: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
 }
 
 #[ic_cdk::update]
@@ -101,9 +100,9 @@ pub fn clear_buffer() {
         let chunk = chunk.as_mut().unwrap();
 
         // explicitly destroy contents
-        for i in 0..chunk.len() {
+        (0..chunk.len()).for_each(|i| {
             chunk[i] = 0;
-        }
+        });
 
         chunk.clear()
     })
@@ -435,7 +434,7 @@ fn cat_file(filename: String) -> String {
         unsafe {
             let st = std::str::from_utf8_unchecked(&buf[..(read_size as usize)]);
 
-            return st.to_string();
+            st.to_string()
         }
     })
 }
@@ -450,13 +449,13 @@ fn create_depth_folders(path: String, count: usize) -> String {
         let mut dir_name = "d0".to_string();
 
         for num in 1..count {
-            dir_name = format!("{}/d{}", dir_name, num);
+            dir_name = format!("{dir_name}/d{num}");
         }
 
         fs.mkdir(root_dir, dir_name.as_str(), FdStat::default(), 0)
             .unwrap();
 
-        format!("{}/{}", path, dir_name)
+        format!("{path}/{dir_name}")
     })
 }
 
@@ -470,7 +469,7 @@ fn create_files(path: String, count: usize) -> u64 {
         let dir = fs.root_fd();
 
         for num in 0..count {
-            let filename = format!("{}/{}.txt", path, num);
+            let filename = format!("{path}/{num}.txt");
 
             let fd = fs
                 .open(
@@ -486,8 +485,7 @@ fn create_files(path: String, count: usize) -> u64 {
 
             // 64 byte block
             let text = format!(
-                "0123456789012345678901234567890123456789012345678901234567890123:{}",
-                filename
+                "0123456789012345678901234567890123456789012345678901234567890123:{filename}"
             );
 
             let write_content = [SrcBuf {
@@ -807,3 +805,5 @@ fn check_metadata_binary() -> String {
     let vec = to_binary(&meta);
     hex::encode(&vec)
 }
+
+export_candid!();

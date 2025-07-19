@@ -951,7 +951,6 @@ mod tests {
     #[test]
     fn test_mounts() {
         let dir_fd = 3;
-
         for mut fs in test_fs_setups("") {
             let memory = new_vector_memory();
             let file_name = "file.txt";
@@ -1843,10 +1842,10 @@ mod tests {
     /*
     #[test]
     fn test_reading_structure() {
-        let v = std::fs::read("./tests/res/memory-v0_4-op35_1000.bin").unwrap();
+        let v = std::fs::read("./test_canisters/res/memory-v0_4-op35_1000.bin").unwrap();
         let memory = new_vector_memory_init(v);
 
-        let v_files = std::fs::read("./tests/res/structure-v0_4-op35_1000.txt").unwrap();
+        let v_files = std::fs::read("./test_canisters/res/structure-v0_4-op35_1000.txt").unwrap();
         let files_old = std::str::from_utf8(&v_files).unwrap();
 
         let storage = StableStorage::new(memory);
@@ -1865,7 +1864,7 @@ mod tests {
         let new_content = "other content";
 
         // read old version
-        let v = std::fs::read("./tests/res/memory-v0.4-some_file_content.bin").unwrap();
+        let v = std::fs::read("./test_canisters/res/memory-v0.4-some_file_content.bin").unwrap();
         let memory = new_vector_memory_init(v);
         let storage = StableStorage::new(memory);
 
@@ -1926,7 +1925,7 @@ mod tests {
     #[test]
     fn test_generate_structure_v4_with_current_version() {
         // read old version
-        let v = std::fs::read("./tests/res/memory-v0_4-op35_1000.bin").unwrap();
+        let v = std::fs::read("./test_canisters/res/memory-v0_4-op35_1000.bin").unwrap();
         let memory = new_vector_memory_init(v);
         let storage = StableStorage::new(memory);
 

@@ -265,7 +265,7 @@ impl<M: Memory> StableStorage<M> {
             MetadataProvider::new(memories.metadata_memory, memories.mounted_meta_memory);
 
         let mut result = Self {
-            header: Cell::init(memories.header_memory, default_header_value).unwrap(),
+            header: Cell::init(memories.header_memory, default_header_value),
             direntry: BTreeMap::init(memories.direntry_memory),
             filechunk: BTreeMap::init(memories.filechunk_memory),
 
@@ -452,7 +452,10 @@ impl<M: Memory> StableStorage<M> {
 
             let read_buf = &mut buf[size_read as usize..size_read as usize + to_read as usize];
 
-            if let Some(((nd, idx), ref value)) = cur_fetched {
+            if let Some(ref en) = cur_fetched {
+                let (nd, idx) = *en.key();
+                let value = en.value();
+
                 if idx == cur_index {
                     assert!(nd == node);
 
@@ -616,7 +619,7 @@ impl<M: Memory> StableStorage<M> {
 
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
 
-        for (k, _v) in self.filechunk.range(range) {
+        for k in self.filechunk.keys_range(range) {
             chunks.push(k);
         }
 
@@ -645,7 +648,7 @@ impl<M: Memory> StableStorage<M> {
 
         let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
         let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
-        for (k, _v) in self.v2_filechunk.v2_chunk_ptr.range(range) {
+        for k in self.v2_filechunk.v2_chunk_ptr.keys_range(range) {
             chunks.push(k);
         }
 
@@ -682,7 +685,7 @@ impl<M: Memory> Storage for StableStorage<M> {
 
         header.next_node += 1;
 
-        self.header.set(header).unwrap();
+        self.header.set(header);
 
         result
     }
@@ -778,10 +781,13 @@ impl<M: Memory> Storage for StableStorage<M> {
 
         let max_index = MAX_FILE_ENTRY_INDEX;
 
-        for ((_node, index), entry) in self
+        for en in self
             .direntry
             .range((node, initial_index)..(node, max_index))
         {
+            let (_node, index) = *en.key();
+            let entry = en.value();
+
             res.push((index, entry));
         }
 

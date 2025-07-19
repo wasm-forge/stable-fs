@@ -66,7 +66,10 @@ impl PtrCache {
 
         let mut iterator_empty = true;
 
-        for ((n, index), ptr) in items {
+        for en in items {
+            let (n, index) = *en.key();
+            let ptr = en.value();
+
             assert!(node == n);
 
             iterator_empty = false;

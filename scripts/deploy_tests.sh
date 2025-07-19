@@ -2,7 +2,7 @@
 
 set -e
 
-cd tests/canister_initial
+cd test_canisters/canister_initial
 
 dfx canister create canister_initial_backend
 
