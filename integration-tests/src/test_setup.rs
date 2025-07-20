@@ -10,6 +10,7 @@ use crate::bindings::{
     canister_upgraded_backend::{self, CanisterUpgradedBackendCanister},
 };
 
+#[allow(dead_code)]
 pub(crate) struct Env {
     pub icp_test: IcpTest,
     pub canister_initial_backend: CanisterInitialBackendCanister,
