@@ -1864,7 +1864,7 @@ mod tests {
         let new_content = "other content";
 
         // read old version
-        let v = std::fs::read("./test_canisters/res/memory-v0.4-some_file_content.bin").unwrap();
+        let v = std::fs::read("../test_canisters/res/memory-v0.4-some_file_content.bin").unwrap();
         let memory = new_vector_memory_init(v);
         let storage = StableStorage::new(memory);
 
@@ -1925,7 +1925,7 @@ mod tests {
     #[test]
     fn test_generate_structure_v4_with_current_version() {
         // read old version
-        let v = std::fs::read("./test_canisters/res/memory-v0_4-op35_1000.bin").unwrap();
+        let v = std::fs::read("../test_canisters/res/memory-v0_4-op35_1000.bin").unwrap();
         let memory = new_vector_memory_init(v);
         let storage = StableStorage::new(memory);
 

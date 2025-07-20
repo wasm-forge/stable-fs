@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = [ "integration-tests",
     "stable-fs",
     "test_canisters/canister_initial/src/canister_initial_backend",
     "test_canisters/canister_upgraded/src/canister_upgraded_backend",
