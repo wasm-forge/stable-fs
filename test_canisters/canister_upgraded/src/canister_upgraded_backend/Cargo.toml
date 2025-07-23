@@ -1,0 +1,17 @@
+[package]
+name = "canister_upgraded_backend"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+candid.workspace = true
+ic-cdk.workspace = true
+ic-stable-structures.workspace = true
+stable-fs.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+ciborium.workspace = true
+hex.workspace = true

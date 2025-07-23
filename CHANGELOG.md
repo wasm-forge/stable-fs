@@ -1,9 +1,18 @@
 # Changelog
 
+
+## [v0.9.0]
+- switch to ic-stable-structures v0.7
+- refactor project structure
+- integrate ic-test into project for the integration tests
+- update dependencies
+
+
 ## [v0.8.1]
 - switch to ic-cdk v0.18.3
 - switch to pocket-ic v9.0
 - update dependencies
+
 
 ## [v0.8.0]
 - improved Wasi compliance
@@ -79,8 +88,9 @@
 ## [v0.5.0]
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
-
-[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.8.0...main
+[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.9.0...main
+[v0.9.0]: https://github.com/wasm-forge/stable-fs/compare/v0.8.1...v0.9.0
+[v0.8.1]: https://github.com/wasm-forge/stable-fs/compare/v0.8.0...v0.8.1
 [v0.8.0]: https://github.com/wasm-forge/stable-fs/compare/v0.7.3...v0.8.0
 [v0.7.3]: https://github.com/wasm-forge/stable-fs/compare/v0.7.2...v0.7.3
 [v0.7.2]: https://github.com/wasm-forge/stable-fs/compare/v0.7.1...v0.7.2

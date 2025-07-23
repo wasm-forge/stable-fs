@@ -1,0 +1,26 @@
+{
+  "test_folder": "integration-tests",
+  "icp_setup": {
+    "skip_dfx_json": true,
+    "canisters": {
+      "canister_initial_backend": {
+        "name": "canister_initial_backend",
+        "var_name": "canister_initial_backend",
+        "service_name": "CanisterInitialBackendCanister",
+        "candid_path": "test_canisters/canister_initial/src/canister_initial_backend/canister_initial_backend.did",
+        "generate_bindings": true,
+        "wasm": "target/wasm32-unknown-unknown/release/canister_initial_backend.wasm",
+        "specified_id": "lz3um-vp777-87777-aaaba-cai"
+      },
+      "canister_upgraded_backend": {
+        "name": "canister_upgraded_backend",
+        "var_name": "canister_upgraded_backend",
+        "service_name": "CanisterUpgradedBackendCanister",
+        "candid_path": "test_canisters/canister_upgraded/src/canister_upgraded_backend/canister_upgraded_backend.did",
+        "generate_bindings": true,
+        "wasm": "target/wasm32-unknown-unknown/release/canister_upgraded_backend.wasm",
+        "specified_id": null
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+service : () -> {
+  append_buffer : (text, nat64) -> (nat64);
+  append_text : (text, text, nat64) -> (nat64);
+  cat_file : (text) -> (text) query;
+  check_metadata_binary : () -> (text) query;
+  check_metadata_deserialization_into_repr_c : () -> (nat64) query;
+  check_metadata_format : () -> () query;
+  chunk_size : () -> (nat64);
+  clear_buffer : () -> ();
+  create_depth_folders : (text, nat64) -> (text);
+  create_files : (text, nat64) -> (nat64);
+  delete_file : (text) -> () query;
+  delete_folder : (text) -> () query;
+  file_size : (text) -> (nat64) query;
+  greet : (text) -> (text) query;
+  greet_times : (text, nat64) -> (vec text) query;
+  list_files : (text) -> (vec text) query;
+  load_buffer : (text) -> (nat64, nat64);
+  read_buffer : (nat64, nat64) -> (text);
+  read_bytes : (text, int64, nat64) -> (nat64, nat64);
+  read_text : (text, int64, nat64) -> (text) query;
+  store_buffer : (text) -> (nat64, nat64);
+  write_kib_text : (text, nat64) -> (nat64);
+  write_mib_text : (text, nat64) -> (nat64);
+}
