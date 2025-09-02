@@ -727,7 +727,7 @@ fn check_metadata_deserialization_into_repr_c() -> u64 {
         pub chunk_type: Option<ChunkType>,
     }
 
-    fn meta_to_bytes(meta: &MetadataOld) -> std::borrow::Cow<[u8]> {
+    fn meta_to_bytes(meta: &'_ MetadataOld) -> std::borrow::Cow<'_, [u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(meta, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)

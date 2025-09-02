@@ -5,8 +5,8 @@ edition = "2021"
 
 [dev-dependencies]
 candid = "0.10"
-cargo_metadata = "0.19.1"
-ic-test = {version = "0.1"}
+cargo_metadata = "0.22.0"
+ic-test = {version = "0.3.0-cdk18"}
 pocket-ic = "9.0.2"
 serde = "1.0.219"
 serde_bytes = "0.11.17"

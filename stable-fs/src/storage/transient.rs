@@ -100,16 +100,16 @@ impl TransientStorage {
         old_meta: Option<&Metadata>,
         new_meta: &Metadata,
     ) -> Result<(), Error> {
-        if let Some(max_size) = new_meta.maximum_size_allowed {
-            if new_meta.size > max_size {
-                return Err(Error::FileTooLarge);
-            }
+        if let Some(max_size) = new_meta.maximum_size_allowed
+            && new_meta.size > max_size
+        {
+            return Err(Error::FileTooLarge);
         }
 
-        if let Some(old_meta) = old_meta {
-            if old_meta.node != new_meta.node {
-                return Err(Error::InvalidArgument);
-            }
+        if let Some(old_meta) = old_meta
+            && old_meta.node != new_meta.node
+        {
+            return Err(Error::InvalidArgument);
         }
 
         Ok(())
@@ -363,7 +363,7 @@ impl Storage for TransientStorage {
 
     fn init_mounted_memory(&mut self, node: Node) -> Result<(), Error> {
         // temporary disable mount to activate access to the original file
-        let memory = self.unmount_node(node)?;
+        let memory: Box<dyn Memory> = self.unmount_node(node)?;
 
         let meta = self.get_metadata(node)?;
         let file_size = meta.size;
@@ -401,7 +401,7 @@ impl Storage for TransientStorage {
         let file_size = meta.size;
 
         // temporary disable mount to activate access to the original file
-        let memory = self.unmount_node(node)?;
+        let memory: Box<dyn Memory> = self.unmount_node(node)?;
 
         // grow memory if needed
         grow_memory(memory.as_ref(), file_size);
@@ -440,10 +440,10 @@ impl Storage for TransientStorage {
 
         let end = offset + buf.len() as FileSize;
 
-        if let Some(max_size) = metadata.maximum_size_allowed {
-            if end > max_size {
-                return Err(Error::FileTooLarge);
-            }
+        if let Some(max_size) = metadata.maximum_size_allowed
+            && end > max_size
+        {
+            return Err(Error::FileTooLarge);
         }
 
         let chunk_infos = get_chunk_infos(offset, end, FILE_CHUNK_SIZE_V1);

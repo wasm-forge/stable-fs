@@ -177,7 +177,13 @@ pub fn create_hard_link(
     metadata.link_count += 1;
     storage.put_metadata(src_node, &metadata)?;
 
-    add_dir_entry(dir_node, src_node, leaf_name.as_bytes(), storage)?;
+    add_dir_entry(
+        dir_node,
+        src_node,
+        leaf_name.as_bytes(),
+        storage,
+        metadata.file_type,
+    )?;
 
     Ok(())
 }
@@ -221,7 +227,7 @@ pub fn create_dir_entry(
         },
     )?;
 
-    add_dir_entry(parent_dir_node, node, entry_name, storage)?;
+    add_dir_entry(parent_dir_node, node, entry_name, storage, entry_type)?;
 
     Ok(node)
 }
@@ -334,6 +340,7 @@ pub fn add_dir_entry(
     new_node: Node,
     entry_name: &[u8],
     storage: &mut dyn Storage,
+    file_type: FileType,
 ) -> Result<(), Error> {
     let mut metadata = storage.get_metadata(parent_dir_node)?;
 
@@ -350,6 +357,7 @@ pub fn add_dir_entry(
             name,
             next_entry: None,
             prev_entry: metadata.last_dir_entry,
+            entry_type: Some(file_type),
         },
     );
 
@@ -429,10 +437,11 @@ pub fn rm_dir_entry(
         }
     }
 
-    if let Some(refcount) = node_refcount.get(&removed_metadata.node) {
-        if *refcount > 0 && removed_metadata.link_count == 1 {
-            return Err(Error::TextFileBusy);
-        }
+    if let Some(refcount) = node_refcount.get(&removed_metadata.node)
+        && *refcount > 0
+        && removed_metadata.link_count == 1
+    {
+        return Err(Error::TextFileBusy);
     }
 
     // update previous entry

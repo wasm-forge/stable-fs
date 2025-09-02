@@ -593,10 +593,10 @@ impl<M: Memory> StableStorage<M> {
             }
         }
 
-        if let Some(max_size) = new_meta.maximum_size_allowed {
-            if new_meta.size > max_size {
-                return Err(Error::FileTooLarge);
-            }
+        if let Some(max_size) = new_meta.maximum_size_allowed
+            && new_meta.size > max_size
+        {
+            return Err(Error::FileTooLarge);
         }
 
         Ok(())
@@ -962,7 +962,7 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     fn init_mounted_memory(&mut self, node: Node) -> Result<(), Error> {
         // temporary disable mount to activate access to the original file
-        let memory = self.unmount_node(node)?;
+        let memory: Box<dyn Memory> = self.unmount_node(node)?;
 
         let meta = self.get_metadata(node)?;
         let file_size = meta.size;
@@ -1000,7 +1000,7 @@ impl<M: Memory> Storage for StableStorage<M> {
         let file_size = meta.size;
 
         // temporary disable mount to activate access to the original file
-        let memory = self.unmount_node(node)?;
+        let memory: Box<dyn Memory> = self.unmount_node(node)?;
 
         // grow memory if needed
         grow_memory(memory.as_ref(), file_size);
@@ -1109,6 +1109,7 @@ mod tests {
                 name: FileName::new("test".as_bytes()).unwrap(),
                 next_entry: Some(42),
                 prev_entry: Some(24),
+                entry_type: None,
             },
         );
         let direntry = storage.get_direntry(node, 7).unwrap();

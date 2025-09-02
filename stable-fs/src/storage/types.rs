@@ -37,6 +37,7 @@ pub const DUMMY_DOT_ENTRY: (DirEntryIndex, DirEntry) = (
         node: 0,
         next_entry: None,
         prev_entry: None,
+        entry_type: None,
     },
 );
 
@@ -55,6 +56,7 @@ pub const DUMMY_DOT_DOT_ENTRY: (DirEntryIndex, DirEntry) = (
         node: 0,
         next_entry: None,
         prev_entry: None,
+        entry_type: None,
     },
 );
 
@@ -97,7 +99,7 @@ impl Default for FileChunk {
 }
 
 impl ic_stable_structures::Storable for FileChunk {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+    fn to_bytes(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         std::borrow::Cow::Borrowed(&self.bytes)
     }
 
@@ -124,7 +126,7 @@ pub struct Header {
 }
 
 impl ic_stable_structures::Storable for Header {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+    fn to_bytes(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
@@ -158,7 +160,7 @@ pub struct Metadata {
 }
 
 impl ic_stable_structures::Storable for Metadata {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+    fn to_bytes(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
@@ -283,10 +285,11 @@ pub struct DirEntry {
     pub node: Node,
     pub next_entry: Option<DirEntryIndex>,
     pub prev_entry: Option<DirEntryIndex>,
+    pub entry_type: Option<FileType>,
 }
 
 impl ic_stable_structures::Storable for DirEntry {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+    fn to_bytes(&'_ self) -> std::borrow::Cow<'_, [u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(&self, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
@@ -337,7 +340,7 @@ mod tests {
         pub chunk_type: Option<ChunkType>,
     }
 
-    fn meta_to_bytes(meta: &MetadataOld) -> std::borrow::Cow<[u8]> {
+    fn meta_to_bytes(meta: &'_ MetadataOld) -> std::borrow::Cow<'_, [u8]> {
         let mut buf = vec![];
         ciborium::ser::into_writer(meta, &mut buf).unwrap();
         std::borrow::Cow::Owned(buf)
