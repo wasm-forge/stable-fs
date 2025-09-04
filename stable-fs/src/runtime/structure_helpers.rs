@@ -323,35 +323,23 @@ pub fn find_entry_index(
     path_element: &[u8],
     storage: &dyn Storage,
 ) -> Result<DirEntryIndex, Error> {
-    let mut result: Result<DirEntryIndex, Error> = Err(Error::NoSuchFileOrDirectory);
+    let mut result = Err(Error::NoSuchFileOrDirectory);
 
     storage.with_direntries(dir_entry_node, Some(0), &mut |index, dir_entry| {
         if dir_entry.name.length as usize == path_element.len()
-            && &dir_entry.name.bytes[0..path_element.len()] == path_element
+            && dir_entry.name.bytes[0..path_element.len()] == *path_element
         {
             result = Ok(*index);
-            return;
-        }
 
-        result = Err(Error::NoSuchFileOrDirectory)
+            // stop iterations
+            false
+        } else {
+            // continue search
+            true
+        }
     });
 
     result
-
-    /*let mut result: Result<DirEntryIndex, Error> = Err(Error::NoSuchFileOrDirectory);
-
-    storage.with_direntries(dir_entry_node, Some(0), &mut |index, dir_entry| {
-        if dir_entry.name.length as usize == path_element.len()
-            && &dir_entry.name.bytes[0..path_element.len()] == path_element
-        {
-            result = Ok(*index);
-            return;
-        }
-
-        result = Err(Error::NoSuchFileOrDirectory)
-    });
-
-    result*/
 }
 
 //  Add new directory entry

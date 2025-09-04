@@ -276,16 +276,20 @@ impl FileSystem {
         self.get_dir(fd)?.get_entry(index, self.storage.as_ref())
     }
 
-    // Get all directory entries for a given directory file descriptor.
+    // Iterate all directory entries for a given directory file descriptor.
     // if the initial_index is None, the entries "." and ".." are also added in the beginning of the list
-    pub fn get_direntries(
+    // To get dir entries without "." and ".." pass initial_index as Some(0)
+    pub fn with_direntries(
         &self,
         fd: Fd,
         initial_index: Option<DirEntryIndex>,
-    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
+        f: &mut dyn FnMut(&DirEntryIndex, &DirEntry) -> bool,
+    ) -> Result<(), Error> {
         let dir = self.get_dir(fd)?;
 
-        self.storage.get_direntries(dir.node, initial_index)
+        self.storage.with_direntries(dir.node, initial_index, f);
+
+        Ok(())
     }
 
     fn get_node_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
@@ -772,26 +776,6 @@ impl FileSystem {
 
             entry_index = entry.next_entry;
         }
-
-        /*
-        for (_index, entry) in self.get_direntries(dir_fd, Some(0))? {
-            // here we assume the entry value name is correct UTF-8
-            let filename = unsafe {
-                std::str::from_utf8_unchecked(&entry.name.bytes[..(entry.name.length as usize)])
-            }
-            .to_string();
-
-            if let Some(file_type) = file_type {
-                let meta = self.metadata_from_node(entry.node)?;
-
-                if meta.file_type == file_type {
-                    res.push((entry.node, filename));
-                }
-            } else {
-                res.push((entry.node, filename));
-            }
-        }
-        */
 
         Ok(res)
     }

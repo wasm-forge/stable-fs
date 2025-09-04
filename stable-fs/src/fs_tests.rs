@@ -717,6 +717,7 @@ mod tests {
 
     #[test]
     fn renaming_folder_with_contents() {
+        //TODO: fix test
         let mut fs = test_stable_fs_v2();
         let root_fd = fs.root_fd();
 

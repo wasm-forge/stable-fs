@@ -1,5 +1,3 @@
-use std::cell::RefMut;
-
 use ic_stable_structures::Memory;
 
 use crate::{
@@ -57,15 +55,8 @@ pub trait Storage {
         &self,
         node: Node,
         initial_index: Option<DirEntryIndex>,
-        f: &mut dyn FnMut(&DirEntryIndex, &DirEntry),
+        f: &mut dyn FnMut(&DirEntryIndex, &DirEntry) -> bool,
     );
-
-    // Retrieve the DirEntry instancec given the parent Node.
-    fn get_direntries(
-        &self,
-        node: Node,
-        initial_index: Option<DirEntryIndex>,
-    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error>;
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry);

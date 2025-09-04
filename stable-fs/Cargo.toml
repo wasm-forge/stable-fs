@@ -1,6 +1,6 @@
 [package]
 name = "stable-fs"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 description = "A Simple File system using the stable structures of the Internet Computer that implements WASI endpoints"
 keywords = ["ic", "internet-computer", "file-system"]

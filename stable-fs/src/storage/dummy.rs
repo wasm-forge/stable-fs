@@ -119,6 +119,8 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
+    /*
+
     fn get_direntries(
         &self,
         _node: Node,
@@ -126,12 +128,13 @@ impl Storage for DummyStorage {
     ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
         panic!("Not supported")
     }
+    */
 
     fn with_direntries(
         &self,
         _node: Node,
         _initial_index: Option<DirEntryIndex>,
-        _f: &mut dyn FnMut(&DirEntryIndex, &DirEntry),
+        _f: &mut dyn FnMut(&DirEntryIndex, &DirEntry) -> bool,
     ) {
         panic!("Not supported")
     }
