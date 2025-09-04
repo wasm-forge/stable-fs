@@ -773,6 +773,26 @@ impl FileSystem {
             entry_index = entry.next_entry;
         }
 
+        /*
+        for (_index, entry) in self.get_direntries(dir_fd, Some(0))? {
+            // here we assume the entry value name is correct UTF-8
+            let filename = unsafe {
+                std::str::from_utf8_unchecked(&entry.name.bytes[..(entry.name.length as usize)])
+            }
+            .to_string();
+
+            if let Some(file_type) = file_type {
+                let meta = self.metadata_from_node(entry.node)?;
+
+                if meta.file_type == file_type {
+                    res.push((entry.node, filename));
+                }
+            } else {
+                res.push((entry.node, filename));
+            }
+        }
+        */
+
         Ok(res)
     }
 

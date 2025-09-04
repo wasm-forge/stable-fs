@@ -525,6 +525,48 @@ impl Storage for TransientStorage {
 
         Ok(res)
     }
+
+    fn with_direntries(
+        &self,
+        node: Node,
+        initial_index: Option<DirEntryIndex>,
+        f: &mut dyn FnMut(&DirEntryIndex, &DirEntry),
+    ) {
+        if initial_index.is_none() {
+            let mut dot_entry = DUMMY_DOT_ENTRY;
+            dot_entry.1.node = node;
+
+            f(&dot_entry.0, &dot_entry.1);
+            f(&DUMMY_DOT_DOT_ENTRY.0, &DUMMY_DOT_DOT_ENTRY.1);
+        }
+
+        let initial_index = initial_index.unwrap_or(0);
+
+        if initial_index == DUMMY_DOT_ENTRY_INDEX {
+            let mut dot_entry = DUMMY_DOT_ENTRY;
+            dot_entry.1.node = node;
+
+            f(&dot_entry.0, &dot_entry.1);
+            f(&DUMMY_DOT_DOT_ENTRY.0, &DUMMY_DOT_DOT_ENTRY.1);
+        }
+
+        if initial_index == DUMMY_DOT_DOT_ENTRY_INDEX {
+            f(&DUMMY_DOT_DOT_ENTRY.0, &DUMMY_DOT_DOT_ENTRY.1);
+        }
+
+        let max_index = MAX_FILE_ENTRY_INDEX;
+
+        for en in self
+            .direntry
+            .range((node, initial_index)..(node, max_index))
+        {
+            let (_node, index) = en.0;
+
+            let entry = en.1;
+
+            f(index, entry);
+        }
+    }
 }
 
 #[cfg(test)]

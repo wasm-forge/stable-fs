@@ -126,6 +126,15 @@ impl Storage for DummyStorage {
     ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
         panic!("Not supported")
     }
+
+    fn with_direntries(
+        &self,
+        _node: Node,
+        _initial_index: Option<DirEntryIndex>,
+        _f: &mut dyn FnMut(&DirEntryIndex, &DirEntry),
+    ) {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]
