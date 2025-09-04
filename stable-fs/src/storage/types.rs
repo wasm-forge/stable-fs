@@ -35,8 +35,6 @@ pub const DUMMY_DOT_ENTRY: (DirEntryIndex, DirEntry) = (
             },
         },
         node: 0,
-        next_entry: None,
-        prev_entry: None,
         entry_type: None,
     },
 );
@@ -54,8 +52,6 @@ pub const DUMMY_DOT_DOT_ENTRY: (DirEntryIndex, DirEntry) = (
             },
         },
         node: 0,
-        next_entry: None,
-        prev_entry: None,
         entry_type: None,
     },
 );
@@ -283,8 +279,6 @@ pub type DirEntryIndex = u32;
 pub struct DirEntry {
     pub name: FileName,
     pub node: Node,
-    pub next_entry: Option<DirEntryIndex>,
-    pub prev_entry: Option<DirEntryIndex>,
     pub entry_type: Option<FileType>,
 }
 

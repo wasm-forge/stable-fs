@@ -11,8 +11,8 @@ use crate::{
         types::{RIGHTS_FD_READ, RIGHTS_FD_WRITE},
     },
     storage::{
-        types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
         Storage,
+        types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
     },
 };
 
@@ -290,10 +290,6 @@ impl FileSystem {
         self.storage.with_direntries(dir.node, initial_index, f);
 
         Ok(())
-    }
-
-    fn get_node_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error> {
-        self.storage.get_direntry(node, index)
     }
 
     fn put_dir(&mut self, fd: Fd, dir: Dir) {

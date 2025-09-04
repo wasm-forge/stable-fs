@@ -19,8 +19,6 @@ struct EntryFindResult {
     node: Node,
     parent_dir: Node,
     entry_index: DirEntryIndex,
-    prev_entry: Option<DirEntryIndex>,
-    next_entry: Option<DirEntryIndex>,
 }
 
 fn get_path_parts(path: &str) -> Result<(Vec<String>, bool), Error> {
@@ -66,8 +64,6 @@ fn find_node_with_index(
     let mut parent_dir_node = parent_dir_node;
     let mut cur_node = parent_dir_node;
     let mut cur_entry_index = 0;
-    let mut prev_entry_index = None;
-    let mut next_entry_index = None;
 
     for part in parts {
         parent_dir_node = cur_node;
@@ -75,16 +71,12 @@ fn find_node_with_index(
         let entry = storage.get_direntry(cur_node, cur_entry_index)?;
 
         cur_node = entry.node;
-        prev_entry_index = entry.prev_entry;
-        next_entry_index = entry.next_entry;
     }
 
     Ok(EntryFindResult {
         node: cur_node,
         parent_dir: parent_dir_node,
         entry_index: cur_entry_index,
-        prev_entry: prev_entry_index,
-        next_entry: next_entry_index,
     })
 }
 
@@ -362,8 +354,6 @@ pub fn add_dir_entry(
         DirEntry {
             node: new_node,
             name,
-            next_entry: None,
-            prev_entry: None,
             entry_type: Some(file_type),
         },
     );
@@ -404,8 +394,6 @@ pub fn rm_dir_entry(
 
     let parent_dir_node = find_result.parent_dir;
     let removed_entry_index = find_result.entry_index;
-    let removed_dir_entry_prev_entry = find_result.prev_entry;
-    let removed_dir_entry_next_entry = find_result.next_entry;
 
     let mut removed_metadata = storage.get_metadata(removed_dir_entry_node)?;
 
@@ -435,20 +423,6 @@ pub fn rm_dir_entry(
         && removed_metadata.link_count == 1
     {
         return Err(Error::TextFileBusy);
-    }
-
-    // update previous entry
-    if let Some(prev_dir_entry_index) = removed_dir_entry_prev_entry {
-        let mut prev_dir_entry = storage.get_direntry(parent_dir_node, prev_dir_entry_index)?;
-        prev_dir_entry.next_entry = removed_dir_entry_next_entry;
-        storage.put_direntry(parent_dir_node, prev_dir_entry_index, prev_dir_entry)
-    }
-
-    // update next entry
-    if let Some(next_dir_entry_index) = removed_dir_entry_next_entry {
-        let mut next_dir_entry = storage.get_direntry(parent_dir_node, next_dir_entry_index)?;
-        next_dir_entry.prev_entry = removed_dir_entry_prev_entry;
-        storage.put_direntry(parent_dir_node, next_dir_entry_index, next_dir_entry)
     }
 
     let mut parent_dir_metadata = storage.get_metadata(parent_dir_node)?;

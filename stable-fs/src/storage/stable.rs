@@ -1138,8 +1138,6 @@ mod tests {
             DirEntry {
                 node,
                 name: FileName::new("test".as_bytes()).unwrap(),
-                next_entry: Some(42),
-                prev_entry: Some(24),
                 entry_type: None,
             },
         );
@@ -1149,8 +1147,6 @@ mod tests {
             direntry.name.bytes,
             FileName::new("test".as_bytes()).unwrap().bytes
         );
-        assert_eq!(direntry.next_entry, Some(42));
-        assert_eq!(direntry.prev_entry, Some(24));
     }
 
     fn new_file<M: Memory>(storage: &mut StableStorage<M>) -> Node {
