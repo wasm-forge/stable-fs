@@ -51,10 +51,10 @@ impl TransientStorage {
             link_count: 1,
             size: 0,
             times: Times::default(),
-            first_dir_entry: None,
-            last_dir_entry: None,
             chunk_type: None,
             maximum_size_allowed: None,
+            _first_dir_entry: None,
+            _last_dir_entry: None,
         };
 
         let mut result = Self {
@@ -487,6 +487,26 @@ impl Storage for TransientStorage {
         // Noop
     }
 
+    fn new_direntry_index(&self, node: Node) -> DirEntryIndex {
+        let start = (node, 0);
+        let end = (node, u32::MAX);
+
+        // Iterate in that range and take the last element
+        let last = self.direntry.range(start..=end).next_back();
+
+        if let Some(l) = last {
+            let key = l.0;
+            if key.1 == u32::MAX {
+                panic!("Cannot inssert a new directory entry, the directory is full!");
+            }
+
+            return key.1 + 1;
+        }
+
+        // empty list, return 1 as the first index
+        1
+    }
+
     fn with_direntries(
         &self,
         node: Node,
@@ -556,10 +576,10 @@ mod tests {
                     link_count: 1,
                     size: 10,
                     times: Times::default(),
-                    first_dir_entry: None,
-                    last_dir_entry: None,
                     chunk_type: Some(storage.chunk_type()),
                     maximum_size_allowed: None,
+                    _first_dir_entry: None,
+                    _last_dir_entry: None,
                 },
             )
             .unwrap();

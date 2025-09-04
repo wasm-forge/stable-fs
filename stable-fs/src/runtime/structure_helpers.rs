@@ -220,10 +220,10 @@ pub fn create_dir_entry(
                 modified: ctime,
                 created: ctime,
             },
-            first_dir_entry: None,
-            last_dir_entry: None,
             chunk_type,
             maximum_size_allowed: None,
+            _first_dir_entry: None,
+            _last_dir_entry: None,
         },
     )?;
 
@@ -354,8 +354,7 @@ pub fn add_dir_entry(
 
     let name = FileName::new(entry_name)?;
 
-    // start numbering with 1
-    let new_entry_index: DirEntryIndex = metadata.last_dir_entry.unwrap_or(0) + 1;
+    let new_entry_index: DirEntryIndex = storage.new_direntry_index(parent_dir_node);
 
     storage.put_direntry(
         parent_dir_node,
@@ -364,25 +363,11 @@ pub fn add_dir_entry(
             node: new_node,
             name,
             next_entry: None,
-            prev_entry: metadata.last_dir_entry,
+            prev_entry: None,
             entry_type: Some(file_type),
         },
     );
 
-    // update previous last entry
-    if let Some(prev_dir_entry_index) = metadata.last_dir_entry {
-        let mut prev_dir_entry = storage.get_direntry(parent_dir_node, prev_dir_entry_index)?;
-
-        prev_dir_entry.next_entry = Some(new_entry_index);
-        storage.put_direntry(parent_dir_node, prev_dir_entry_index, prev_dir_entry)
-    }
-
-    // update metadata
-    metadata.last_dir_entry = Some(new_entry_index);
-
-    if metadata.first_dir_entry.is_none() {
-        metadata.first_dir_entry = Some(new_entry_index);
-    }
     metadata.size += 1;
 
     storage.put_metadata(parent_dir_node, &metadata)?;
@@ -467,16 +452,6 @@ pub fn rm_dir_entry(
     }
 
     let mut parent_dir_metadata = storage.get_metadata(parent_dir_node)?;
-
-    // update parent metadata when the last directory entry is removed
-    if Some(removed_entry_index) == parent_dir_metadata.last_dir_entry {
-        parent_dir_metadata.last_dir_entry = removed_dir_entry_prev_entry;
-    }
-
-    // update parent metadata when the first directory entry is removed
-    if Some(removed_entry_index) == parent_dir_metadata.first_dir_entry {
-        parent_dir_metadata.first_dir_entry = removed_dir_entry_next_entry;
-    }
 
     // dir entry size is reduced by one
     parent_dir_metadata.size -= 1;

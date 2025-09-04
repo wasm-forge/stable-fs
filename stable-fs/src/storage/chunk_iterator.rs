@@ -100,10 +100,10 @@ mod tests {
                     link_count: 1,
                     size,
                     times: Times::default(),
-                    first_dir_entry: Some(42),
-                    last_dir_entry: Some(24),
                     chunk_type: Some(storage.chunk_type()),
                     maximum_size_allowed: None,
+                    _first_dir_entry: None,
+                    _last_dir_entry: None,
                 },
             )
             .unwrap();

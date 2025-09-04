@@ -119,23 +119,16 @@ impl Storage for DummyStorage {
         panic!("Not supported")
     }
 
-    /*
-
-    fn get_direntries(
-        &self,
-        _node: Node,
-        _initial_index: Option<DirEntryIndex>,
-    ) -> Result<Vec<(DirEntryIndex, DirEntry)>, Error> {
-        panic!("Not supported")
-    }
-    */
-
     fn with_direntries(
         &self,
         _node: Node,
         _initial_index: Option<DirEntryIndex>,
         _f: &mut dyn FnMut(&DirEntryIndex, &DirEntry) -> bool,
     ) {
+        panic!("Not supported")
+    }
+
+    fn new_direntry_index(&self, _node: Node) -> DirEntryIndex {
         panic!("Not supported")
     }
 }
@@ -160,10 +153,10 @@ mod tests {
                     link_count: 1,
                     size: 10,
                     times: Times::default(),
-                    first_dir_entry: Some(42),
-                    last_dir_entry: Some(24),
                     chunk_type: None,
                     maximum_size_allowed: None,
+                    _first_dir_entry: None,
+                    _last_dir_entry: None,
                 },
             )
             .unwrap();

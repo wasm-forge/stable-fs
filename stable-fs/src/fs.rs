@@ -11,8 +11,8 @@ use crate::{
         types::{RIGHTS_FD_READ, RIGHTS_FD_WRITE},
     },
     storage::{
-        Storage,
         types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
+        Storage,
     },
 };
 
@@ -468,10 +468,10 @@ impl FileSystem {
                 link_count: 0,
                 size: 0,
                 times: crate::storage::types::Times::default(),
-                first_dir_entry: None,
-                last_dir_entry: None,
                 chunk_type: None,
                 maximum_size_allowed: None,
+                _first_dir_entry: None,
+                _last_dir_entry: None,
             });
         }
 
@@ -751,13 +751,7 @@ impl FileSystem {
     ) -> Result<Vec<(Node, String)>, Error> {
         let mut res = vec![];
 
-        let meta = self.metadata(dir_fd)?;
-
-        let mut entry_index = meta.first_dir_entry;
-
-        while let Some(index) = entry_index {
-            let entry = self.get_node_direntry(meta.node, index)?;
-
+        self.with_direntries(dir_fd, Some(0), &mut |_index, entry| -> bool {
             // here we assume the entry value name is correct UTF-8
             let filename = unsafe {
                 std::str::from_utf8_unchecked(&entry.name.bytes[..(entry.name.length as usize)])
@@ -765,7 +759,9 @@ impl FileSystem {
             .to_string();
 
             if let Some(file_type) = file_type {
-                let meta = self.metadata_from_node(entry.node)?;
+                let meta = self
+                    .metadata_from_node(entry.node)
+                    .expect("Metadata not found!");
 
                 if meta.file_type == file_type {
                     res.push((entry.node, filename));
@@ -774,8 +770,8 @@ impl FileSystem {
                 res.push((entry.node, filename));
             }
 
-            entry_index = entry.next_entry;
-        }
+            true
+        })?;
 
         Ok(res)
     }

@@ -177,18 +177,6 @@ mod tests {
 
         let meta = fs.metadata(dir).unwrap();
         assert_eq!(meta.size, 2);
-
-        let entry1_index = meta.first_dir_entry.unwrap();
-        let entry1 = fs.get_direntry(dir, entry1_index).unwrap();
-
-        let entry2_index = entry1.next_entry.unwrap();
-        let entry2 = fs.get_direntry(dir, entry2_index).unwrap();
-
-        assert_eq!(entry1.prev_entry, None);
-        assert_eq!(entry1.next_entry, Some(entry2_index));
-
-        assert_eq!(entry2.prev_entry, Some(entry1_index));
-        assert_eq!(entry2.next_entry, None);
     }
 
     #[test]
@@ -232,9 +220,6 @@ mod tests {
 
         let meta = fs.metadata(fs.root_fd()).unwrap();
         assert_eq!(meta.size, 0);
-
-        assert_eq!(meta.first_dir_entry, None);
-        assert_eq!(meta.last_dir_entry, None);
     }
 
     #[test]

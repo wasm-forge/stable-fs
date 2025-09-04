@@ -58,6 +58,9 @@ pub trait Storage {
         f: &mut dyn FnMut(&DirEntryIndex, &DirEntry) -> bool,
     );
 
+    /// Return the DirEntryIndex that can be used for a new entry
+    fn new_direntry_index(&self, node: Node) -> DirEntryIndex;
+
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry);
     // Remove the DirEntry instance given the Node and DirEntryIndex.

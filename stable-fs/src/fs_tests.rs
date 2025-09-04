@@ -102,22 +102,11 @@ mod tests {
         fs.create_open_file(dir, "test3.txt", FdStat::default(), 0)
             .unwrap();
 
-        let meta = fs.metadata(fs.root_fd()).unwrap();
+        let entry_index = 1;
 
-        let entry_index = meta.first_dir_entry.unwrap();
-
-        let entry1 = fs.get_direntry(fs.root_fd(), entry_index).unwrap();
-        let entry2 = fs.get_direntry(fs.root_fd(), entry_index + 1).unwrap();
-        let entry3 = fs.get_direntry(fs.root_fd(), entry_index + 2).unwrap();
-
-        assert_eq!(entry1.prev_entry, None);
-        assert_eq!(entry1.next_entry, Some(entry_index + 1));
-
-        assert_eq!(entry2.prev_entry, Some(entry_index));
-        assert_eq!(entry2.next_entry, Some(entry_index + 2));
-
-        assert_eq!(entry3.prev_entry, Some(entry_index + 1));
-        assert_eq!(entry3.next_entry, None);
+        let _entry1 = fs.get_direntry(fs.root_fd(), entry_index).unwrap();
+        let _entry2 = fs.get_direntry(fs.root_fd(), entry_index + 1).unwrap();
+        let _entry3 = fs.get_direntry(fs.root_fd(), entry_index + 2).unwrap();
     }
 
     #[test]

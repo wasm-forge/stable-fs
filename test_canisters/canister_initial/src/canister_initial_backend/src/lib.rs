@@ -390,13 +390,7 @@ fn list_files(path: String) -> Vec<String> {
             )
             .unwrap();
 
-        let meta = fs.metadata(fd).unwrap();
-
-        let mut entry_index = meta.first_dir_entry;
-
-        while let Some(index) = entry_index {
-            let entry = fs.get_direntry(fd, index).unwrap();
-
+        fs.with_direntries(fd, Some(0), &mut |_index, entry| -> bool {
             let filename_str =
                 std::str::from_utf8(&entry.name.bytes[0..(entry.name.length as usize)]).unwrap();
 
@@ -404,8 +398,9 @@ fn list_files(path: String) -> Vec<String> {
 
             res.push(st);
 
-            entry_index = entry.next_entry;
-        }
+            true
+        })
+        .unwrap();
     });
 
     res
@@ -678,10 +673,10 @@ fn check_metadata_format() {
         link_count: 3,
         size: 123,
         times: Times::default(),
-        first_dir_entry: Some(24),
-        last_dir_entry: Some(35),
         chunk_type: Some(stable_fs::fs::ChunkType::V2),
         maximum_size_allowed: None,
+        _last_dir_entry: None,
+        _first_dir_entry: None,
     };
 
     write_obj(&mem, 16, &meta_old);
@@ -695,8 +690,6 @@ fn check_metadata_format() {
     assert_eq!(meta_old.link_count, meta_new.link_count);
     assert_eq!(meta_old.size, meta_new.size);
     assert_eq!(meta_old.times, meta_new.times);
-    assert_eq!(meta_old.first_dir_entry, meta_new.first_dir_entry);
-    assert_eq!(meta_old.last_dir_entry, meta_new.last_dir_entry);
     assert_eq!(meta_old.chunk_type, meta_new.chunk_type);
 }
 
@@ -722,8 +715,8 @@ fn check_metadata_deserialization_into_repr_c() -> u64 {
         pub link_count: u64,
         pub size: FileSize,
         pub times: Times,
-        pub first_dir_entry: Option<DirEntryIndex>,
-        pub last_dir_entry: Option<DirEntryIndex>,
+        pub _first_dir_entry: Option<DirEntryIndex>,
+        pub _last_dir_entry: Option<DirEntryIndex>,
         pub chunk_type: Option<ChunkType>,
     }
 
@@ -761,8 +754,6 @@ fn check_metadata_deserialization_into_repr_c() -> u64 {
     assert_eq!(meta_old.link_count, meta_new.link_count);
     assert_eq!(meta_old.size, meta_new.size);
     assert_eq!(meta_old.times, meta_new.times);
-    assert_eq!(meta_old.first_dir_entry, meta_new.first_dir_entry);
-    assert_eq!(meta_old.last_dir_entry, meta_new.last_dir_entry);
     assert_eq!(meta_old.chunk_type, meta_new.chunk_type);
 
     etime - stime
@@ -797,8 +788,6 @@ fn check_metadata_binary() -> String {
         modified: 66u64,
         created: 67u64,
     };
-    meta.first_dir_entry = Some(12);
-    meta.last_dir_entry = Some(13);
     meta.chunk_type = Some(stable_fs::fs::ChunkType::V2);
     meta.maximum_size_allowed = Some(0xcdab);
 

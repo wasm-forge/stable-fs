@@ -153,8 +153,8 @@ pub struct Metadata {
     pub link_count: u64,
     pub size: FileSize,
     pub times: Times,
-    pub first_dir_entry: Option<DirEntryIndex>,
-    pub last_dir_entry: Option<DirEntryIndex>,
+    pub _first_dir_entry: Option<DirEntryIndex>, // obsolete field, must be kept for future compatibility
+    pub _last_dir_entry: Option<DirEntryIndex>, // obsolete field, must be kept for future compatibility
     pub chunk_type: Option<ChunkType>,
     pub maximum_size_allowed: Option<FileSize>,
 }
@@ -335,8 +335,8 @@ mod tests {
         pub link_count: u64,
         pub size: FileSize,
         pub times: Times,
-        pub first_dir_entry: Option<DirEntryIndex>,
-        pub last_dir_entry: Option<DirEntryIndex>,
+        pub _first_dir_entry: Option<DirEntryIndex>, // obsolete field
+        pub _last_dir_entry: Option<DirEntryIndex>,  // obsolete field
         pub chunk_type: Option<ChunkType>,
     }
 
@@ -371,8 +371,6 @@ mod tests {
         assert_eq!(meta_new.link_count, meta_old.link_count);
         assert_eq!(meta_new.size, meta_old.size);
         assert_eq!(meta_new.times, meta_old.times);
-        assert_eq!(meta_new.first_dir_entry, meta_old.first_dir_entry);
-        assert_eq!(meta_new.last_dir_entry, meta_old.last_dir_entry);
         assert_eq!(meta_new.chunk_type, None);
     }
 
@@ -397,8 +395,6 @@ mod tests {
         assert_eq!(meta_new.link_count, meta_old.link_count);
         assert_eq!(meta_new.size, meta_old.size);
         assert_eq!(meta_new.times, meta_old.times);
-        assert_eq!(meta_new.first_dir_entry, meta_old.first_dir_entry);
-        assert_eq!(meta_new.last_dir_entry, meta_old.last_dir_entry);
         assert_eq!(meta_new.chunk_type, None);
     }
 
@@ -423,8 +419,6 @@ mod tests {
         assert_eq!(meta_new.link_count, meta_old.link_count);
         assert_eq!(meta_new.size, meta_old.size);
         assert_eq!(meta_new.times, meta_old.times);
-        assert_eq!(meta_new.first_dir_entry, meta_old.first_dir_entry);
-        assert_eq!(meta_new.last_dir_entry, meta_old.last_dir_entry);
         assert_eq!(meta_new.chunk_type, None);
     }
 }
