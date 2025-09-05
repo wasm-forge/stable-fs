@@ -149,8 +149,8 @@ pub struct Metadata {
     pub link_count: u64,
     pub size: FileSize,
     pub times: Times,
-    pub _first_dir_entry: Option<DirEntryIndex>, // obsolete field, must be kept for future compatibility
-    pub _last_dir_entry: Option<DirEntryIndex>, // obsolete field, must be kept for future compatibility
+    pub first_dir_entry: Option<DirEntryIndex>, // obsolete field, must be kept for compatibility because of repr(C)
+    pub last_dir_entry: Option<DirEntryIndex>, // obsolete field, must be kept for compatibility because of repr(C)
     pub chunk_type: Option<ChunkType>,
     pub maximum_size_allowed: Option<FileSize>,
 }
@@ -215,6 +215,8 @@ pub struct Times {
     pub created: u64,
 }
 
+use std::cmp::{Ord, Ordering, PartialOrd};
+
 // The name of a file or a directory. Most operating systems limit the max file
 // name length to 255.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -225,6 +227,70 @@ pub struct FileName {
         serialize_with = "serialize_file_name"
     )]
     pub bytes: [u8; MAX_FILE_NAME],
+}
+
+impl Eq for FileName {}
+
+impl PartialEq for FileName {
+    fn eq(&self, other: &Self) -> bool {
+        self.length == other.length
+            && self.bytes[..self.length as usize] == other.bytes[..other.length as usize]
+    }
+}
+
+impl PartialOrd for FileName {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FileName {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let min_len = self.length.min(other.length) as usize;
+
+        match self.bytes[..min_len].cmp(&other.bytes[..min_len]) {
+            Ordering::Equal => self.length.cmp(&other.length),
+            ord => ord,
+        }
+    }
+}
+
+use ic_stable_structures::Storable;
+
+impl Storable for FileName {
+    fn to_bytes(&'_ self) -> std::borrow::Cow<'_, [u8]> {
+        let mut buf = [0u8; MAX_FILE_NAME + 1];
+
+        buf[0] = self.length;
+        buf[1..256].copy_from_slice(&self.bytes);
+
+        std::borrow::Cow::Owned(buf.to_vec())
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = [0u8; MAX_FILE_NAME + 1];
+
+        buf[0] = self.length;
+        buf[1..256].copy_from_slice(&self.bytes);
+
+        buf.to_vec()
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        let mut arr = [0u8; MAX_FILE_NAME];
+        arr.copy_from_slice(&bytes[1..MAX_FILE_NAME + 1]);
+
+        FileName {
+            length: bytes[0],
+            bytes: arr,
+        }
+    }
+
+    const BOUND: ic_stable_structures::storable::Bound =
+        ic_stable_structures::storable::Bound::Bounded {
+            max_size: 256,
+            is_fixed_size: true,
+        };
 }
 
 fn serialize_file_name<S>(bytes: &[u8; MAX_FILE_NAME], serializer: S) -> Result<S::Ok, S::Error>
@@ -261,11 +327,20 @@ impl FileName {
         if len > MAX_FILE_NAME {
             return Err(Error::FilenameTooLong);
         }
+
         let mut bytes = [0; MAX_FILE_NAME];
         bytes[0..len].copy_from_slice(name);
         Ok(Self {
             length: len as u8,
             bytes,
+        })
+    }
+}
+
+impl std::fmt::Display for FileName {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", unsafe {
+            std::str::from_utf8_unchecked(&self.bytes[..(self.length as usize)])
         })
     }
 }

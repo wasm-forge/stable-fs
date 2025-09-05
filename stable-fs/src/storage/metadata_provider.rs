@@ -205,8 +205,8 @@ impl<M: Memory> MetadataProvider<M> {
                     times: Times::default(),
                     chunk_type: None,
                     maximum_size_allowed: None,
-                    _first_dir_entry: None,
-                    _last_dir_entry: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
                 };
 
                 return Some((metadata, None));
@@ -301,8 +301,8 @@ mod tests {
             },
             chunk_type: Some(ChunkType::V2),
             maximum_size_allowed: None,
-            _first_dir_entry: None,
-            _last_dir_entry: None,
+            first_dir_entry: None,
+            last_dir_entry: None,
         };
 
         cache.update(node, &metadata, Some(1024));
@@ -336,8 +336,8 @@ mod tests {
                 },
                 chunk_type: Some(ChunkType::V2),
                 maximum_size_allowed: None,
-                _first_dir_entry: None,
-                _last_dir_entry: None,
+                first_dir_entry: None,
+                last_dir_entry: None,
             };
 
             cache.update(node, &metadata, Some(1024));
@@ -364,8 +364,8 @@ mod tests {
             },
             chunk_type: Some(ChunkType::V2),
             maximum_size_allowed: None,
-            _first_dir_entry: None,
-            _last_dir_entry: None,
+            first_dir_entry: None,
+            last_dir_entry: None,
         };
 
         cache.update(extra_node, &extra_metadata, Some(1024));

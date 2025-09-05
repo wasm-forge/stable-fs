@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Range};
 
-use crate::storage::types::ZEROES;
+use crate::storage::types::{FileName, ZEROES};
 use ic_cdk::stable::WASM_PAGE_SIZE_IN_BYTES;
 use ic_stable_structures::{
     BTreeMap, Cell, Memory,
@@ -40,13 +40,13 @@ const FS_VERSION: u32 = 1;
 
 const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
 
-// the maximum index accepted as the end range
+/// the maximum index accepted as the end range
 const MAX_MEMORY_INDEX: u8 = 254;
 
-// the number of memory indices used by the file system (currently 8 plus some reserved ids)
+/// the number of memory indices used by the file system (currently 10)
 const MEMORY_INDEX_COUNT: u8 = 10;
 
-// index containing cached metadata (deprecated)
+/// index containing cached metadata (deprecated)
 const MOUNTED_META_PTR: u64 = 16;
 
 enum StorageMemoryIdx {
@@ -56,16 +56,19 @@ enum StorageMemoryIdx {
     DirEntries = 2,
     FileChunksV1 = 3,
 
-    // metadata for mounted files
+    /// metadata for mounted files
     MountedMetadata = 4,
 
-    // V2 chunks
+    /// V2 chunks
     FileChunksV2 = 5,
     ChunkAllocatorV2 = 6,
     FileChunksMemoryV2 = 7,
 
-    // caching helper
+    /// caching helper
     CacheJournal = 8,
+
+    /// dir entry lookup map
+    DirEntryLookup = 9,
 }
 
 struct StorageMemories<M: Memory> {
@@ -80,7 +83,9 @@ struct StorageMemories<M: Memory> {
     v2_chunks_memory: VirtualMemory<M>,
     v2_allocator_memory: VirtualMemory<M>,
 
-    cache_journal: VirtualMemory<M>,
+    cache_journal: VirtualMemory<M>, // is deprecated, will be removed in the future
+
+    direntry_lookup_memory: VirtualMemory<M>,
 }
 
 #[repr(C)]
@@ -101,29 +106,33 @@ pub struct V2FileChunks<M: Memory> {
 
 #[repr(C)]
 pub struct StableStorage<M: Memory> {
-    // some static-sized filesystem data, contains version number and the next node id.
+    /// some static-sized filesystem data, contains version number and the next node id.
     header: Cell<Header, VirtualMemory<M>>,
-    // information about the directory structure.
+    /// information about the directory structure.
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry, VirtualMemory<M>>,
-    // actual file data stored in chunks insize BTreeMap.
+    /// actual file data stored in chunks insize BTreeMap.
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk, VirtualMemory<M>>,
 
-    // file data stored in V2 file chunks
+    /// Lookup map to quickly find DirEntryIndex from a file name
+    direntry_lookup: BTreeMap<(Node, FileName), FileChunkIndex, VirtualMemory<M>>,
+
+    /// file data stored in V2 file chunks
     pub(crate) v2_filechunk: V2FileChunks<M>,
 
-    // helper object managing file metadata access of all types
+    /// helper object managing file metadata access of all types
     meta_provider: MetadataProvider<M>,
 
-    // It is not used, but is needed to keep memories alive.
+    /// It is not used, but is needed to keep memories alive.
     _memory_manager: Option<MemoryManager<M>>,
-    // active mounts.
+
+    /// active mounts.
     active_mounts: HashMap<Node, Box<dyn Memory>>,
 
-    // chunk type to use when creating new files.
+    /// chunk type to use when creating new files.
     chunk_type: ChunkType,
 
-    // chunk pointer cache. This cache reduces chunk search overhead when reading a file,
-    // or writing a file over existing data. (the new files still need insert new pointers into the treemap, hence it is rather slow)
+    /// chunk pointer cache. This cache reduces chunk search overhead when reading a file,
+    /// or writing a file over existing data. (the new files still need insert new pointers into the treemap, hence it is rather slow)
     pub(crate) ptr_cache: PtrCache,
 }
 
@@ -182,6 +191,9 @@ impl<M: Memory> StableStorage<M> {
         let cache_journal = memory_manager.get(MemoryId::new(
             memory_indices.start + StorageMemoryIdx::CacheJournal as u8,
         ));
+        let direntry_lookup_memory = memory_manager.get(MemoryId::new(
+            memory_indices.start + StorageMemoryIdx::DirEntryLookup as u8,
+        ));
 
         let memories = StorageMemories {
             header_memory,
@@ -193,6 +205,7 @@ impl<M: Memory> StableStorage<M> {
             v2_chunks_memory,
             v2_allocator_memory,
             cache_journal,
+            direntry_lookup_memory,
         };
 
         Self::new_with_custom_memories(memories)
@@ -231,8 +244,8 @@ impl<M: Memory> StableStorage<M> {
                 times: mounted_meta.times,
                 chunk_type: mounted_meta.chunk_type,
                 maximum_size_allowed: None,
-                _first_dir_entry: None,
-                _last_dir_entry: None,
+                first_dir_entry: None,
+                last_dir_entry: None,
             };
 
             if mounted_node != u64::MAX && mounted_node == mounted_meta.node {
@@ -268,6 +281,8 @@ impl<M: Memory> StableStorage<M> {
             header: Cell::init(memories.header_memory, default_header_value),
             direntry: BTreeMap::init(memories.direntry_memory),
             filechunk: BTreeMap::init(memories.filechunk_memory),
+
+            direntry_lookup: BTreeMap::init(memories.direntry_lookup_memory),
 
             v2_filechunk: V2FileChunks {
                 v2_chunk_ptr,
@@ -752,6 +767,10 @@ impl<M: Memory> Storage for StableStorage<M> {
             .ok_or(Error::NoSuchFileOrDirectory)
     }
 
+    fn get_direntry_index_by_name(&self, el: &(Node, FileName)) -> Option<DirEntryIndex> {
+        self.direntry_lookup.get(el)
+    }
+
     fn new_direntry_index(&self, node: Node) -> DirEntryIndex {
         let start = (node, 0);
         let end = (node, u32::MAX);
@@ -829,12 +848,21 @@ impl<M: Memory> Storage for StableStorage<M> {
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
     fn put_direntry(&mut self, node: Node, index: DirEntryIndex, entry: DirEntry) {
+        let name = entry.name.clone();
+
+        // main direntry
         self.direntry.insert((node, index), entry);
+
+        // direntry lookup
+        self.direntry_lookup.insert((node, name), index);
     }
 
     // Remove the DirEntry instance given the Node and DirEntryIndex.
     fn rm_direntry(&mut self, node: Node, index: DirEntryIndex) {
-        self.direntry.remove(&(node, index));
+        let r = self.direntry.remove(&(node, index));
+        if let Some(v) = r {
+            self.direntry_lookup.remove(&(node, v.name));
+        }
     }
 
     // Fill the buffer contents with data of a chosen data range.
@@ -1112,8 +1140,8 @@ mod tests {
                     times: Times::default(),
                     chunk_type: Some(storage.chunk_type()),
                     maximum_size_allowed: None,
-                    _first_dir_entry: None,
-                    _last_dir_entry: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
                 },
             )
             .unwrap();
@@ -1161,8 +1189,8 @@ mod tests {
                     link_count: 1,
                     size: 0,
                     times: Times::default(),
-                    _first_dir_entry: None,
-                    _last_dir_entry: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
                     chunk_type: Some(storage.chunk_type()),
                     maximum_size_allowed: None,
                 },

@@ -214,8 +214,8 @@ pub fn create_dir_entry(
             },
             chunk_type,
             maximum_size_allowed: None,
-            _first_dir_entry: None,
-            _last_dir_entry: None,
+            first_dir_entry: None,
+            last_dir_entry: None,
         },
     )?;
 
@@ -315,23 +315,32 @@ pub fn find_entry_index(
     path_element: &[u8],
     storage: &dyn Storage,
 ) -> Result<DirEntryIndex, Error> {
-    let mut result = Err(Error::NoSuchFileOrDirectory);
+    let name = FileName::new(path_element)?;
+    //
+    let index_found = storage.get_direntry_index_by_name(&(dir_entry_node, name));
 
-    storage.with_direntries(dir_entry_node, Some(0), &mut |index, dir_entry| {
-        if dir_entry.name.length as usize == path_element.len()
-            && dir_entry.name.bytes[0..path_element.len()] == *path_element
-        {
-            result = Ok(*index);
+    if let Some(index) = index_found {
+        Ok(index)
+    } else {
+        let mut result = Err(Error::NoSuchFileOrDirectory);
 
-            // stop iterations
-            false
-        } else {
-            // continue search
-            true
-        }
-    });
+        // do a slow search
+        storage.with_direntries(dir_entry_node, Some(0), &mut |index, dir_entry| {
+            if dir_entry.name.length as usize == path_element.len()
+                && dir_entry.name.bytes[0..path_element.len()] == *path_element
+            {
+                result = Ok(*index);
 
-    result
+                // stop iterations
+                false
+            } else {
+                // continue search
+                true
+            }
+        });
+
+        result
+    }
 }
 
 //  Add new directory entry

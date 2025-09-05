@@ -10,8 +10,8 @@ use crate::{
     storage::{
         Storage,
         types::{
-            DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileSize, FileType, Metadata, Node,
-            Times, ZEROES,
+            DirEntry, DirEntryIndex, FileChunk, FileChunkIndex, FileName, FileSize, FileType,
+            Metadata, Node, Times, ZEROES,
         },
     },
 };
@@ -34,6 +34,10 @@ pub struct TransientStorage {
     metadata: BTreeMap<Node, Metadata>,
     // Directory entries for each of the directory node.
     direntry: BTreeMap<(Node, DirEntryIndex), DirEntry>,
+
+    // Quick lookup of direntries by name
+    direntry_lookup: BTreeMap<(Node, FileName), DirEntryIndex>,
+
     // File contents for each of the file node.
     filechunk: BTreeMap<(Node, FileChunkIndex), FileChunk>,
     // Mounted memory Node metadata information.
@@ -53,8 +57,8 @@ impl TransientStorage {
             times: Times::default(),
             chunk_type: None,
             maximum_size_allowed: None,
-            _first_dir_entry: None,
-            _last_dir_entry: None,
+            first_dir_entry: None,
+            last_dir_entry: None,
         };
 
         let mut result = Self {
@@ -68,6 +72,7 @@ impl TransientStorage {
 
             mounted_meta: Default::default(),
             active_mounts: Default::default(),
+            direntry_lookup: Default::default(),
         };
 
         result
@@ -175,6 +180,10 @@ impl Storage for TransientStorage {
             .get(&(node, index))
             .ok_or(Error::NoSuchFileOrDirectory)?;
         Ok(value.clone())
+    }
+
+    fn get_direntry_index_by_name(&self, entry: &(Node, FileName)) -> Option<DirEntryIndex> {
+        self.direntry_lookup.get(entry).copied()
     }
 
     // Update or insert the DirEntry instance given the Node and DirEntryIndex.
@@ -578,8 +587,8 @@ mod tests {
                     times: Times::default(),
                     chunk_type: Some(storage.chunk_type()),
                     maximum_size_allowed: None,
-                    _first_dir_entry: None,
-                    _last_dir_entry: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
                 },
             )
             .unwrap();

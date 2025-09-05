@@ -2,9 +2,8 @@ use ic_stable_structures::Memory;
 
 use crate::{
     error::Error,
-    fs::ChunkSize,
-    fs::ChunkType,
-    storage::types::{DirEntry, DirEntryIndex, FileSize, Metadata, Node},
+    fs::{ChunkSize, ChunkType},
+    storage::types::{DirEntry, DirEntryIndex, FileName, FileSize, Metadata, Node},
 };
 
 mod allocator;
@@ -49,6 +48,9 @@ pub trait Storage {
 
     /// Retrieve the DirEntry instance given the Node and DirEntryIndex.
     fn get_direntry(&self, node: Node, index: DirEntryIndex) -> Result<DirEntry, Error>;
+
+    /// Retrieve the DirEntryIndex instance given the Node and DirEntryIndex.
+    fn get_direntry_index_by_name(&self, el: &(Node, FileName)) -> Option<DirEntryIndex>;
 
     /// get entries iterator
     fn with_direntries(

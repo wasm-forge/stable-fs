@@ -675,8 +675,8 @@ fn check_metadata_format() {
         times: Times::default(),
         chunk_type: Some(stable_fs::fs::ChunkType::V2),
         maximum_size_allowed: None,
-        _last_dir_entry: None,
-        _first_dir_entry: None,
+        last_dir_entry: None,
+        first_dir_entry: None,
     };
 
     write_obj(&mem, 16, &meta_old);

@@ -1,4 +1,8 @@
-use crate::{error::Error, fs::ChunkSize, fs::ChunkType};
+use crate::{
+    error::Error,
+    fs::{ChunkSize, ChunkType},
+    storage::types::FileName,
+};
 
 use super::{
     Storage,
@@ -131,6 +135,10 @@ impl Storage for DummyStorage {
     fn new_direntry_index(&self, _node: Node) -> DirEntryIndex {
         panic!("Not supported")
     }
+
+    fn get_direntry_index_by_name(&self, _en: &(Node, FileName)) -> Option<DirEntryIndex> {
+        panic!("Not supported")
+    }
 }
 
 #[cfg(test)]
@@ -155,8 +163,8 @@ mod tests {
                     times: Times::default(),
                     chunk_type: None,
                     maximum_size_allowed: None,
-                    _first_dir_entry: None,
-                    _last_dir_entry: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
                 },
             )
             .unwrap();

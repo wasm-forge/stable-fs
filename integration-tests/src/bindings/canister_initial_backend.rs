@@ -46,9 +46,7 @@ impl CanisterInitialBackendCanister {
         self.caller.call(
             self.canister_id,
             super::CallMode::Query,
-            "
-        check_metadata_deserialization_into_repr_c
-      ",
+            "check_metadata_deserialization_into_repr_c",
             args,
         )
     }

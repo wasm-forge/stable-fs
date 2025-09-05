@@ -102,8 +102,8 @@ mod tests {
                     times: Times::default(),
                     chunk_type: Some(storage.chunk_type()),
                     maximum_size_allowed: None,
-                    _first_dir_entry: None,
-                    _last_dir_entry: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
                 },
             )
             .unwrap();
