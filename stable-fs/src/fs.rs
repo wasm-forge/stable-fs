@@ -186,6 +186,8 @@ impl FileSystem {
         filename: &str,
         memory: Box<dyn Memory>,
     ) -> Result<(), Error> {
+        let filename = filename.strip_prefix('/').unwrap_or(filename);
+
         // create a file for the mount
         let fd = self.open(
             self.root_fd,
@@ -207,6 +209,8 @@ impl FileSystem {
 
     // initialize mounted memory with the data stored in the host file
     pub fn init_memory_file(&mut self, filename: &str) -> Result<(), Error> {
+        let filename = filename.strip_prefix('/').unwrap_or(filename);
+
         // create a file for the mount
         let fd = self.open(
             self.root_fd,
@@ -228,6 +232,8 @@ impl FileSystem {
 
     // store content of the currently active memory file to the file system
     pub fn store_memory_file(&mut self, filename: &str) -> Result<(), Error> {
+        let filename = filename.strip_prefix('/').unwrap_or(filename);
+
         // create a file for the mount
         let fd = self.open(
             self.root_fd,
@@ -249,6 +255,8 @@ impl FileSystem {
 
     // Unmount memory, the system will continue to work with the file in normal mode.
     pub fn unmount_memory_file(&mut self, filename: &str) -> Result<Box<dyn Memory>, Error> {
+        let filename = filename.strip_prefix('/').unwrap_or(filename);
+
         // create a file for the mount
         let fd = self.open(
             self.root_fd,

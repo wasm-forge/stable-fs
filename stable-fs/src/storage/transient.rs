@@ -332,24 +332,35 @@ impl Storage for TransientStorage {
         }
 
         // do extra meta preparation
-        let mut meta = self
-            .metadata
-            .get(&node)
-            .ok_or(Error::NoSuchFileOrDirectory)?
-            .clone();
+        // get the file metadata (we are not mounted at this point)
+        let mut file_meta = self.get_metadata(node)?;
 
+        let memory_size = memory.size();
+
+        // activate mount
         self.active_mounts.insert(node, memory);
 
-        let new_mounted_meta = if let Some(old_mounted_meta) = self.mounted_meta.get(&node) {
-            // we can change here something for the new mounted meta
-            old_mounted_meta.clone()
-        } else {
-            // take a copy of the file meta, set size to 0 by default
-            meta.size = 0;
-            meta
-        };
+        if let Ok(old_mounted_meta) = self.get_metadata(node) {
+            // the connected memory might have a different size from the old memory, we need to decide which size to use...
+            //
+            // Solution:
+            // if the new memory size in bytes is smaller than the old mounted metadata file size,
+            // we assume this is a new and unknown memory, and reinitialize the metadata size to match the total number of bytes
+            // provided in memory
 
-        self.mounted_meta.insert(node, new_mounted_meta);
+            if memory_size * WASM_PAGE_SIZE_IN_BYTES < old_mounted_meta.size {
+                let mut meta = old_mounted_meta.clone();
+
+                meta.size = memory_size * WASM_PAGE_SIZE_IN_BYTES;
+                self.put_metadata(node, &meta)?;
+            }
+        } else {
+            // take a copy of the file meta, set the size to the size of the memory
+            file_meta.size = memory_size * WASM_PAGE_SIZE_IN_BYTES;
+
+            // update mounted metadata
+            self.put_metadata(node, &file_meta)?;
+        };
 
         Ok(())
     }

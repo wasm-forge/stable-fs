@@ -1,6 +1,16 @@
 # Changelog
 
 
+## [v0.10.1]
+- Fix mounting on absolute paths
+- Improved mounted memory size reset logic
+
+## [v0.10.0]
+- Optimized work with folders
+- Refactor Metadata and DirEntry structures
+- Reduce copy of DirEntry
+- Add fast direntry lookup by name
+
 ## [v0.9.0]
 - switch to ic-stable-structures v0.7
 - refactor project structure
@@ -88,7 +98,8 @@
 ## [v0.5.0]
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
-[unreleased]: https://github.com/wasm-forge/stable-fs/compare/v0.9.0...main
+[v0.10.1]: https://github.com/wasm-forge/stable-fs/compare/v0.10.0...v0.10.1
+[v0.10.0]: https://github.com/wasm-forge/stable-fs/compare/v0.9.0...v0.10.0
 [v0.9.0]: https://github.com/wasm-forge/stable-fs/compare/v0.8.1...v0.9.0
 [v0.8.1]: https://github.com/wasm-forge/stable-fs/compare/v0.8.0...v0.8.1
 [v0.8.0]: https://github.com/wasm-forge/stable-fs/compare/v0.7.3...v0.8.0
