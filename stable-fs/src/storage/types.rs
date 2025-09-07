@@ -377,9 +377,54 @@ impl ic_stable_structures::Storable for DirEntry {
     const BOUND: ic_stable_structures::storable::Bound = Bound::Unbounded;
 }
 
+/// Mounting policy to determine actual mounted memory file size
+pub enum MountedFileSizePolicy {
+    /// Reuse the size from a previous mount or 0 if unknown
+    PreviousOrZero,
+    /// Reuse the size from a previous mount or determine from memory pages.
+    PreviousOrMemoryPages,
+    /// Explicitly set the file size, overriding other options.
+    Explicit(FileSize),
+    /// Determine file size from the memory pages.
+    MemoryPages,
+}
+
+impl MountedFileSizePolicy {
+    pub fn get_mounted_file_size(
+        &self,
+        previous_size: Option<FileSize>,
+        current_memory_pages: FileSize,
+    ) -> FileSize {
+        let current_size = current_memory_pages * ic_cdk::stable::WASM_PAGE_SIZE_IN_BYTES;
+
+        match self {
+            MountedFileSizePolicy::PreviousOrZero => {
+                if let Some(old_size) = previous_size
+                    && old_size <= current_size
+                {
+                    old_size
+                } else {
+                    0
+                }
+            }
+            MountedFileSizePolicy::PreviousOrMemoryPages => {
+                if let Some(old_size) = previous_size
+                    && old_size <= current_size
+                {
+                    old_size
+                } else {
+                    current_size
+                }
+            }
+            MountedFileSizePolicy::Explicit(size) => *size,
+            MountedFileSizePolicy::MemoryPages => current_size,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::fs::ChunkType;
+    use crate::{fs::ChunkType, storage::types::MountedFileSizePolicy};
 
     use super::{DirEntryIndex, FileSize, FileType, Node, Times};
     use serde::{Deserialize, Serialize};
@@ -489,5 +534,30 @@ mod tests {
         assert_eq!(meta_new.size, meta_old.size);
         assert_eq!(meta_new.times, meta_old.times);
         assert_eq!(meta_new.chunk_type, None);
+    }
+
+    #[test]
+    fn size_policy_test() {
+        use ic_cdk::stable::WASM_PAGE_SIZE_IN_BYTES as PAGE_SIZE;
+
+        let p = MountedFileSizePolicy::PreviousOrZero;
+        assert_eq!(p.get_mounted_file_size(Some(100000), 1), 0);
+        assert_eq!(p.get_mounted_file_size(Some(100000), 2), 100000);
+        assert_eq!(p.get_mounted_file_size(None, 2), 0);
+
+        let p = MountedFileSizePolicy::PreviousOrMemoryPages;
+        assert_eq!(p.get_mounted_file_size(Some(100000), 1), PAGE_SIZE);
+        assert_eq!(p.get_mounted_file_size(Some(100000), 2), 100000);
+        assert_eq!(p.get_mounted_file_size(None, 2), PAGE_SIZE * 2);
+
+        let p = MountedFileSizePolicy::Explicit(3000);
+        assert_eq!(p.get_mounted_file_size(Some(100000), 1), 3000);
+        assert_eq!(p.get_mounted_file_size(Some(100000), 2), 3000);
+        assert_eq!(p.get_mounted_file_size(None, 2), 3000);
+
+        let p = MountedFileSizePolicy::MemoryPages;
+        assert_eq!(p.get_mounted_file_size(Some(100000), 1), PAGE_SIZE);
+        assert_eq!(p.get_mounted_file_size(Some(100000), 2), PAGE_SIZE * 2);
+        assert_eq!(p.get_mounted_file_size(None, 2), PAGE_SIZE * 2);
     }
 }

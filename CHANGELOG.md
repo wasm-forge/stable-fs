@@ -1,9 +1,11 @@
 # Changelog
 
 
-## [v0.10.1]
+## [v0.11.0]
 - Fix mounting on absolute paths
 - Improved mounted memory size reset logic
+- API change: explicit mount file size policy added
+- Update dependencies
 
 ## [v0.10.0]
 - Optimized work with folders
@@ -12,29 +14,29 @@
 - Add fast direntry lookup by name
 
 ## [v0.9.0]
-- switch to ic-stable-structures v0.7
-- refactor project structure
-- integrate ic-test into project for the integration tests
-- update dependencies
+- Switch to ic-stable-structures v0.7
+- Refactor project structure
+- Integrate ic-test into project for the integration tests
+- Update dependencies
 
 
 ## [v0.8.1]
-- switch to ic-cdk v0.18.3
-- switch to pocket-ic v9.0
-- update dependencies
+- Switch to ic-cdk v0.18.3
+- Switch to pocket-ic v9.0
+- Update dependencies
 
 
 ## [v0.8.0]
-- improved Wasi compliance
-- change edition to 2024
-- update dependencies
-- bug fixes
-- faster file look-up
-- file read-write access control
-- fixed writing in append-mode
-- switch to pocket-ic v7.0
-- support for '..' in paths
-- return '.' and '..' during folder file list
+- Improved Wasi compliance
+- Change edition to 2024
+- Update dependencies
+- Bug fixes
+- Faster file look-up
+- File read-write access control
+- Fixed writing in append-mode
+- Switch to pocket-ic v7.0
+- Support for '..' in paths
+- Return '.' and '..' during folder file list
 
 
 ## [v0.7.3]
@@ -98,7 +100,7 @@
 ## [v0.5.0]
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
-[v0.10.1]: https://github.com/wasm-forge/stable-fs/compare/v0.10.0...v0.10.1
+[v0.11.0]: https://github.com/wasm-forge/stable-fs/compare/v0.10.0...v0.11.0
 [v0.10.0]: https://github.com/wasm-forge/stable-fs/compare/v0.9.0...v0.10.0
 [v0.9.0]: https://github.com/wasm-forge/stable-fs/compare/v0.8.1...v0.9.0
 [v0.8.1]: https://github.com/wasm-forge/stable-fs/compare/v0.8.0...v0.8.1

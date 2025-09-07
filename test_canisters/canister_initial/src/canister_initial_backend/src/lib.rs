@@ -14,6 +14,7 @@ use stable_fs::storage::types::DirEntryIndex;
 use stable_fs::storage::types::FileSize;
 use stable_fs::storage::types::FileType;
 use stable_fs::storage::types::Metadata;
+use stable_fs::storage::types::MountedFileSizePolicy;
 use stable_fs::storage::types::Node;
 use stable_fs::storage::types::Times;
 use std::mem;
@@ -58,7 +59,7 @@ thread_local! {
                 FileSystem::new(Box::new(storage)).unwrap()
             );
 
-            fs.borrow_mut().mount_memory_file("mount_file.txt", Box::new(memory_manager.get(MemoryId::new(155)))).unwrap();
+            fs.borrow_mut().mount_memory_file("mount_file.txt", Box::new(memory_manager.get(MemoryId::new(155))), MountedFileSizePolicy::PreviousOrZero).unwrap();
 
             fs
         })

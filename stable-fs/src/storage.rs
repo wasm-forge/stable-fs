@@ -3,7 +3,9 @@ use ic_stable_structures::Memory;
 use crate::{
     error::Error,
     fs::{ChunkSize, ChunkType},
-    storage::types::{DirEntry, DirEntryIndex, FileName, FileSize, Metadata, Node},
+    storage::types::{
+        DirEntry, DirEntryIndex, FileName, FileSize, Metadata, MountedFileSizePolicy, Node,
+    },
 };
 
 mod allocator;
@@ -28,7 +30,13 @@ pub trait Storage {
     fn new_node(&mut self) -> Node;
 
     /// mark node as mounted.
-    fn mount_node(&mut self, node: Node, memory: Box<dyn Memory>) -> Result<(), Error>;
+    fn mount_node(
+        &mut self,
+        node: Node,
+        memory: Box<dyn Memory>,
+        mount_policy: MountedFileSizePolicy,
+    ) -> Result<(), Error>;
+
     /// mark note as not mounted.
     fn unmount_node(&mut self, node: Node) -> Result<Box<dyn Memory>, Error>;
     /// return true if the node is mounted.

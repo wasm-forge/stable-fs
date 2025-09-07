@@ -12,7 +12,7 @@ use crate::{
     },
     storage::{
         Storage,
-        types::{DirEntry, DirEntryIndex, FileType, Metadata, Node},
+        types::{DirEntry, DirEntryIndex, FileType, Metadata, MountedFileSizePolicy, Node},
     },
 };
 
@@ -22,7 +22,7 @@ pub use crate::runtime::types::{
 };
 pub use crate::storage::types::FileSize;
 
-// The main class implementing the API to work with the file system.
+/// The main class implementing the API to work with the file system.
 pub struct FileSystem {
     pub(crate) root_fd: Fd,
     pub(crate) fd_table: FdTable,
@@ -185,6 +185,7 @@ impl FileSystem {
         &mut self,
         filename: &str,
         memory: Box<dyn Memory>,
+        policy: MountedFileSizePolicy,
     ) -> Result<(), Error> {
         let filename = filename.strip_prefix('/').unwrap_or(filename);
 
@@ -199,7 +200,7 @@ impl FileSystem {
 
         let result = (|| {
             let file = self.get_file(fd)?;
-            self.storage.mount_node(file.node, memory)
+            self.storage.mount_node(file.node, memory, policy)
         })();
 
         let _ = self.close(fd);

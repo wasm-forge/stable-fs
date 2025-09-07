@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     fs::{ChunkSize, ChunkType},
-    storage::types::FileName,
+    storage::types::{FileName, MountedFileSizePolicy},
 };
 
 use super::{
@@ -64,6 +64,7 @@ impl Storage for DummyStorage {
         &mut self,
         _node: Node,
         _memory: Box<dyn ic_stable_structures::Memory>,
+        _policy: MountedFileSizePolicy,
     ) -> Result<(), Error> {
         panic!("Not supported")
     }

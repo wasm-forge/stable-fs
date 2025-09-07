@@ -63,17 +63,27 @@ pub fn test_fs_setups(virtual_file_name: &str) -> Vec<FileSystem> {
     ];
 
     if !virtual_file_name.is_empty() {
+        use crate::storage::types::MountedFileSizePolicy;
+
         let mut fs = test_stable_fs_v2();
 
-        fs.mount_memory_file(virtual_file_name, Box::new(new_vector_memory()))
-            .unwrap();
+        fs.mount_memory_file(
+            virtual_file_name,
+            Box::new(new_vector_memory()),
+            MountedFileSizePolicy::PreviousOrZero,
+        )
+        .unwrap();
 
         result.push(fs);
 
         let mut fs = test_fs_transient();
 
-        fs.mount_memory_file(virtual_file_name, Box::new(new_vector_memory()))
-            .unwrap();
+        fs.mount_memory_file(
+            virtual_file_name,
+            Box::new(new_vector_memory()),
+            MountedFileSizePolicy::PreviousOrZero,
+        )
+        .unwrap();
 
         result.push(fs);
     }
@@ -183,6 +193,7 @@ mod test_env {
     use crate::runtime::types::OpenFlags;
     use crate::runtime::types::Whence;
     use crate::storage::types::FileType;
+    use crate::storage::types::MountedFileSizePolicy;
     use crate::test_utils::FileSystem;
     use crate::test_utils::SrcBuf;
     use crate::test_utils::StableStorage;
@@ -221,7 +232,7 @@ mod test_env {
                 );
 
                 // use mounted memory
-                fs.borrow_mut().mount_memory_file("file.txt", Box::new(memory_manager.get(MemoryId::new(155)))).unwrap();
+                fs.borrow_mut().mount_memory_file("file.txt", Box::new(memory_manager.get(MemoryId::new(155))), MountedFileSizePolicy::PreviousOrZero).unwrap();
 
                 fs
             })

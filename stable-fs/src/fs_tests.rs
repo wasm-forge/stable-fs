@@ -5,7 +5,7 @@ mod tests {
 
     use crate::fs::FileSystem;
     use crate::runtime::types::Fd;
-    use crate::storage::types::Node;
+    use crate::storage::types::{MountedFileSizePolicy, Node};
 
     use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
     use ic_stable_structures::{Memory, VectorMemory};
@@ -815,8 +815,12 @@ mod tests {
 
         let root_fd = fs.root_fd();
 
-        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
-            .unwrap();
+        fs.mount_memory_file(
+            "test.txt",
+            Box::new(memory.clone()),
+            MountedFileSizePolicy::PreviousOrZero,
+        )
+        .unwrap();
 
         let content = "ABCDEFG123";
 
@@ -836,8 +840,12 @@ mod tests {
 
         let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
-        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
-            .unwrap();
+        fs.mount_memory_file(
+            "test.txt",
+            Box::new(memory.clone()),
+            MountedFileSizePolicy::PreviousOrZero,
+        )
+        .unwrap();
 
         let root_fd = fs.root_fd();
         let content = "ABCDEFG123";
@@ -846,8 +854,12 @@ mod tests {
         // imitate canister upgrade (we keep the memory manager but recreate the file system with the same virtual memories)
         let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
-        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
-            .unwrap();
+        fs.mount_memory_file(
+            "test.txt",
+            Box::new(memory.clone()),
+            MountedFileSizePolicy::PreviousOrZero,
+        )
+        .unwrap();
         let root_fd = fs.root_fd();
 
         let content = read_text_file(&mut fs, root_fd, "test.txt", 0, 100);
@@ -863,8 +875,12 @@ mod tests {
 
         let root_fd = fs.root_fd();
 
-        fs.mount_memory_file("test.txt", Box::new(memory.clone()))
-            .unwrap();
+        fs.mount_memory_file(
+            "test.txt",
+            Box::new(memory.clone()),
+            MountedFileSizePolicy::PreviousOrZero,
+        )
+        .unwrap();
 
         let res = fs.remove_file(root_fd, "test.txt");
 
@@ -887,8 +903,12 @@ mod tests {
 
             let file_name = "test.txt";
 
-            fs.mount_memory_file(file_name, Box::new(memory1.clone()))
-                .unwrap();
+            fs.mount_memory_file(
+                file_name,
+                Box::new(memory1.clone()),
+                MountedFileSizePolicy::PreviousOrZero,
+            )
+            .unwrap();
 
             let content = "ABCDEFG123";
             let len = content.len();
@@ -921,8 +941,12 @@ mod tests {
             fs.unmount_memory_file(file_name).unwrap();
 
             // init new memory into a file
-            fs.mount_memory_file(file_name, Box::new(memory2.clone()))
-                .unwrap();
+            fs.mount_memory_file(
+                file_name,
+                Box::new(memory2.clone()),
+                MountedFileSizePolicy::PreviousOrZero,
+            )
+            .unwrap();
 
             fs.init_memory_file(file_name).unwrap();
 
@@ -947,8 +971,12 @@ mod tests {
             let hello_message = "Hello host".to_string();
             let hello_message2 = "1234Hello from regular file".to_string();
 
-            fs.mount_memory_file(file_name, Box::new(memory.clone()))
-                .unwrap();
+            fs.mount_memory_file(
+                file_name,
+                Box::new(memory.clone()),
+                MountedFileSizePolicy::PreviousOrZero,
+            )
+            .unwrap();
 
             // write something into a host memory file
             write_text_file(&mut fs, dir_fd, file_name, &hello_message, 1).unwrap();
@@ -966,8 +994,12 @@ mod tests {
             assert_eq!(str, "".to_string());
 
             // mount again, the old content should recover
-            fs.mount_memory_file(file_name, Box::new(memory.clone()))
-                .unwrap();
+            fs.mount_memory_file(
+                file_name,
+                Box::new(memory.clone()),
+                MountedFileSizePolicy::PreviousOrZero,
+            )
+            .unwrap();
             let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
             assert_eq!(str, hello_message);
 
@@ -985,8 +1017,12 @@ mod tests {
             assert_eq!(str, hello_message2);
 
             // after mounting, we still have the old content
-            fs.mount_memory_file(file_name, Box::new(memory.clone()))
-                .unwrap();
+            fs.mount_memory_file(
+                file_name,
+                Box::new(memory.clone()),
+                MountedFileSizePolicy::PreviousOrZero,
+            )
+            .unwrap();
             let str = read_text_file(&mut fs, dir_fd, file_name, 0, 1000);
             assert_eq!(str, hello_message);
 
