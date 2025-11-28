@@ -8,17 +8,22 @@ resolver = "2"
 
 [workspace.dependencies]
 
-bitflags = "2.9.4"
+bitflags = "2.10.0"
 ciborium = "0.2.2"
 
-ic-cdk = "0.18.5"
-ic-stable-structures = "0.7.0"
+ic-cdk = "0.19.0"
+ic-stable-structures = "0.7.2"
 
 serde = "1.0.219"
-serde_bytes = "0.11.17"
+serde_bytes = "0.11.19"
 
-candid = "0.10.14"
-pocket-ic = "9.0.2"
+candid = "0.10.20"
+pocket-ic = "10.0.0"
 hex = "0.4.3"
-
+cargo_metadata = "0.23.1"
+tokio = { version = "1.48", features = ["full"] }
+convert_case = "0.10.0"
 stable-fs = { path = "stable-fs" }
+
+ic-test = "0.4"
+

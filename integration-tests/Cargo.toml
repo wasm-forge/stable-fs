@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dev-dependencies]
-candid = "0.10"
-cargo_metadata = "0.22.0"
-ic-test = {version = "0.3.0-cdk18"}
-pocket-ic = "9.0.2"
-serde = "1.0.219"
-serde_bytes = "0.11.17"
-tokio = { version = "1", features = ["full"] }
-convert_case = "0.8.0"
+candid.workspace = true
+cargo_metadata.workspace = true
+ic-test.workspace = true
+pocket-ic.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+tokio.workspace = true
+convert_case.workspace = true

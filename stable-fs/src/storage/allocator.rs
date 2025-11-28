@@ -196,7 +196,7 @@ impl<M: Memory> ChunkPtrAllocator<M> {
 
     #[cfg(test)]
     fn check_free(&self, ptr: FileChunkPtr) {
-        if ptr % self.chunk_size() as u64 != 0 {
+        if !ptr.is_multiple_of(self.chunk_size() as u64) {
             panic!("Pointer released {ptr} must be a multiple of FILE_CHUNK_SIZE!");
         }
 

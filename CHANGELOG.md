@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.12.0]
+- Switch to a newer ic-cdk v0.19.0
+
 
 ## [v0.11.0]
 - Fix mounting on absolute paths
