@@ -2,6 +2,7 @@
 name = "integration-tests"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dev-dependencies]
 candid.workspace = true
@@ -12,3 +13,4 @@ serde.workspace = true
 serde_bytes.workspace = true
 tokio.workspace = true
 convert_case.workspace = true
+
