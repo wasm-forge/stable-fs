@@ -2098,4 +2098,52 @@ mod tests {
             assert_eq!("8", r8);
         }
     }
+
+    #[test]
+    fn root_dir_is_writable() {
+        use crate::runtime::types::RIGHTS_FD_WRITE;
+
+        for fs in test_fs_setups("virtual_memory.txt") {
+            let root = fs.root_fd();
+            let (_ftype, stat) = fs.get_stat(root).unwrap();
+            assert!(
+                stat.rights_base & RIGHTS_FD_WRITE != 0,
+                "root dir should be writable"
+            );
+        }
+    }
+
+    #[test]
+    fn created_dir_is_writable() {
+        use crate::runtime::types::RIGHTS_FD_WRITE;
+
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let root = fs.root_fd();
+            let dir_fd = fs
+                .create_open_directory(root, "testdir", FdStat::default(), 0)
+                .unwrap();
+            let (_ftype, stat) = fs.get_stat(dir_fd).unwrap();
+            assert!(
+                stat.rights_base & RIGHTS_FD_WRITE != 0,
+                "newly created dir should be writable"
+            );
+        }
+    }
+
+    #[test]
+    fn created_file_is_writable() {
+        use crate::runtime::types::RIGHTS_FD_WRITE;
+
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let root = fs.root_fd();
+            let fd = fs
+                .open(root, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+            let (_ftype, stat) = fs.get_stat(fd).unwrap();
+            assert!(
+                stat.rights_base & RIGHTS_FD_WRITE != 0,
+                "newly created file should be writable"
+            );
+        }
+    }
 }
