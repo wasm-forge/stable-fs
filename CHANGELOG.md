@@ -1,8 +1,11 @@
 # Changelog
 
+
+## [v0.13.0]
+- Switch to a newer ic-cdk v0.20.0
+
 ## [v0.12.0]
 - Switch to a newer ic-cdk v0.19.0
-
 
 ## [v0.11.0]
 - Fix mounting on absolute paths
@@ -103,6 +106,8 @@
 ## [v0.5.0]
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
+[v0.13.0]: https://github.com/wasm-forge/stable-fs/compare/v0.12.0...v0.13.0
+[v0.12.0]: https://github.com/wasm-forge/stable-fs/compare/v0.11.0...v0.12.0
 [v0.11.0]: https://github.com/wasm-forge/stable-fs/compare/v0.10.0...v0.11.0
 [v0.10.0]: https://github.com/wasm-forge/stable-fs/compare/v0.9.0...v0.10.0
 [v0.9.0]: https://github.com/wasm-forge/stable-fs/compare/v0.8.1...v0.9.0
