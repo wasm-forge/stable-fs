@@ -1324,7 +1324,7 @@ dependencies = [
 [[package]]
 name = "ic-stable-structures"
 version = "0.7.2"
-source = "git+https://github.com/humandebri/stable-structures?branch=feature%2Fmemory-manager-u16-v2#a24a7d7572e36eda104abd8280946aeb7ac4e060"
+source = "git+https://github.com/humandebri/stable-structures?rev=a24a7d7572e36eda104abd8280946aeb7ac4e060#a24a7d7572e36eda104abd8280946aeb7ac4e060"
 dependencies = [
  "ic_principal",
 ]

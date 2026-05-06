@@ -12,7 +12,7 @@ bitflags = "2.10.0"
 ciborium = "0.2.2"
 
 ic-cdk = "0.19.0"
-ic-stable-structures = "0.7.2"
+ic-stable-structures = { git = "https://github.com/humandebri/stable-structures", rev = "a24a7d7572e36eda104abd8280946aeb7ac4e060" }
 
 serde = "1.0.219"
 serde_bytes = "0.11.19"
@@ -26,6 +26,3 @@ convert_case = "0.10.0"
 stable-fs = { path = "stable-fs" }
 
 ic-test = "0.4"
-
-[patch.crates-io]
-ic-stable-structures = { git = "https://github.com/humandebri/stable-structures", branch = "feature/memory-manager-u16-v2" }
