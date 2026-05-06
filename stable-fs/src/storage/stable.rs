@@ -40,8 +40,9 @@ const FS_VERSION: u32 = 1;
 
 const DEFAULT_FIRST_MEMORY_INDEX: u16 = 229;
 
-/// the maximum index accepted as the end range
-const MAX_MEMORY_INDEX: u16 = 254;
+/// The maximum memory index accepted as the end range.
+/// `u16::MAX` is reserved by `ic-stable-structures`.
+const MAX_MEMORY_INDEX: u16 = u16::MAX - 1;
 
 /// the number of memory indices used by the file system (currently 10)
 const MEMORY_INDEX_COUNT: u16 = 10;
@@ -154,11 +155,15 @@ impl<M: Memory> StableStorage<M> {
         memory_manager: &MemoryManager<M>,
         memory_indices: Range<u16>,
     ) -> StableStorage<M> {
+        if memory_indices.end <= memory_indices.start {
+            panic!("The memory index range must not be empty");
+        }
+
         if memory_indices.end - memory_indices.start < MEMORY_INDEX_COUNT {
             panic!("The memory index range must include at least {MEMORY_INDEX_COUNT} incides");
         }
 
-        if memory_indices.end > MAX_MEMORY_INDEX {
+        if memory_indices.end - 1 > MAX_MEMORY_INDEX {
             panic!("Last memory index must be less than or equal to {MAX_MEMORY_INDEX}");
         }
 
@@ -1136,6 +1141,61 @@ mod tests {
     use crate::storage::types::FileName;
 
     use super::*;
+
+    #[test]
+    fn new_with_memory_manager_accepts_u16_memory_ids() {
+        let memory_manager = MemoryManager::init(DefaultMemoryImpl::default());
+        let mut storage = StableStorage::new_with_memory_manager(&memory_manager, 1000..1010u16);
+
+        let node = storage.new_node();
+        storage
+            .put_metadata(
+                node,
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 0,
+                    times: Times::default(),
+                    chunk_type: Some(storage.chunk_type()),
+                    maximum_size_allowed: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(storage.get_metadata(node).unwrap().node, node);
+    }
+
+    #[test]
+    fn new_with_memory_manager_accepts_highest_non_reserved_memory_id() {
+        let memory_manager = MemoryManager::init(DefaultMemoryImpl::default());
+        let mut storage = StableStorage::new_with_memory_manager(
+            &memory_manager,
+            (u16::MAX - MEMORY_INDEX_COUNT)..u16::MAX,
+        );
+
+        let node = storage.new_node();
+        storage
+            .put_metadata(
+                node,
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 0,
+                    times: Times::default(),
+                    chunk_type: Some(storage.chunk_type()),
+                    maximum_size_allowed: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(storage.get_metadata(node).unwrap().node, node);
+    }
 
     #[test]
     fn read_and_write_filechunk() {
