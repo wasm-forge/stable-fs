@@ -38,13 +38,13 @@ use super::{
 pub const ROOT_NODE: Node = 0;
 const FS_VERSION: u32 = 1;
 
-const DEFAULT_FIRST_MEMORY_INDEX: u8 = 229;
+const DEFAULT_FIRST_MEMORY_INDEX: u16 = 229;
 
 /// the maximum index accepted as the end range
-const MAX_MEMORY_INDEX: u8 = 254;
+const MAX_MEMORY_INDEX: u16 = 254;
 
 /// the number of memory indices used by the file system (currently 10)
-const MEMORY_INDEX_COUNT: u8 = 10;
+const MEMORY_INDEX_COUNT: u16 = 10;
 
 /// index containing cached metadata (deprecated)
 const MOUNTED_META_PTR: u64 = 16;
@@ -152,7 +152,7 @@ impl<M: Memory> StableStorage<M> {
 
     pub fn new_with_memory_manager(
         memory_manager: &MemoryManager<M>,
-        memory_indices: Range<u8>,
+        memory_indices: Range<u16>,
     ) -> StableStorage<M> {
         if memory_indices.end - memory_indices.start < MEMORY_INDEX_COUNT {
             panic!("The memory index range must include at least {MEMORY_INDEX_COUNT} incides");
@@ -163,36 +163,36 @@ impl<M: Memory> StableStorage<M> {
         }
 
         let header_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::Header as u8,
+            memory_indices.start + StorageMemoryIdx::Header as u16,
         ));
         let metadata_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::Metadata as u8,
+            memory_indices.start + StorageMemoryIdx::Metadata as u16,
         ));
         let direntry_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::DirEntries as u8,
+            memory_indices.start + StorageMemoryIdx::DirEntries as u16,
         ));
         let filechunk_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::FileChunksV1 as u8,
+            memory_indices.start + StorageMemoryIdx::FileChunksV1 as u16,
         ));
         let mounted_meta_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::MountedMetadata as u8,
+            memory_indices.start + StorageMemoryIdx::MountedMetadata as u16,
         ));
 
         let v2_chunk_ptr_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::FileChunksV2 as u8,
+            memory_indices.start + StorageMemoryIdx::FileChunksV2 as u16,
         ));
         let v2_allocator_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::ChunkAllocatorV2 as u8,
+            memory_indices.start + StorageMemoryIdx::ChunkAllocatorV2 as u16,
         ));
         let v2_chunks_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::FileChunksMemoryV2 as u8,
+            memory_indices.start + StorageMemoryIdx::FileChunksMemoryV2 as u16,
         ));
 
         let cache_journal = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::CacheJournal as u8,
+            memory_indices.start + StorageMemoryIdx::CacheJournal as u16,
         ));
         let direntry_lookup_memory = memory_manager.get(MemoryId::new(
-            memory_indices.start + StorageMemoryIdx::DirEntryLookup as u8,
+            memory_indices.start + StorageMemoryIdx::DirEntryLookup as u16,
         ));
 
         let memories = StorageMemories {

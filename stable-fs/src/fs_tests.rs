@@ -838,7 +838,7 @@ mod tests {
         let memory_manager = MemoryManager::init(new_vector_memory());
         let memory = memory_manager.get(MemoryId::new(1));
 
-        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
+        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u16);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
         fs.mount_memory_file(
             "test.txt",
@@ -852,7 +852,7 @@ mod tests {
         write_text_file(&mut fs, root_fd, "test.txt", content, 2).unwrap();
 
         // imitate canister upgrade (we keep the memory manager but recreate the file system with the same virtual memories)
-        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
+        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u16);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
         fs.mount_memory_file(
             "test.txt",
