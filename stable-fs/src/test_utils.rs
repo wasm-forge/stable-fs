@@ -216,9 +216,9 @@ mod test_env {
                 let memory_manager = m.borrow();
 
                 //v0.4
-                //let storage = StableStorage::new_with_memory_manager(&memory_manager, 200u8);
+                //let storage = StableStorage::new_with_memory_manager(&memory_manager, 200u16);
                 //v0.5, v0.6 ...
-                let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
+                let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u16);
 
                 // set chunk version to V1
                 //storage.set_chunk_type(storage::stable::ChunkType::V1);

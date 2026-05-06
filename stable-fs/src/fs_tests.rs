@@ -838,7 +838,7 @@ mod tests {
         let memory_manager = MemoryManager::init(new_vector_memory());
         let memory = memory_manager.get(MemoryId::new(1));
 
-        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
+        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u16);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
         fs.mount_memory_file(
             "test.txt",
@@ -852,7 +852,7 @@ mod tests {
         write_text_file(&mut fs, root_fd, "test.txt", content, 2).unwrap();
 
         // imitate canister upgrade (we keep the memory manager but recreate the file system with the same virtual memories)
-        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210);
+        let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u16);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
         fs.mount_memory_file(
             "test.txt",
@@ -1859,41 +1859,24 @@ mod tests {
         Ok(())
     }
 
-    fn new_vector_memory_init(v: Vec<u8>) -> VectorMemory {
-        use std::{cell::RefCell, rc::Rc};
-
-        Rc::new(RefCell::new(v))
-    }
-
-    /*
     #[test]
-    fn test_reading_structure() {
-        let v = std::fs::read("./test_canisters/res/memory-v0_4-op35_1000.bin").unwrap();
-        let memory = new_vector_memory_init(v);
-
-        let v_files = std::fs::read("./test_canisters/res/structure-v0_4-op35_1000.txt").unwrap();
-        let files_old = std::str::from_utf8(&v_files).unwrap();
-
-        let storage = StableStorage::new(memory);
-
-        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
-        let files = list_all_files_as_string(&mut fs).unwrap();
-
-        assert_eq!(files, files_old);
-    }
-    */
-
-    #[test]
-    fn test_file_content_upgrade_from_stable_fs_v0_4() {
+    fn test_file_content_after_filesystem_reopen() {
         let file_name = "some_folder/some_file.txt";
         let old_content = "some content";
         let new_content = "other content";
 
-        // read old version
-        let v = std::fs::read("../test_canisters/res/memory-v0.4-some_file_content.bin").unwrap();
-        let memory = new_vector_memory_init(v);
-        let storage = StableStorage::new(memory);
+        let memory = new_vector_memory();
+        let storage = StableStorage::new(memory.clone());
 
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+        let dir_fd = fs
+            .create_open_directory(fs.root_fd(), "some_folder", FdStat::default(), 0)
+            .unwrap();
+        fs.close(dir_fd).unwrap();
+        let root_fd = fs.root_fd();
+        write_text_file(&mut fs, root_fd, file_name, old_content, 1).unwrap();
+
+        let storage = StableStorage::new(memory);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
 
         let fd = fs
@@ -1949,18 +1932,9 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_structure_v4_with_current_version() {
-        // read old version
-        let v = std::fs::read("../test_canisters/res/memory-v0_4-op35_1000.bin").unwrap();
-        let memory = new_vector_memory_init(v);
-        let storage = StableStorage::new(memory);
-
-        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
-        let files_v4 = list_all_files_as_string(&mut fs).unwrap();
-
-        // generate new version
+    fn test_generate_structure_matches_current_fixture() {
         let memory = new_vector_memory();
-        let storage = StableStorage::new(memory.clone());
+        let storage = StableStorage::new(memory);
         let mut fs = FileSystem::new(Box::new(storage)).unwrap();
         let root_fd = fs
             .create_open_directory(fs.root_fd(), "root_dir", FdStat::default(), 0)
@@ -1971,8 +1945,10 @@ mod tests {
         fs.close(root_fd).unwrap();
 
         let files_v7 = list_all_files_as_string(&mut fs).unwrap();
+        let fixture =
+            std::fs::read_to_string("../test_canisters/res/structure-v0_7-op35_1000.txt").unwrap();
 
-        assert_eq!(files_v4, files_v7);
+        assert_eq!(fixture, files_v7);
     }
 
     #[test]

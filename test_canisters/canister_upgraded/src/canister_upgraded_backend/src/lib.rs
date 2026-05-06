@@ -53,7 +53,7 @@ thread_local! {
         MEMORY_MANAGER.with(|m| {
             let memory_manager = m.borrow();
 
-            let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u8);
+            let storage = StableStorage::new_with_memory_manager(&memory_manager, 200..210u16);
 
             let fs = RefCell::new(
                 FileSystem::new(Box::new(storage)).unwrap()

@@ -27,3 +27,5 @@ stable-fs = { path = "stable-fs" }
 
 ic-test = "0.4"
 
+[patch.crates-io]
+ic-stable-structures = { git = "https://github.com/humandebri/stable-structures", branch = "feature/memory-manager-u16-v2" }

@@ -1396,8 +1396,7 @@ dependencies = [
 [[package]]
 name = "ic-stable-structures"
 version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ee3372ddc0cf2a747fc26ce2d075a240ed6bfab151e63bc70109e8967f7ce6f"
+source = "git+https://github.com/humandebri/stable-structures?branch=feature%2Fmemory-manager-u16-v2#a24a7d7572e36eda104abd8280946aeb7ac4e060"
 dependencies = [
  "ic_principal",
 ]
