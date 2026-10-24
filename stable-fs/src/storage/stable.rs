@@ -644,9 +644,8 @@ impl<M: Memory> StableStorage<M> {
         }
 
         // fill with zeros the last chunk memory above the file size
-        if first_deletable_index > 0 {
-            let offset = new_size as FileSize % chunk_size as FileSize;
-
+        let offset = new_size as FileSize % chunk_size as FileSize;
+        if first_deletable_index > 0 && offset > 0 {
             self.write_filechunk_v1(
                 node,
                 first_deletable_index - 1,
@@ -677,8 +676,8 @@ impl<M: Memory> StableStorage<M> {
         }
 
         // fill with zeros the last chunk memory above the file size
-        if first_deletable_index > 0 {
-            let offset = new_size as FileSize % chunk_size as FileSize;
+        let offset = new_size as FileSize % chunk_size as FileSize;
+        if first_deletable_index > 0 && offset > 0 {
             self.write_chunks_v2(node, new_size, &ZEROES[0..(chunk_size - offset as usize)])?;
         }
 
@@ -1294,6 +1293,50 @@ mod tests {
         // First 5 bytes should remain "12345", rest must be zero:
         assert_eq!(&buf_grow[..5], b"12345");
         assert_eq!(&buf_grow[5..], [0; 5]);
+    }
+
+    fn shrink_keeps_data(chunk_type: ChunkType, new_size: usize) {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        storage.set_chunk_size(ChunkSize::CHUNK4K).unwrap();
+        storage.set_chunk_type(chunk_type);
+
+        let node = new_file(&mut storage);
+
+        let chunk_size = ChunkSize::CHUNK4K as usize;
+        let data: Vec<u8> = (0..3 * chunk_size).map(|i| (i % 251) as u8).collect();
+
+        storage.write(node, 0, &data).unwrap();
+
+        storage.resize_file(node, new_size as u64).unwrap();
+
+        let mut buf = vec![0u8; new_size];
+        storage.read(node, 0, &mut buf).unwrap();
+
+        assert_eq!(
+            buf,
+            data[..new_size],
+            "{chunk_type:?}: data mismatch after shrinking to {new_size} bytes"
+        );
+    }
+
+    #[test]
+    fn shrink_v1_to_chunk_multiple_keeps_data() {
+        shrink_keeps_data(ChunkType::V1, 2 * ChunkSize::CHUNK4K as usize);
+    }
+
+    #[test]
+    fn shrink_v2_to_chunk_multiple_keeps_data() {
+        shrink_keeps_data(ChunkType::V2, 2 * ChunkSize::CHUNK4K as usize);
+    }
+
+    #[test]
+    fn shrink_v1_to_partial_chunk_keeps_data() {
+        shrink_keeps_data(ChunkType::V1, 5096);
+    }
+
+    #[test]
+    fn shrink_v2_to_partial_chunk_keeps_data() {
+        shrink_keeps_data(ChunkType::V2, 5096);
     }
 
     #[test]

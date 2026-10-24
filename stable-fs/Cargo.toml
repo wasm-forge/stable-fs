@@ -1,6 +1,6 @@
 [package]
 name = "stable-fs"
-version = "0.13.0"
+version = "0.13.1"
 edition = "2024"
 description = "A Simple File system using the stable structures of the Internet Computer that implements WASI endpoints"
 keywords = ["ic", "internet-computer", "file-system"]
@@ -20,4 +20,3 @@ ciborium.workspace = true
 [dev-dependencies]
 candid.workspace = true
 pocket-ic.workspace = true
-
