@@ -2182,4 +2182,22 @@ mod tests {
 
         fs.close(fd).unwrap();
     }
+
+    #[test]
+    fn failed_directory_hard_link_keeps_destination() {
+        let mut fs = test_stable_fs_v2();
+        let root = fs.root_fd();
+
+        fs.mkdir(root, "src", FdStat::default(), 0).unwrap();
+        fs.mkdir(root, "dst", FdStat::default(), 0).unwrap();
+
+        let result = fs.create_hard_link(root, "src", root, "dst");
+        assert_eq!(result, Err(Error::OperationNotPermitted));
+
+        let dst = fs.open(root, "dst", FdStat::default(), OpenFlags::DIRECTORY, 0);
+        assert!(
+            dst.is_ok(),
+            "failed directory hard-link removed the destination"
+        );
+    }
 }

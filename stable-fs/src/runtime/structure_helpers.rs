@@ -122,6 +122,11 @@ pub fn create_hard_link(
     let src_node: Node = find_node(src_dir_node, src_path, names_cache, storage)?;
     let mut metadata = storage.get_metadata(src_node)?;
 
+    // only allow creating a hardlink on a folder if it is a part of renaming and another link will be removed
+    if !is_renaming && metadata.file_type == FileType::Directory {
+        return Err(Error::OperationNotPermitted);
+    }
+
     match find_node(parent_dir_node, new_path, names_cache, storage) {
         Err(Error::NoSuchFileOrDirectory) => {}
         Ok(dst_node) => {
@@ -160,11 +165,6 @@ pub fn create_hard_link(
 
     //
     let (dir_node, leaf_name) = create_path(parent_dir_node, new_path, None, ctime, storage)?;
-
-    // only allow creating a hardlink on a folder if it is a part of renaming and another link will be removed
-    if !is_renaming && metadata.file_type == FileType::Directory {
-        return Err(Error::OperationNotPermitted);
-    }
 
     metadata.link_count += 1;
     storage.put_metadata(src_node, &metadata)?;
