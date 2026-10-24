@@ -3,7 +3,7 @@ use crate::runtime::types::Whence;
 #[cfg(test)]
 mod tests {
 
-    use crate::fs::FileSystem;
+    use crate::fs::{FileSystem, Whence};
     use crate::runtime::types::Fd;
     use crate::storage::types::{MountedFileSizePolicy, Node};
 
@@ -2097,5 +2097,107 @@ mod tests {
             assert_eq!("7", r7);
             assert_eq!("8", r8);
         }
+    }
+
+    #[test]
+    fn root_dir_is_writable() {
+        use crate::runtime::types::RIGHTS_FD_WRITE;
+
+        for fs in test_fs_setups("virtual_memory.txt") {
+            let root = fs.root_fd();
+            let (_ftype, stat) = fs.get_stat(root).unwrap();
+            assert!(
+                stat.rights_base & RIGHTS_FD_WRITE != 0,
+                "root dir should be writable"
+            );
+        }
+    }
+
+    #[test]
+    fn created_dir_is_writable() {
+        use crate::runtime::types::RIGHTS_FD_WRITE;
+
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let root = fs.root_fd();
+            let dir_fd = fs
+                .create_open_directory(root, "testdir", FdStat::default(), 0)
+                .unwrap();
+            let (_ftype, stat) = fs.get_stat(dir_fd).unwrap();
+            assert!(
+                stat.rights_base & RIGHTS_FD_WRITE != 0,
+                "newly created dir should be writable"
+            );
+        }
+    }
+
+    #[test]
+    fn created_file_is_writable() {
+        use crate::runtime::types::RIGHTS_FD_WRITE;
+
+        for mut fs in test_fs_setups("virtual_memory.txt") {
+            let root = fs.root_fd();
+            let fd = fs
+                .open(root, "test.txt", FdStat::default(), OpenFlags::CREATE, 0)
+                .unwrap();
+            let (_ftype, stat) = fs.get_stat(fd).unwrap();
+            assert!(
+                stat.rights_base & RIGHTS_FD_WRITE != 0,
+                "newly created file should be writable"
+            );
+        }
+    }
+
+    #[test]
+    fn shrinking_legacy_v1_file_keeps_data() {
+        let file_name = "some_folder/some_file.txt";
+        let old_content = b"some content";
+
+        let v = std::fs::read("../test_canisters/res/memory-v0.4-some_file_content.bin").unwrap();
+        let memory = new_vector_memory_init(v);
+        let storage = StableStorage::new(memory);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+
+        let fd = fs
+            .open(
+                fs.root_fd(),
+                file_name,
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
+
+        let mut buf = [0u8; 12];
+        let n = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(n, 12);
+        assert_eq!(&buf, old_content);
+
+        fs.set_file_size(fd, 5 as FileSize).unwrap();
+        fs.seek(fd, 0, Whence::SET).unwrap();
+
+        let mut buf = [0u8; 5];
+        let n = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(n, 5);
+        assert_eq!(&buf, &old_content[..5]);
+
+        fs.close(fd).unwrap();
+    }
+
+    #[test]
+    fn failed_directory_hard_link_keeps_destination() {
+        let mut fs = test_stable_fs_v2();
+        let root = fs.root_fd();
+
+        fs.mkdir(root, "src", FdStat::default(), 0).unwrap();
+        fs.mkdir(root, "dst", FdStat::default(), 0).unwrap();
+
+        let result = fs.create_hard_link(root, "src", root, "dst");
+        assert_eq!(result, Err(Error::OperationNotPermitted));
+
+        let dst = fs.open(root, "dst", FdStat::default(), OpenFlags::DIRECTORY, 0);
+        assert!(
+            dst.is_ok(),
+            "failed directory hard-link removed the destination"
+        );
     }
 }

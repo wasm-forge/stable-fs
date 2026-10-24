@@ -1,6 +1,15 @@
 # Changelog
 
 
+## [v0.13.1]
+- Switch to a newer ic-cdk v0.20.3
+- Update dependencies, including pocket-ic v16.1 for tests
+- Fix file resizing to clear data above the new file size
+- Fix legacy V1 files switching to V2 reads after resizing
+- Reject chunk type changes on non-empty files during metadata updates
+- Fix failed directory hard links removing the existing destination
+- Add tests for file access rights
+
 ## [v0.13.0]
 - Switch to a newer ic-cdk v0.20.0
 
@@ -106,6 +115,7 @@
 ## [v0.5.0]
 - *API change:* init with memory manager using memory index range rather than first memory index.
 
+[v0.13.1]: https://github.com/wasm-forge/stable-fs/compare/v0.13.0...v0.13.1
 [v0.13.0]: https://github.com/wasm-forge/stable-fs/compare/v0.12.0...v0.13.0
 [v0.12.0]: https://github.com/wasm-forge/stable-fs/compare/v0.11.0...v0.12.0
 [v0.11.0]: https://github.com/wasm-forge/stable-fs/compare/v0.10.0...v0.11.0
