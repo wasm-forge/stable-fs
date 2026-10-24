@@ -593,18 +593,31 @@ impl<M: Memory> StableStorage<M> {
     fn validate_metadata_update(
         old_meta: Option<&Metadata>,
         new_meta: &Metadata,
+        old_uses_v2: Option<bool>,
     ) -> Result<(), Error> {
         if let Some(old_meta) = old_meta {
             // do not allow changing file type
             if old_meta.file_type != new_meta.file_type {
                 return Err(Error::FunctionNotSupported);
             }
-        }
 
-        if let Some(old_meta) = old_meta {
             // changing node is not allowed
             if old_meta.node != new_meta.node {
                 return Err(Error::IllegalByteSequence);
+            }
+
+            // changing the chunk type would make the existing data unreadable,
+            // allow it only for empty files or when pinning a legacy file to the format it already uses
+            if old_meta.chunk_type != new_meta.chunk_type && old_meta.size > 0 {
+                let matches_existing_format = match new_meta.chunk_type {
+                    Some(ChunkType::V2) => old_uses_v2 == Some(true),
+                    Some(ChunkType::V1) => old_uses_v2 == Some(false),
+                    None => false,
+                };
+
+                if !matches_existing_format {
+                    return Err(Error::FunctionNotSupported);
+                }
             }
         }
 
@@ -617,7 +630,12 @@ impl<M: Memory> StableStorage<M> {
         Ok(())
     }
 
-    fn resize_file_internal(&mut self, node: Node, new_size: FileSize) -> Result<(), Error> {
+    fn resize_file_internal(
+        &mut self,
+        node: Node,
+        new_size: FileSize,
+        use_v2: bool,
+    ) -> Result<(), Error> {
         // anyone calling this function should also clear pointer cache for this node
 
         if self.is_mounted(node) {
@@ -625,60 +643,63 @@ impl<M: Memory> StableStorage<M> {
             return Ok(());
         }
 
-        // delete v1 chunks
-        let chunk_size = FILE_CHUNK_SIZE_V1;
+        if !use_v2 {
+            // delete v1 chunks
+            let chunk_size = FILE_CHUNK_SIZE_V1;
 
-        let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
+            let first_deletable_index =
+                (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
 
-        let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
+            let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
 
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
+            let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
 
-        for k in self.filechunk.keys_range(range) {
-            chunks.push(k);
-        }
-
-        for (nd, idx) in chunks.into_iter() {
-            assert!(nd == node);
-            self.filechunk.remove(&(node, idx));
-        }
-
-        // fill with zeros the last chunk memory above the file size
-        let offset = new_size as FileSize % chunk_size as FileSize;
-        if first_deletable_index > 0 && offset > 0 {
-            self.write_filechunk_v1(
-                node,
-                first_deletable_index - 1,
-                offset,
-                &ZEROES[0..(chunk_size - offset as usize)],
-            );
-        }
-
-        // delete v2 chunks
-
-        let chunk_size = self.chunk_size();
-
-        let first_deletable_index = (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
-
-        let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
-        let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
-        for k in self.v2_filechunk.v2_chunk_ptr.keys_range(range) {
-            chunks.push(k);
-        }
-
-        for (nd, idx) in chunks.into_iter() {
-            assert!(nd == node);
-            let removed = self.v2_filechunk.v2_chunk_ptr.remove(&(node, idx));
-
-            if let Some(removed) = removed {
-                self.v2_filechunk.v2_allocator.free(removed);
+            for k in self.filechunk.keys_range(range) {
+                chunks.push(k);
             }
-        }
 
-        // fill with zeros the last chunk memory above the file size
-        let offset = new_size as FileSize % chunk_size as FileSize;
-        if first_deletable_index > 0 && offset > 0 {
-            self.write_chunks_v2(node, new_size, &ZEROES[0..(chunk_size - offset as usize)])?;
+            for (nd, idx) in chunks.into_iter() {
+                assert!(nd == node);
+                self.filechunk.remove(&(node, idx));
+            }
+
+            // fill with zeros the last chunk memory above the file size
+            let offset = new_size as FileSize % chunk_size as FileSize;
+            if first_deletable_index > 0 && offset > 0 {
+                self.write_filechunk_v1(
+                    node,
+                    first_deletable_index - 1,
+                    offset,
+                    &ZEROES[0..(chunk_size - offset as usize)],
+                );
+            }
+        } else {
+            // delete v2 chunks
+            let chunk_size = self.chunk_size();
+
+            let first_deletable_index =
+                (new_size.div_ceil(chunk_size as FileSize)) as FileChunkIndex;
+
+            let range = (node, first_deletable_index)..(node, MAX_FILE_CHUNK_COUNT);
+            let mut chunks: Vec<(Node, FileChunkIndex)> = Vec::new();
+            for k in self.v2_filechunk.v2_chunk_ptr.keys_range(range) {
+                chunks.push(k);
+            }
+
+            for (nd, idx) in chunks.into_iter() {
+                assert!(nd == node);
+                let removed = self.v2_filechunk.v2_chunk_ptr.remove(&(node, idx));
+
+                if let Some(removed) = removed {
+                    self.v2_filechunk.v2_allocator.free(removed);
+                }
+            }
+
+            // fill with zeros the last chunk memory above the file size
+            let offset = new_size as FileSize % chunk_size as FileSize;
+            if first_deletable_index > 0 && offset > 0 {
+                self.write_chunks_v2(node, new_size, &ZEROES[0..(chunk_size - offset as usize)])?;
+            }
         }
 
         Ok(())
@@ -738,13 +759,16 @@ impl<M: Memory> Storage for StableStorage<M> {
             None => (None, None),
         };
 
-        Self::validate_metadata_update(old_meta, metadata)?;
+        let old_uses_v2 = old_meta.map(|old_meta| self.use_v2(old_meta, node));
+
+        Self::validate_metadata_update(old_meta, metadata, old_uses_v2)?;
 
         if let Some(old_meta) = old_meta {
             // if the size was reduced, we need to delete the file chunks above the file size
             if metadata.size < old_meta.size {
+                let use_v2 = old_uses_v2.unwrap_or(false);
                 self.ptr_cache.clear();
-                self.resize_file_internal(node, metadata.size)?;
+                self.resize_file_internal(node, metadata.size, use_v2)?;
             }
         }
 
@@ -1337,6 +1361,79 @@ mod tests {
     #[test]
     fn shrink_v2_to_partial_chunk_keeps_data() {
         shrink_keeps_data(ChunkType::V2, 5096);
+    }
+
+    #[test]
+    fn chunk_type_change_on_non_empty_file_fails() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        let node = new_file(&mut storage);
+
+        storage.write(node, 0, b"data").unwrap();
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.chunk_type = Some(ChunkType::V1);
+
+        assert_eq!(
+            storage.put_metadata(node, &meta),
+            Err(Error::FunctionNotSupported)
+        );
+    }
+
+    #[test]
+    fn legacy_chunk_type_can_be_pinned_to_actual_format() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        let node = new_file(&mut storage);
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.chunk_type = None;
+        storage.put_metadata(node, &meta).unwrap();
+
+        storage.write(node, 0, b"data").unwrap();
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        assert_eq!(meta.chunk_type, None);
+        meta.chunk_type = Some(ChunkType::V2);
+        storage.put_metadata(node, &meta).unwrap();
+
+        let mut buf = [0u8; 4];
+        storage.read(node, 0, &mut buf).unwrap();
+        assert_eq!(&buf, b"data");
+    }
+
+    #[test]
+    fn legacy_chunk_type_cannot_be_pinned_to_wrong_format() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        let node = new_file(&mut storage);
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.chunk_type = None;
+        storage.put_metadata(node, &meta).unwrap();
+
+        storage.write(node, 0, b"data").unwrap();
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.chunk_type = Some(ChunkType::V1);
+
+        assert_eq!(
+            storage.put_metadata(node, &meta),
+            Err(Error::FunctionNotSupported)
+        );
+    }
+
+    #[test]
+    fn chunk_type_can_change_on_empty_file() {
+        let mut storage = StableStorage::new(DefaultMemoryImpl::default());
+        let node = new_file(&mut storage);
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.chunk_type = Some(ChunkType::V1);
+        storage.put_metadata(node, &meta).unwrap();
+
+        storage.write(node, 0, b"data").unwrap();
+
+        let mut buf = [0u8; 4];
+        storage.read(node, 0, &mut buf).unwrap();
+        assert_eq!(&buf, b"data");
     }
 
     #[test]

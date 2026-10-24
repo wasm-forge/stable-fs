@@ -105,16 +105,31 @@ impl TransientStorage {
         old_meta: Option<&Metadata>,
         new_meta: &Metadata,
     ) -> Result<(), Error> {
+        if let Some(old_meta) = old_meta {
+            // do not allow changing file type
+            if old_meta.file_type != new_meta.file_type {
+                return Err(Error::FunctionNotSupported);
+            }
+
+            // changing node is not allowed
+            if old_meta.node != new_meta.node {
+                return Err(Error::IllegalByteSequence);
+            }
+
+            // transient storage always uses V1 chunks, so only pinning a legacy file
+            // to V1 is safe while the file contains data
+            if old_meta.chunk_type != new_meta.chunk_type
+                && old_meta.size > 0
+                && !matches!(new_meta.chunk_type, Some(ChunkType::V1))
+            {
+                return Err(Error::FunctionNotSupported);
+            }
+        }
+
         if let Some(max_size) = new_meta.maximum_size_allowed
             && new_meta.size > max_size
         {
             return Err(Error::FileTooLarge);
-        }
-
-        if let Some(old_meta) = old_meta
-            && old_meta.node != new_meta.node
-        {
-            return Err(Error::InvalidArgument);
         }
 
         Ok(())
@@ -605,5 +620,58 @@ mod tests {
         let mut buf = [0; 10];
         storage.read(node, 0, &mut buf).unwrap();
         assert_eq!(buf, [42; 10]);
+    }
+
+    fn new_file(storage: &mut TransientStorage) -> Node {
+        let node = storage.new_node();
+
+        storage
+            .put_metadata(
+                node,
+                &Metadata {
+                    node,
+                    file_type: FileType::RegularFile,
+                    link_count: 1,
+                    size: 0,
+                    times: Times::default(),
+                    chunk_type: Some(ChunkType::V1),
+                    maximum_size_allowed: None,
+                    first_dir_entry: None,
+                    last_dir_entry: None,
+                },
+            )
+            .unwrap();
+
+        node
+    }
+
+    #[test]
+    fn file_type_change_fails() {
+        let mut storage = TransientStorage::default();
+        let node = new_file(&mut storage);
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.file_type = FileType::Directory;
+
+        assert_eq!(
+            storage.put_metadata(node, &meta),
+            Err(Error::FunctionNotSupported)
+        );
+    }
+
+    #[test]
+    fn chunk_type_change_on_non_empty_file_fails() {
+        let mut storage = TransientStorage::default();
+        let node = new_file(&mut storage);
+
+        storage.write(node, 0, b"data").unwrap();
+
+        let mut meta = storage.get_metadata(node).unwrap();
+        meta.chunk_type = Some(ChunkType::V2);
+
+        assert_eq!(
+            storage.put_metadata(node, &meta),
+            Err(Error::FunctionNotSupported)
+        );
     }
 }

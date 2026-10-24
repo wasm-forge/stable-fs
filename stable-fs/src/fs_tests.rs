@@ -3,7 +3,7 @@ use crate::runtime::types::Whence;
 #[cfg(test)]
 mod tests {
 
-    use crate::fs::FileSystem;
+    use crate::fs::{FileSystem, Whence};
     use crate::runtime::types::Fd;
     use crate::storage::types::{MountedFileSizePolicy, Node};
 
@@ -2145,5 +2145,41 @@ mod tests {
                 "newly created file should be writable"
             );
         }
+    }
+
+    #[test]
+    fn shrinking_legacy_v1_file_keeps_data() {
+        let file_name = "some_folder/some_file.txt";
+        let old_content = b"some content";
+
+        let v = std::fs::read("../test_canisters/res/memory-v0.4-some_file_content.bin").unwrap();
+        let memory = new_vector_memory_init(v);
+        let storage = StableStorage::new(memory);
+        let mut fs = FileSystem::new(Box::new(storage)).unwrap();
+
+        let fd = fs
+            .open(
+                fs.root_fd(),
+                file_name,
+                FdStat::default(),
+                OpenFlags::empty(),
+                0,
+            )
+            .unwrap();
+
+        let mut buf = [0u8; 12];
+        let n = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(n, 12);
+        assert_eq!(&buf, old_content);
+
+        fs.set_file_size(fd, 5 as FileSize).unwrap();
+        fs.seek(fd, 0, Whence::SET).unwrap();
+
+        let mut buf = [0u8; 5];
+        let n = fs.read(fd, &mut buf).unwrap();
+        assert_eq!(n, 5);
+        assert_eq!(&buf, &old_content[..5]);
+
+        fs.close(fd).unwrap();
     }
 }
